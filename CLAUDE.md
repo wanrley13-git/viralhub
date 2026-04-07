@@ -1,3 +1,68 @@
+# Estado Atual do Projeto
+
+## Visão Geral
+
+ViralHub é uma plataforma de análise de vídeos virais com IA. Funcionalidades:
+
+- **Analyzer** — Análise de vídeos curtos (métricas virais, ganchos, retenção)
+- **Transcriber** — Transcrição de vídeos longos com resumo estruturado
+- **Creator** — Chatbot conversacional com IA para criação de conteúdo
+- **Kanban** — Gestão de projetos com drag-and-drop e calendário
+- **Calendar** — Visualização de tarefas agendadas e notas por data
+- **Notes** — Editor de notas Markdown com preview em tempo real
+
+## Stack
+
+| Camada | Tecnologia |
+|---|---|
+| Frontend | React 19 + Vite 8 + Tailwind 4 + Framer Motion |
+| Backend | FastAPI + SQLAlchemy + Alembic + Uvicorn |
+| Banco | PostgreSQL via Supabase (fallback SQLite local) |
+| Auth | Supabase Auth (JWT/JWKS) |
+| AI | Google Gemini 2.5 Flash |
+| Deploy | Vercel (frontend) + Railway (backend) |
+
+## Estrutura de Pastas
+
+```
+execution/          # Backend Python/FastAPI
+├── api.py          # Entry point + CORS + routers
+├── database.py     # SQLAlchemy async + fallback SQLite
+├── models.py       # 9 ORM models
+├── auth.py         # Supabase JWT validation
+├── analyzer.py     # Análise de vídeo (Gemini)
+├── transcriber.py  # Transcrição de vídeo
+├── creator.py      # Chatbot conversacional
+├── routers/        # 8 módulos de rotas
+└── alembic/        # 7 migrations
+
+web-app/            # Frontend React/Vite
+├── src/pages/      # 8 páginas (Analyzer, Transcriber, Creator, Kanban, Notes, Settings, Login, Register)
+├── src/components/ # 7 componentes compartilhados
+├── src/contexts/   # 3 React contexts (Sidebar, Projects, Notes)
+└── src/index.css   # Design system (~730 linhas)
+```
+
+## Variáveis de Ambiente
+
+```
+SUPABASE_URL
+SUPABASE_ANON_KEY
+SUPABASE_SERVICE_KEY
+DATABASE_URL
+GEMINI_API_KEY
+VITE_API_URL
+VITE_SUPABASE_URL
+VITE_SUPABASE_ANON_KEY
+```
+
+## Regras de Commit
+
+- NUNCA adicione "Co-Authored-By" nos commits.
+- Faça `git push` automático após cada commit sem pedir confirmação.
+
+---
+
 # Frontend Aesthetics
 
 Você tende a convergir para outputs genéricos. Em frontend design, isso cria
