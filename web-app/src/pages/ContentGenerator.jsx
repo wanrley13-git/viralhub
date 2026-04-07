@@ -443,9 +443,14 @@ const ContentGenerator = () => {
             {activeTab === 'ideas' && generating && (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 {Array.from({ length: quantity }).map((_, i) => (
-                  <div key={i} className="aspect-[3/2] bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 animate-pulse flex flex-col justify-end" style={{ animationDelay: `${i * 40}ms` }}>
-                    <div className="h-3.5 bg-white/[0.06] rounded w-full mb-1.5" />
-                    <div className="h-3.5 bg-white/[0.05] rounded w-4/5" />
+                  <div key={i} className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 animate-pulse flex flex-col gap-2" style={{ animationDelay: `${i * 40}ms` }}>
+                    <div className="h-2.5 bg-white/[0.04] rounded w-16" />
+                    <div className="h-3.5 bg-white/[0.06] rounded w-full" />
+                    <div className="h-3.5 bg-white/[0.05] rounded w-3/4" />
+                    <div className="mt-auto pt-2 space-y-1.5">
+                      <div className="h-2.5 bg-white/[0.03] rounded w-full" />
+                      <div className="h-2.5 bg-white/[0.03] rounded w-5/6" />
+                    </div>
                   </div>
                 ))}
               </div>
@@ -463,7 +468,7 @@ const ContentGenerator = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.25, delay: i * 0.03 }}
                       onClick={() => toggleIdeaSelect(idea.id)}
-                      className={`relative aspect-[3/2] p-4 rounded-2xl border cursor-pointer transition-colors duration-300 group flex items-end ${
+                      className={`relative p-4 rounded-2xl border cursor-pointer transition-colors duration-300 group flex flex-col ${
                         isSelected
                           ? 'bg-primary/5 border-primary/30'
                           : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
@@ -474,7 +479,11 @@ const ContentGenerator = () => {
                       }`}>
                         <Check size={11} strokeWidth={3} />
                       </div>
-                      <p className="text-[13px] lg:text-[15px] font-bold text-white leading-tight uppercase tracking-wide line-clamp-3">{idea.title}</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-1.5">Ideia {String(i + 1).padStart(2, '0')}</p>
+                      <p className="text-[13px] lg:text-[14px] font-bold text-white leading-snug uppercase tracking-wide pr-5 line-clamp-3">{idea.title}</p>
+                      {idea.summary && (
+                        <p className="text-[11px] lg:text-[12px] text-white/40 leading-relaxed mt-2.5 line-clamp-3">{idea.summary}</p>
+                      )}
                     </motion.div>
                   );
                 })}

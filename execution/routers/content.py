@@ -148,11 +148,12 @@ Sua tarefa é gerar ideias de conteúdo criativas, originais e com alto potencia
 
 REGRAS:
 - Gere exatamente {request.quantity} ideias
-- Cada ideia deve ter APENAS um título curto, criativo e chamativo (máx 15 palavras)
+- Cada ideia deve ter um título curto, criativo e chamativo (máx 15 palavras)
+- Cada ideia deve ter um resumo de 2-3 frases explicando o conceito do conteúdo, como a chamada de uma notícia. O resumo deve fazer o leitor entender rapidamente do que se trata o vídeo.
 - Os títulos devem funcionar como ganchos de vídeo viral
 - Considere o tom de voz, base de referência e contexto fornecidos
 - Retorne APENAS um JSON array válido, sem markdown, sem texto extra
-- Formato: [{{"title": "..."}}, {{"title": "..."}}, ...]
+- Formato: [{{"title": "...", "summary": "..."}}, ...]
 """
 
     user_message = f"Gere {request.quantity} ideias de conteúdo viral sobre: {request.prompt}"
@@ -187,7 +188,7 @@ REGRAS:
             idea = ContentIdea(
                 user_id=current_user.id,
                 title=item.get("title", "Sem título"),
-                summary=None,
+                summary=item.get("summary", ""),
                 prompt_used=request.prompt,
                 tone_id=request.tone_id,
                 base_id=request.base_id,
