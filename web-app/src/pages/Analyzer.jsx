@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 import {
   Upload, Link as LinkIcon, FileVideo, Sparkles, Loader2, Download,
   Terminal, Activity, AlertCircle, Library as LibraryIcon,
@@ -586,11 +585,7 @@ const Analyzer = () => {
 
             {/* Modal Body */}
             <div className="p-8 overflow-y-auto custom-scrollbar flex-1 bg-background/40">
-              <div className="max-w-4xl mx-auto markdown-body">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {selectedAnalysis.report_md}
-                </ReactMarkdown>
-              </div>
+              <MarkdownRenderer className="max-w-4xl mx-auto">{selectedAnalysis.report_md}</MarkdownRenderer>
             </div>
           </div>
         </div>

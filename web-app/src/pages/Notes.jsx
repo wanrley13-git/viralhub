@@ -9,9 +9,7 @@ import {
 } from 'lucide-react';
 import TurndownService from 'turndown';
 import { marked } from 'marked';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
+// Markdown rendering handled by contenteditable editor + preview HTML
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import axios from 'axios';
@@ -1177,8 +1175,9 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
   return (
     <div className="flex flex-col h-full">
       {/* Toolbar */}
+      <div className="border-b border-border-subtle">
       {viewMode === 'edit' && (
-        <div className="px-6 py-2.5 flex items-center gap-0.5 flex-wrap border-b border-border-subtle relative">
+        <div className="px-6 py-2.5 flex items-center gap-0.5 flex-wrap relative">
           {toolbarActions.map((action, i) => {
             if (action.type === 'divider') return <div key={i} className="w-px h-5 bg-white/8 mx-1.5" />;
             const active = action.activeKey ? isActive(action.activeKey) : false;
@@ -1234,7 +1233,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
       )}
 
       {viewMode === 'preview' && (
-        <div className="px-6 py-2.5 flex items-center justify-end border-b border-border-subtle">
+        <div className="px-6 py-2.5 flex items-center justify-end">
           <div className="flex gap-1 p-1 bg-surface-flat rounded-xl border border-border-subtle">
             <button
               onClick={() => { setViewMode('edit'); if (onPreviewToggle) onPreviewToggle(false); }}
@@ -1252,6 +1251,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
           </div>
         </div>
       )}
+      </div>
 
       {/* Title */}
       <div className="px-10 pt-8 pb-1">
@@ -1280,7 +1280,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
               onKeyDown={handleEditorKeyDown}
               onPaste={handleEditorPaste}
               onDrop={handleEditorDrop}
-              className="notion-editor w-full min-h-full px-10 py-4 focus:outline-none"
+              className="notion-editor w-full min-h-full px-10 py-4 focus:outline-none text-[1.171875rem] leading-[1.85]"
               style={{ caretColor: '#37B24D' }}
               data-placeholder="Comece a escrever... Digite # para título, [[ para vincular notas"
             />
@@ -1289,7 +1289,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
           <div className="h-full overflow-y-auto custom-scrollbar">
             {previewHtml?.trim() ? (
               <div
-                className="notion-editor w-full min-h-full px-10 py-4"
+                className="notion-editor w-full min-h-full px-10 py-4 text-[1.171875rem] leading-[1.85]"
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             ) : (

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 import {
   Link as LinkIcon, Sparkles, Loader2, Download,
   Terminal, Activity, AlertCircle, Library as LibraryIcon,
@@ -496,11 +495,7 @@ const Transcriber = () => {
             </div>
 
             <div className="p-8 overflow-y-auto custom-scrollbar flex-1 bg-background/40">
-              <div className="max-w-4xl mx-auto markdown-body">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {buildDisplayContent(selectedTranscription)}
-                </ReactMarkdown>
-              </div>
+              <MarkdownRenderer className="max-w-4xl mx-auto">{buildDisplayContent(selectedTranscription)}</MarkdownRenderer>
             </div>
           </div>
         </div>

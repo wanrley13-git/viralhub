@@ -997,7 +997,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
                 onKeyDown={handleEditorKeyDown}
                 onPaste={handleEditorPaste}
                 onDrop={handleEditorDrop}
-                className="notion-editor w-full min-h-full px-10 py-4 focus:outline-none"
+                className="notion-editor w-full min-h-full px-10 py-4 focus:outline-none text-[1.171875rem] leading-[1.85]"
                 style={{ caretColor: '#37B24D' }}
                 data-placeholder="Comece a escrever... Digite # para título, - para lista, > para citação"
               />
@@ -1005,7 +1005,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
           ) : (
             <div className="flex-1 overflow-y-auto custom-scrollbar px-10 py-6">
               {contentRef.current?.trim() ? (
-                <div className="markdown-body max-w-none" dangerouslySetInnerHTML={{ __html: mdToHtml(contentRef.current) }} />
+                <div className="markdown-body markdown-body-lg max-w-none" dangerouslySetInnerHTML={{ __html: mdToHtml(contentRef.current) }} />
               ) : (
                 <div className="flex items-center justify-center h-full">
                   <p className="text-gray-600 text-sm font-serif italic">Nenhum conteúdo ainda...</p>

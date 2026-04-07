@@ -1,8 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import rehypeRaw from 'rehype-raw';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 import { Layout, Search, Loader2, Sparkles, Plus, X, Pencil, Calendar, ArrowLeft, FolderKanban, Trash2, Check, CalendarDays, Columns3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ImageLightbox from '../components/ImageLightbox';
@@ -552,9 +550,7 @@ const BoardView = ({ projectId, collapsed }) => {
                 </div>
               )}
               {previewTask.content_md ? (
-                <div className="markdown-body max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>{previewTask.content_md}</ReactMarkdown>
-                </div>
+                <MarkdownRenderer className="max-w-none markdown-body-lg">{previewTask.content_md}</MarkdownRenderer>
               ) : (
                 <p className="text-gray-600 text-sm font-serif italic text-center py-12">Este card não possui conteúdo.</p>
               )}

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import MarkdownRenderer from '../components/MarkdownRenderer';
 import {
   Sparkles,
   Send,
@@ -963,9 +962,7 @@ const Creator = () => {
                           <img src={m.image} alt="" className="w-full h-full object-cover" />
                         </div>
                       )}
-                      <div className="markdown-body chat-markdown select-text text-[15px] leading-relaxed">
-                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{stripEmojis(m.content)}</ReactMarkdown>
-                      </div>
+                      <MarkdownRenderer chat className="select-text text-[15px] leading-relaxed">{stripEmojis(m.content)}</MarkdownRenderer>
 
                       {/* Task Suggestion */}
                       {m.suggestion && (
@@ -1294,9 +1291,7 @@ const Creator = () => {
                 <h4 className="text-lg font-extrabold text-white mb-1">{kbViewingBase.name}</h4>
                 <p className="text-gray-600 text-xs font-mono mb-7">{(kbViewingBase.selected_ids || []).length} vídeos compilados</p>
                 {kbViewingBase.compiled_md ? (
-                  <div className="markdown-body max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{kbViewingBase.compiled_md}</ReactMarkdown>
-                  </div>
+                  <MarkdownRenderer className="max-w-none">{kbViewingBase.compiled_md}</MarkdownRenderer>
                 ) : (
                   <p className="text-gray-500 text-sm italic text-center py-12">Esta base ainda não foi compilada.</p>
                 )}
@@ -1514,9 +1509,7 @@ const Creator = () => {
                       <h4 className="text-lg font-extrabold text-white mb-1">{tone.name}</h4>
                       <p className="text-gray-600 text-xs font-mono mb-7">{tone.video_count} vídeo{tone.video_count !== 1 ? 's' : ''} analisado{tone.video_count !== 1 ? 's' : ''}</p>
                       {tone.tone_md ? (
-                        <div className="markdown-body max-w-none">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>{tone.tone_md}</ReactMarkdown>
-                        </div>
+                        <MarkdownRenderer className="max-w-none">{tone.tone_md}</MarkdownRenderer>
                       ) : (
                         <p className="text-gray-500 text-sm italic text-center py-12">Este tom ainda não foi analisado.</p>
                       )}
