@@ -1,11 +1,13 @@
 """
 Alembic async env.py
-Reads DATABASE_URL from execution/.env and runs migrations against Postgres.
+Reads DATABASE_URL from env and runs migrations against Postgres.
+Retries connection on transient network errors (e.g. Railway cold start).
 """
 
 import asyncio
 import os
 import sys
+import time
 
 from alembic import context
 from dotenv import load_dotenv
@@ -47,13 +49,28 @@ def do_run_migrations(connection):
 
 
 async def run_migrations_online():
-    """Run migrations in 'online' mode — connects to the database."""
-    connectable = create_async_engine(DATABASE_URL, poolclass=pool.NullPool)
+    """Run migrations in 'online' mode with retry on connection failure."""
+    max_retries = 5
+    retry_delay = 3
 
-    async with connectable.connect() as connection:
-        await connection.run_sync(do_run_migrations)
-
-    await connectable.dispose()
+    for attempt in range(1, max_retries + 1):
+        try:
+            connectable = create_async_engine(
+                DATABASE_URL,
+                poolclass=pool.NullPool,
+                connect_args={"server_settings": {"tcp_keepalives_idle": "30"}},
+            )
+            async with connectable.connect() as connection:
+                await connection.run_sync(do_run_migrations)
+            await connectable.dispose()
+            return
+        except Exception as e:
+            if attempt == max_retries:
+                print(f"[alembic] Failed to connect after {max_retries} attempts: {e}")
+                raise
+            print(f"[alembic] Connection attempt {attempt}/{max_retries} failed: {e}")
+            print(f"[alembic] Retrying in {retry_delay}s...")
+            time.sleep(retry_delay)
 
 
 if context.is_offline_mode():
