@@ -1,0 +1,40 @@
+# ── Credenciais e variáveis de ambiente ──
+.env
+credentials.json
+token.json
+
+# ── Python ──
+__pycache__/
+*.pyc
+*.pyo
+execution/venv/
+execution/viral_hub.db
+execution/backups/
+
+# ── Node ──
+node_modules/
+package-lock.json
+
+# ── Build / temporários ──
+.tmp/
+dist/
+dist-ssr/
+*.local
+
+# ── OS ──
+.DS_Store
+Thumbs.db
+
+# ── IDE ──
+.vscode/
+.idea/
+*.sw?
+
+# ── Claude Code ──
+.agents/
+.claude/
+skills-lock.json
+
+# ── Root-level residual (not part of the project) ──
+/package.json
+/package-lock.json

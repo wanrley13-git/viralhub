@@ -1,0 +1,740 @@
+@import "tailwindcss";
+@config "../tailwind.config.js";
+
+/* ═══════════════════════════════════════════════
+   VIRALHUB — DESIGN SYSTEM
+   Premium Dark Interface · Green Accent
+   ═══════════════════════════════════════════════ */
+
+@layer base {
+  *,
+  *::before,
+  *::after {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    @apply bg-background text-gray-100 font-sans antialiased;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    letter-spacing: -0.01em;
+  }
+
+  ::selection {
+    background: rgba(55, 178, 77, 0.3);
+    color: white;
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.14);
+  }
+}
+
+/* ═══════════════════════════════════════════════
+   NOISE TEXTURE OVERLAY
+   ═══════════════════════════════════════════════ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  filter: url(#noise);
+  opacity: 0.04;
+  mix-blend-mode: overlay;
+}
+
+/* ═══════════════════════════════════════════════
+   GLASSMORPHISM
+   ═══════════════════════════════════════════════ */
+.glass {
+  background: rgba(17, 17, 20, 0.6);
+  backdrop-filter: blur(40px) saturate(1.2);
+  -webkit-backdrop-filter: blur(40px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.4),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.glass-raised {
+  background: rgba(24, 24, 29, 0.7);
+  backdrop-filter: blur(40px) saturate(1.2);
+  -webkit-backdrop-filter: blur(40px) saturate(1.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 16px 48px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ═══════════════════════════════════════════════
+   MAGNETIC BUTTONS
+   ═══════════════════════════════════════════════ */
+.btn-magnetic {
+  position: relative;
+  overflow: hidden;
+  font-weight: 600;
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.btn-magnetic:hover {
+  transform: scale(1.02);
+}
+.btn-magnetic:active {
+  transform: scale(0.98);
+  transition-duration: 0.1s;
+}
+
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+  font-weight: 700;
+  background: #37B24D;
+  color: white;
+  box-shadow: 0 4px 20px rgba(55, 178, 77, 0.25);
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              background 0.2s ease;
+}
+.btn-primary:hover {
+  transform: scale(1.02);
+  background: #2F9E44;
+  box-shadow: 0 8px 32px rgba(55, 178, 77, 0.35);
+}
+.btn-primary:active {
+  transform: scale(0.98);
+  transition-duration: 0.1s;
+}
+
+.btn-white {
+  position: relative;
+  overflow: hidden;
+  font-weight: 700;
+  background: white;
+  color: #08080A;
+  box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1);
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.btn-white:hover {
+  transform: scale(1.02);
+  box-shadow: 0 8px 32px rgba(255, 255, 255, 0.15);
+}
+.btn-white:active {
+  transform: scale(0.98);
+  transition-duration: 0.1s;
+}
+
+.btn-ghost {
+  position: relative;
+  font-weight: 500;
+  color: #6b7280;
+  transition: color 0.25s ease, transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.btn-ghost:hover {
+  color: white;
+  transform: translateY(-1px);
+}
+
+/* ═══════════════════════════════════════════════
+   INTERACTIVE LIFT
+   ═══════════════════════════════════════════════ */
+.lift {
+  transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+              box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3), 0 0 24px rgba(55, 178, 77, 0.08);
+}
+
+/* ═══════════════════════════════════════════════
+   GLOW EFFECTS
+   ═══════════════════════════════════════════════ */
+.glow-primary {
+  box-shadow: 0 0 40px rgba(55, 178, 77, 0.1);
+}
+.glow-primary-hover:hover {
+  box-shadow: 0 0 60px rgba(55, 178, 77, 0.18);
+}
+
+/* ═══════════════════════════════════════════════
+   ANIMATIONS
+   ═══════════════════════════════════════════════ */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+@keyframes slideInToast {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.animate-slide-in-toast {
+  animation: slideInToast 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-fade-up {
+  animation: fadeUp 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+/* Staggered children animation */
+.stagger-children > * {
+  opacity: 0;
+  animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+.stagger-children > *:nth-child(1) { animation-delay: 0s; }
+.stagger-children > *:nth-child(2) { animation-delay: 0.06s; }
+.stagger-children > *:nth-child(3) { animation-delay: 0.12s; }
+.stagger-children > *:nth-child(4) { animation-delay: 0.18s; }
+.stagger-children > *:nth-child(5) { animation-delay: 0.24s; }
+.stagger-children > *:nth-child(6) { animation-delay: 0.30s; }
+.stagger-children > *:nth-child(7) { animation-delay: 0.36s; }
+.stagger-children > *:nth-child(8) { animation-delay: 0.42s; }
+
+/* ═══════════════════════════════════════════════
+   INPUT FIELDS
+   ═══════════════════════════════════════════════ */
+.input-field {
+  width: 100%;
+  background: #18181D;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: white;
+  font-size: 0.875rem;
+  font-weight: 400;
+  outline: none;
+  transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+.input-field:focus {
+  box-shadow: 0 0 0 2px rgba(55, 178, 77, 0.3);
+  border-color: rgba(55, 178, 77, 0.4);
+}
+.input-field::placeholder {
+  color: #6b7280;
+  font-weight: 400;
+}
+
+/* ═══════════════════════════════════════════════
+   TAB SWITCHER
+   ═══════════════════════════════════════════════ */
+.tab-group {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: #18181D;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.tab-item {
+  padding: 8px 20px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+.tab-item.active {
+  background: #37B24D;
+  color: white;
+  box-shadow: 0 4px 16px rgba(55, 178, 77, 0.25);
+}
+.tab-item:not(.active) {
+  color: #6b7280;
+}
+.tab-item:not(.active):hover {
+  color: #d1d5db;
+}
+
+/* ═══════════════════════════════════════════════
+   MONOSPACE DATA LABELS
+   ═══════════════════════════════════════════════ */
+.data-label {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  color: #6b7280;
+}
+
+.data-label-primary {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.15em;
+  font-weight: 600;
+  color: #37B24D;
+}
+
+/* ═══════════════════════════════════════════════
+   MARKDOWN BODY (Reports & Chat)
+   ═══════════════════════════════════════════════ */
+.markdown-body {
+  color: #d1d5db;
+  line-height: 1.75;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-size: 0.9375rem;
+}
+.markdown-body > * + * {
+  margin-top: 1.25rem;
+}
+
+.markdown-body h1 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 0.75rem;
+  margin-top: 2rem;
+  letter-spacing: -0.025em;
+}
+
+.markdown-body h2 {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: white;
+  margin-top: 2rem;
+  margin-bottom: 1rem;
+  letter-spacing: -0.02em;
+}
+
+.markdown-body h3 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  color: #f3f4f6;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+  letter-spacing: -0.01em;
+}
+
+.markdown-body p {
+  margin-bottom: 1rem;
+  line-height: 1.75;
+}
+
+.markdown-body ul {
+  list-style-type: disc;
+  list-style-position: inside;
+  margin-bottom: 1rem;
+  padding-left: 0.5rem;
+}
+.markdown-body ul > li + li {
+  margin-top: 0.5rem;
+}
+
+.markdown-body ol {
+  list-style-type: decimal;
+  list-style-position: inside;
+  margin-bottom: 1rem;
+  padding-left: 0.5rem;
+}
+.markdown-body ol > li + li {
+  margin-top: 0.5rem;
+}
+
+.markdown-body li {
+  color: #d1d5db;
+  line-height: 1.75;
+}
+
+.markdown-body blockquote {
+  border-left: 2px solid rgba(55, 178, 77, 0.5);
+  padding-left: 1.25rem;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  font-style: italic;
+  color: #9ca3af;
+  background: rgba(55, 178, 77, 0.04);
+  border-radius: 0 0.75rem 0.75rem 0;
+}
+
+.markdown-body code {
+  background: #1F1F26;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.5rem;
+  color: #69DB7C;
+  font-size: 0.875rem;
+  font-family: "IBM Plex Mono", monospace;
+}
+
+.markdown-body pre {
+  background: #111114;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 1.25rem;
+  border-radius: 1rem;
+  overflow-x: auto;
+  margin-bottom: 1.5rem;
+}
+
+.markdown-body pre code {
+  background: transparent;
+  padding: 0;
+  color: #d1d5db;
+  font-size: 0.875rem;
+}
+
+.markdown-body table {
+  width: 100%;
+  text-align: left;
+  border-collapse: collapse;
+  margin: 1.5rem 0;
+  font-size: 0.875rem;
+}
+
+.markdown-body th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #18181D;
+  padding: 0.875rem;
+  font-weight: 600;
+  color: white;
+  text-align: center;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.markdown-body td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 0.875rem;
+  color: #d1d5db;
+  text-align: center;
+}
+
+.markdown-body tr:hover {
+  background: rgba(255, 255, 255, 0.02);
+  transition: background 0.15s ease;
+}
+
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 2rem 0;
+}
+
+.markdown-body strong {
+  color: white;
+  font-weight: 700;
+}
+
+.markdown-body a {
+  color: #69DB7C;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: color 0.2s ease;
+}
+.markdown-body a:hover {
+  color: #37B24D;
+}
+
+/* Images in markdown & editor */
+.markdown-body img,
+.notion-editor img {
+  max-width: 100%;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  margin: 8px 0;
+}
+.markdown-body img:hover,
+.notion-editor img:hover {
+  opacity: 0.85;
+}
+
+/* ── Image Resize Controls ── */
+.notion-editor .img-resize-wrapper,
+.markdown-body .img-resize-wrapper {
+  position: relative;
+  display: inline-block;
+}
+.notion-editor .img-resize-wrapper img,
+.markdown-body .img-resize-wrapper img {
+  display: block;
+  margin: 0;
+}
+.notion-editor .img-resize-wrapper.selected img,
+.markdown-body .img-resize-wrapper.selected img {
+  outline: 2px solid rgba(55, 178, 77, 0.5);
+  outline-offset: 2px;
+  border-radius: 12px;
+}
+.img-resize-toolbar {
+  position: absolute;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: none;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(17, 17, 20, 0.9);
+  backdrop-filter: blur(12px);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  z-index: 10;
+}
+.img-resize-wrapper.selected .img-resize-toolbar {
+  display: flex;
+}
+.img-resize-toolbar button {
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: ui-monospace, monospace;
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.img-resize-toolbar button:hover {
+  color: white;
+  background: rgba(255, 255, 255, 0.1);
+}
+.img-resize-toolbar button.active {
+  color: #37B24D;
+  background: rgba(55, 178, 77, 0.15);
+}
+
+/* Chat-specific markdown (tighter) */
+.chat-markdown .markdown-body h1 { font-size: 1.125rem; }
+.chat-markdown .markdown-body h2 { font-size: 1rem; }
+.chat-markdown .markdown-body h3 { font-size: 0.875rem; }
+
+/* ═══════════════════════════════════════════════
+   CUSTOM SCROLLBAR
+   ═══════════════════════════════════════════════ */
+.custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+.custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 999px; }
+.custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
+
+/* ═══════════════════════════════════════════════
+   NOTION-STYLE RICH TEXT EDITOR
+   ═══════════════════════════════════════════════ */
+.notion-editor {
+  color: #d1d5db;
+  line-height: 1.75;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  font-size: 0.9375rem;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+.notion-editor:empty::before {
+  content: attr(data-placeholder);
+  color: #4b5563;
+  pointer-events: none;
+  display: block;
+}
+
+.notion-editor:focus {
+  outline: none;
+}
+
+.notion-editor > * + * {
+  margin-top: 0.5rem;
+}
+
+.notion-editor h1 {
+  font-size: 1.875rem;
+  font-weight: 800;
+  color: white;
+  margin-top: 1.5rem;
+  margin-bottom: 0.5rem;
+  letter-spacing: -0.025em;
+  line-height: 1.3;
+}
+
+.notion-editor h2 {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: white;
+  margin-top: 1.75rem;
+  margin-bottom: 0.375rem;
+  letter-spacing: -0.02em;
+  line-height: 1.35;
+}
+
+.notion-editor h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #f3f4f6;
+  margin-top: 1.5rem;
+  margin-bottom: 0.25rem;
+  letter-spacing: -0.01em;
+  line-height: 1.4;
+}
+
+.notion-editor p {
+  margin-bottom: 0.25rem;
+  line-height: 1.75;
+}
+
+.notion-editor ul {
+  list-style-type: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.notion-editor ol {
+  list-style-type: decimal;
+  padding-left: 1.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.notion-editor li {
+  color: #d1d5db;
+  line-height: 1.75;
+  padding: 0.125rem 0;
+}
+
+.notion-editor li + li {
+  margin-top: 0.125rem;
+}
+
+.notion-editor blockquote {
+  border-left: 3px solid rgba(55, 178, 77, 0.5);
+  padding: 0.5rem 1rem;
+  margin: 0.75rem 0;
+  color: #9ca3af;
+  background: rgba(55, 178, 77, 0.04);
+  border-radius: 0 0.5rem 0.5rem 0;
+}
+
+.notion-editor code {
+  background: #1F1F26;
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
+  color: #69DB7C;
+  font-size: 0.875rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+.notion-editor pre {
+  background: #111114;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  padding: 1rem;
+  border-radius: 0.75rem;
+  overflow-x: auto;
+  margin: 0.75rem 0;
+}
+
+.notion-editor pre code {
+  background: transparent;
+  padding: 0;
+  color: #d1d5db;
+}
+
+.notion-editor strong {
+  color: white;
+  font-weight: 700;
+}
+
+.notion-editor em {
+  color: #e5e7eb;
+}
+
+.notion-editor a {
+  color: #69DB7C;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.notion-editor hr {
+  border: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin: 1.5rem 0;
+}
+
+.notion-editor table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1rem 0;
+  font-size: 0.875rem;
+}
+
+.notion-editor th {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: #18181D;
+  padding: 0.75rem;
+  font-weight: 600;
+  color: white;
+  text-align: left;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.notion-editor td {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 0.75rem;
+  color: #d1d5db;
+}
+
+.notion-editor .checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+}
+
+.notion-editor .checklist-item input[type="checkbox"] {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.25rem;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.notion-editor .checklist-item input[type="checkbox"]:checked {
+  background: #37B24D;
+  border-color: #37B24D;
+}
+
+/* Note links [[note name]] */
+.notion-editor .note-link,
+.markdown-body .note-link {
+  color: #69DB7C;
+  background: rgba(55, 178, 77, 0.1);
+  padding: 0.125rem 0.375rem;
+  border-radius: 0.375rem;
+  text-decoration: none;
+  cursor: pointer;
+  font-weight: 500;
+  border: 1px solid rgba(55, 178, 77, 0.2);
+  transition: all 0.15s;
+}
+.notion-editor .note-link:hover,
+.markdown-body .note-link:hover {
+  background: rgba(55, 178, 77, 0.2);
+  border-color: rgba(55, 178, 77, 0.4);
+}
