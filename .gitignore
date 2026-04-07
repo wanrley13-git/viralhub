@@ -13,7 +13,6 @@ execution/backups/
 
 # ── Node ──
 node_modules/
-package-lock.json
 
 # ── Build / temporários ──
 .tmp/
