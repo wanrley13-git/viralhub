@@ -22,6 +22,7 @@ from routers.tone import router as tone_router
 from routers.projects import router as projects_router
 from routers.uploads import router as uploads_router
 from routers.calendar import router as calendar_router
+from routers.content import router as content_router
 
 app = FastAPI(title="ViralAnalyst Content Hub API")
 
@@ -53,6 +54,7 @@ app.include_router(tone_router)
 app.include_router(projects_router)
 app.include_router(uploads_router)
 app.include_router(calendar_router)
+app.include_router(content_router)
 
 @app.on_event("startup")
 async def on_startup():

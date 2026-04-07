@@ -1,0 +1,149 @@
+import os
+import json
+import logging
+from typing import List, Optional
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.future import select
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+from database import get_db
+from models import User, Analysis, Transcription, KnowledgeBase, Tone
+from auth import get_current_user_dual as get_current_user
+
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/content", tags=["content"])
+
+
+class GenerateRequest(BaseModel):
+    prompt: str
+    tone_id: Optional[int] = None
+    base_id: Optional[int] = None
+    reference_ids: List[int] = []
+    quantity: int = 5
+
+
+class IdeaItem(BaseModel):
+    title: str
+
+
+@router.post("/generate", response_model=List[IdeaItem])
+async def generate_content(
+    request: GenerateRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    if not request.prompt.strip():
+        raise HTTPException(status_code=400, detail="O prompt não pode estar vazio.")
+
+    if request.quantity < 1 or request.quantity > 20:
+        raise HTTPException(status_code=400, detail="Quantidade deve ser entre 1 e 20.")
+
+    # ── Gather context ──
+    tone_text = ""
+    base_text = ""
+    references_text = ""
+
+    # Tone
+    if request.tone_id:
+        result = await db.execute(
+            select(Tone).where(Tone.id == request.tone_id, Tone.user_id == current_user.id)
+        )
+        tone = result.scalars().first()
+        if tone and tone.tone_md:
+            tone_text = tone.tone_md
+
+    # Knowledge base
+    if request.base_id:
+        result = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == request.base_id,
+                KnowledgeBase.user_id == current_user.id,
+            )
+        )
+        kb = result.scalars().first()
+        if kb and kb.compiled_md:
+            base_text = kb.compiled_md
+
+    # References (analyses + transcriptions)
+    if request.reference_ids:
+        # Try analyses first
+        result = await db.execute(
+            select(Analysis).where(
+                Analysis.id.in_(request.reference_ids),
+                Analysis.user_id == current_user.id,
+            )
+        )
+        analyses = result.scalars().all()
+        for a in analyses:
+            references_text += f"\n\n### Análise: {a.title}\n{a.report_md or ''}"
+
+        # Then transcriptions
+        result = await db.execute(
+            select(Transcription).where(
+                Transcription.id.in_(request.reference_ids),
+                Transcription.user_id == current_user.id,
+            )
+        )
+        transcriptions = result.scalars().all()
+        for t in transcriptions:
+            references_text += f"\n\n### Transcrição: {t.title}\n{t.summary or ''}"
+
+    # ── Build Gemini prompt ──
+    system_prompt = f"""Você é um especialista em criação de conteúdo viral para redes sociais.
+Sua tarefa é gerar ideias de conteúdo criativas, originais e com alto potencial de viralização.
+
+{"## TOM DE VOZ DO CRIADOR" + chr(10) + tone_text if tone_text else "Use tom direto, criativo e acessível."}
+
+{"## BASE DE CONHECIMENTO" + chr(10) + base_text if base_text else ""}
+
+{"## REFERÊNCIAS DE VÍDEOS" + chr(10) + references_text if references_text else ""}
+
+REGRAS:
+- Gere exatamente {request.quantity} ideias
+- Cada ideia deve ter APENAS um título curto, criativo e chamativo (máx 15 palavras)
+- Os títulos devem funcionar como ganchos de vídeo viral
+- Considere o tom de voz, base de referência e contexto fornecidos
+- Retorne APENAS um JSON array válido, sem markdown, sem texto extra
+- Formato: [{{"title": "..."}}, {{"title": "..."}}, ...]
+"""
+
+    user_message = f"Gere {request.quantity} ideias de conteúdo viral sobre: {request.prompt}"
+
+    # ── Call Gemini ──
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY não configurada.")
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
+
+    try:
+        response = model.generate_content(user_message)
+        raw = response.text.strip()
+
+        # Strip markdown fences if present
+        if raw.startswith("```"):
+            raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
+        if raw.endswith("```"):
+            raw = raw[: raw.rfind("```")]
+        raw = raw.strip()
+
+        ideas = json.loads(raw)
+
+        if not isinstance(ideas, list):
+            raise ValueError("Resposta não é uma lista.")
+
+        return [IdeaItem(title=item.get("title", "Sem título")) for item in ideas[:request.quantity]]
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao parsear JSON do Gemini: {e}\nRaw: {raw}")
+        raise HTTPException(status_code=500, detail="Erro ao processar resposta da IA.")
+    except Exception as e:
+        logger.error(f"Erro na geração de conteúdo: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro na geração: {str(e)}")

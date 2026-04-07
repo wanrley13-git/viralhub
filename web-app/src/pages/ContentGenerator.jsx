@@ -100,6 +100,12 @@ const ContentGenerator = () => {
   const [toneTaskId, setToneTaskId] = useState(null);
   const [toneViewingId, setToneViewingId] = useState(null);
 
+  // Generation state
+  const [generating, setGenerating] = useState(false);
+  const [ideas, setIdeas] = useState([]);
+  const [selectedIdeas, setSelectedIdeas] = useState([]);
+  const [errorToast, setErrorToast] = useState(null);
+
   const textareaRef = useRef(null);
   const mentionRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -283,6 +289,39 @@ const ContentGenerator = () => {
     URL.revokeObjectURL(url);
   };
 
+  // ─── Generate ideas ───
+  const handleGenerate = async () => {
+    const fullPrompt = segments.map(s => s.type === 'ref' ? `[Referência: ${s.analysis.title}]` : s.value).join('');
+    if (!fullPrompt.trim()) return;
+
+    setGenerating(true);
+    setErrorToast(null);
+    try {
+      const token = await getAccessToken();
+      const res = await axios.post(`${API_URL}/content/generate`, {
+        prompt: fullPrompt,
+        tone_id: selectedToneId || null,
+        base_id: selectedBaseId || null,
+        reference_ids: selectedRefs.map(r => r.id),
+        quantity,
+      }, { headers: { Authorization: `Bearer ${token}` } });
+
+      setIdeas(res.data.map((item, i) => ({ ...item, id: Date.now() + i })));
+      setSelectedIdeas([]);
+      setActiveTab('ideas');
+    } catch (err) {
+      const msg = err.response?.data?.detail || 'Erro ao gerar conteúdo. Tente novamente.';
+      setErrorToast(msg);
+      setTimeout(() => setErrorToast(null), 5000);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const toggleIdeaSelect = (id) => {
+    setSelectedIdeas(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
   // ─── Textarea / segments logic ───
   useEffect(() => {
     const el = textareaRef.current;
@@ -349,7 +388,7 @@ const ContentGenerator = () => {
       else if (e.key === 'Enter') { e.preventDefault(); insertRef(filteredAnalyses[mentionIdx]); return; }
       else if (e.key === 'Escape') { e.preventDefault(); setMentionOpen(false); return; }
     }
-    if (e.key === 'Enter' && !e.shiftKey && !mentionOpen) e.preventDefault();
+    if (e.key === 'Enter' && !e.shiftKey && !mentionOpen) { e.preventDefault(); if (hasContent && !generating) handleGenerate(); }
   };
 
   // ─── Helpers for modal sub-pages ───
@@ -375,18 +414,113 @@ const ContentGenerator = () => {
       <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar">
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="h-full">
-            <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
-              <div className="w-20 h-20 rounded-3xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
-                {activeTab === 'ideas' ? <Lightbulb size={32} strokeWidth={1.2} className="text-gray-600" /> : <FileCheck size={32} strokeWidth={1.2} className="text-gray-600" />}
+
+            {/* Loading skeleton */}
+            {activeTab === 'ideas' && generating && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {Array.from({ length: quantity }).map((_, i) => (
+                  <div key={i} className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5 animate-pulse" style={{ animationDelay: `${i * 80}ms` }}>
+                    <div className="h-4 bg-white/[0.06] rounded-lg w-3/4 mb-3" />
+                    <div className="h-3 bg-white/[0.04] rounded-lg w-1/2" />
+                  </div>
+                ))}
               </div>
-              <div>
-                <p className="text-[15px] font-semibold text-gray-400">{activeTab === 'ideas' ? 'Suas ideias aparecerão aqui' : 'Seus conteúdos desenvolvidos aparecerão aqui'}</p>
-                <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">{activeTab === 'ideas' ? 'Descreva o que deseja criar na barra abaixo e gere ideias com IA' : 'Desenvolva suas ideias em roteiros completos prontos para gravar'}</p>
+            )}
+
+            {/* Ideas cards */}
+            {activeTab === 'ideas' && !generating && ideas.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                {ideas.map((idea, i) => {
+                  const isSelected = selectedIdeas.includes(idea.id);
+                  return (
+                    <motion.div
+                      key={idea.id}
+                      initial={{ opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25, delay: i * 0.05 }}
+                      onClick={() => toggleIdeaSelect(idea.id)}
+                      className={`relative p-5 rounded-2xl border cursor-pointer transition-all duration-200 group ${
+                        isSelected
+                          ? 'bg-primary/5 border-primary/25 shadow-[0_0_20px_rgba(55,178,77,0.08)]'
+                          : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1] hover:bg-white/[0.03]'
+                      }`}
+                    >
+                      <div className={`absolute top-3.5 right-3.5 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                        isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
+                      }`}>
+                        <Check size={12} strokeWidth={3} />
+                      </div>
+                      <Lightbulb size={16} strokeWidth={1.5} className={`mb-2.5 ${isSelected ? 'text-primary' : 'text-gray-600'}`} />
+                      <p className="text-[14px] font-semibold text-white leading-snug pr-6">{idea.title}</p>
+                    </motion.div>
+                  );
+                })}
               </div>
-            </div>
+            )}
+
+            {/* Empty state */}
+            {activeTab === 'ideas' && !generating && ideas.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
+                <div className="w-20 h-20 rounded-3xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
+                  <Lightbulb size={32} strokeWidth={1.2} className="text-gray-600" />
+                </div>
+                <div>
+                  <p className="text-[15px] font-semibold text-gray-400">Suas ideias aparecerão aqui</p>
+                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Descreva o que deseja criar na barra abaixo e gere ideias com IA</p>
+                </div>
+              </div>
+            )}
+
+            {/* Desenvolvidos tab — empty for now */}
+            {activeTab === 'developed' && (
+              <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
+                <div className="w-20 h-20 rounded-3xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
+                  <FileCheck size={32} strokeWidth={1.2} className="text-gray-600" />
+                </div>
+                <div>
+                  <p className="text-[15px] font-semibold text-gray-400">Seus conteúdos desenvolvidos aparecerão aqui</p>
+                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Desenvolva suas ideias em roteiros completos prontos para gravar</p>
+                </div>
+              </div>
+            )}
+
           </motion.div>
         </AnimatePresence>
+
+        {/* Floating action bar for selected ideas */}
+        <AnimatePresence>
+          {selectedIdeas.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className="fixed bottom-32 left-1/2 -translate-x-1/2 z-40"
+              style={{ marginLeft: collapsed ? 36 : 130 }}
+            >
+              <button className="btn-primary flex items-center gap-2.5 px-6 py-3 rounded-2xl text-[13px] font-bold shadow-[0_8px_32px_rgba(55,178,77,0.3)]">
+                <FileCheck size={15} strokeWidth={2} />
+                Desenvolver {selectedIdeas.length} selecionado{selectedIdeas.length > 1 ? 's' : ''}
+              </button>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
+
+      {/* ═══ ERROR TOAST ═══ */}
+      <AnimatePresence>
+        {errorToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            className="fixed top-6 right-6 z-[200] bg-red-500/10 border border-red-500/20 text-red-400 px-5 py-3 rounded-xl text-[13px] font-semibold flex items-center gap-2.5 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+          >
+            <AlertCircle size={15} strokeWidth={2} />
+            {errorToast}
+            <button onClick={() => setErrorToast(null)} className="ml-2 opacity-60 hover:opacity-100 transition-opacity"><X size={13} strokeWidth={2.5} /></button>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══ FLOATING PROMPT BAR ═══ */}
       <div className="shrink-0 flex justify-center px-6 pb-7">
@@ -468,8 +602,8 @@ const ContentGenerator = () => {
               <button onClick={() => stepQuantity(1)} disabled={quantity >= MAX_QTY} className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 transition-colors rounded-r-xl"><Plus size={14} strokeWidth={2} /></button>
             </div>
             <div className="flex-1" />
-            <button disabled={!hasContent} className="btn-primary flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none">
-              <StarFilled size={14} /> Gerar
+            <button onClick={handleGenerate} disabled={!hasContent || generating} className="btn-primary flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none">
+              {generating ? <><Loader2 size={14} className="animate-spin" /> Gerando...</> : <><StarFilled size={14} /> Gerar</>}
             </button>
           </div>
         </div>
