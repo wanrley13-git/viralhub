@@ -68,6 +68,15 @@ export default function CalendarView({ tasks, onEditTask, onCreateTask }) {
             {MONTH_NAMES[month]}
             <span className="text-gray-500 font-medium ml-2">{year}</span>
           </h3>
+          {(() => {
+            const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
+            const count = tasks.filter(t => t.scheduled_date && t.scheduled_date.startsWith(prefix)).length;
+            return count > 0 ? (
+              <span className="px-2.5 py-1 text-[10px] font-bold text-blue-400 bg-blue-400/10 border border-blue-400/15 rounded-lg font-mono">
+                {count} agendado{count !== 1 ? 's' : ''}
+              </span>
+            ) : null;
+          })()}
           <button
             onClick={goToday}
             className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 border border-primary/15 rounded-lg hover:bg-primary/15 transition-colors"
