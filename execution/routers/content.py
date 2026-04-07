@@ -90,7 +90,7 @@ async def generate_content(
     if not request.prompt.strip():
         raise HTTPException(status_code=400, detail="O prompt não pode estar vazio.")
 
-    if request.quantity < 1 or request.quantity > 20:
+    if request.quantity < 1 or request.quantity > 40:
         raise HTTPException(status_code=400, detail="Quantidade deve ser entre 1 e 20.")
 
     # ── Gather context ──
@@ -148,12 +148,11 @@ Sua tarefa é gerar ideias de conteúdo criativas, originais e com alto potencia
 
 REGRAS:
 - Gere exatamente {request.quantity} ideias
-- Cada ideia deve ter um título curto, criativo e chamativo (máx 15 palavras)
-- Cada ideia deve ter um resumo de 1-2 frases descrevendo o que seria o conteúdo
+- Cada ideia deve ter APENAS um título curto, criativo e chamativo (máx 15 palavras)
 - Os títulos devem funcionar como ganchos de vídeo viral
 - Considere o tom de voz, base de referência e contexto fornecidos
 - Retorne APENAS um JSON array válido, sem markdown, sem texto extra
-- Formato: [{{"title": "...", "summary": "resumo curto de 1-2 frases"}}, ...]
+- Formato: [{{"title": "..."}}, {{"title": "..."}}, ...]
 """
 
     user_message = f"Gere {request.quantity} ideias de conteúdo viral sobre: {request.prompt}"
@@ -188,7 +187,7 @@ REGRAS:
             idea = ContentIdea(
                 user_id=current_user.id,
                 title=item.get("title", "Sem título"),
-                summary=item.get("summary", ""),
+                summary=None,
                 prompt_used=request.prompt,
                 tone_id=request.tone_id,
                 base_id=request.base_id,

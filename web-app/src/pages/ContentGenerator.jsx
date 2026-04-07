@@ -27,7 +27,7 @@ const TABS = [
 ];
 
 const MIN_QTY = 1;
-const MAX_QTY = 20;
+const MAX_QTY = 40;
 
 // ─── Small components ───
 const RefChip = ({ analysis, onRemove }) => (
@@ -441,13 +441,11 @@ const ContentGenerator = () => {
 
             {/* Loading skeleton */}
             {activeTab === 'ideas' && generating && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 {Array.from({ length: quantity }).map((_, i) => (
-                  <div key={i} className="aspect-[4/3] bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 animate-pulse flex flex-col" style={{ animationDelay: `${i * 60}ms` }}>
-                    <div className="h-4 bg-white/[0.06] rounded-lg w-4/5 mb-2" />
-                    <div className="h-3 bg-white/[0.04] rounded-lg w-3/5 mb-3" />
-                    <div className="h-2.5 bg-white/[0.03] rounded-lg w-full mt-auto" />
-                    <div className="h-2.5 bg-white/[0.03] rounded-lg w-2/3 mt-1.5" />
+                  <div key={i} className="aspect-[3/2] bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 animate-pulse flex flex-col justify-end" style={{ animationDelay: `${i * 40}ms` }}>
+                    <div className="h-3.5 bg-white/[0.06] rounded w-full mb-1.5" />
+                    <div className="h-3.5 bg-white/[0.05] rounded w-4/5" />
                   </div>
                 ))}
               </div>
@@ -455,7 +453,7 @@ const ContentGenerator = () => {
 
             {/* Ideas cards */}
             {activeTab === 'ideas' && !generating && ideas.length > 0 && (
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                 {ideas.map((idea, i) => {
                   const isSelected = selectedIdeas.includes(idea.id);
                   return (
@@ -463,23 +461,20 @@ const ContentGenerator = () => {
                       key={idea.id}
                       initial={{ opacity: 0, y: 16 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.25, delay: i * 0.04 }}
+                      transition={{ duration: 0.25, delay: i * 0.03 }}
                       onClick={() => toggleIdeaSelect(idea.id)}
-                      className={`relative aspect-[4/3] p-4 rounded-2xl border cursor-pointer transition-all duration-200 group flex flex-col ${
+                      className={`relative aspect-[3/2] p-4 rounded-2xl border cursor-pointer transition-colors duration-300 group flex items-end ${
                         isSelected
-                          ? 'bg-primary/5 border-primary/25 shadow-[0_0_20px_rgba(55,178,77,0.08)]'
-                          : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1] hover:bg-white/[0.03]'
+                          ? 'bg-primary/5 border-primary/30'
+                          : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
                       }`}
                     >
-                      <div className={`absolute top-3 right-3 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                      <div className={`absolute top-2.5 right-2.5 w-4.5 h-4.5 rounded flex items-center justify-center transition-all ${
                         isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
                       }`}>
-                        <Check size={12} strokeWidth={3} />
+                        <Check size={11} strokeWidth={3} />
                       </div>
-                      <p className="text-[14px] font-bold text-white leading-snug pr-5 line-clamp-2">{idea.title}</p>
-                      {idea.summary && (
-                        <p className="text-[12px] text-gray-500 leading-relaxed mt-2 line-clamp-3 flex-1">{idea.summary}</p>
-                      )}
+                      <p className="text-[13px] lg:text-[15px] font-bold text-white leading-tight uppercase tracking-wide line-clamp-3">{idea.title}</p>
                     </motion.div>
                   );
                 })}
