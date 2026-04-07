@@ -88,8 +88,6 @@ function MonthView({ date, items, onDayClick }) {
 function TimeGrid({ days, items, onSlotClick, onItemClick, onItemDrop }) {
   const scrollRef = useRef(null);
   const todayStr = fmtDate(new Date());
-  const now = new Date();
-  const nowMinutes = (now.getHours()-7)*60+now.getMinutes();
 
   // Drag state
   const [dragging, setDragging] = useState(null);
@@ -170,13 +168,6 @@ function TimeGrid({ days, items, onSlotClick, onItemClick, onItemDrop }) {
                   onDrop={(e) => handleDrop(e, ds, h)}
                 />
               ))}
-
-              {/* Now line — subtle */}
-              {isToday && nowMinutes >= 0 && nowMinutes <= HOURS.length*60 && (
-                <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: nowMinutes }}>
-                  <div className="h-[1.5px] bg-red-500/40 w-full" />
-                </div>
-              )}
 
               {/* Events */}
               {dayItems.map(it => {
