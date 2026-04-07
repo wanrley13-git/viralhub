@@ -710,14 +710,27 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
   };
 
   const applyColor = (color) => {
+    const savedRange = savedSelectionRef.current;
+    setShowColorPicker(false);
     setTimeout(() => {
       editorRef.current?.focus();
-      if (savedSelectionRef.current) {
-        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedSelectionRef.current);
+      if (savedRange) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(savedRange);
       }
-      if (!color) { document.execCommand('removeFormat', false, null); }
-      else { document.execCommand('styleWithCSS', false, true); document.execCommand('foreColor', false, color); document.execCommand('styleWithCSS', false, false); }
-      setShowColorPicker(false);
+      const sel = window.getSelection();
+      if (!sel.rangeCount || sel.isCollapsed) return;
+      if (!color) {
+        document.execCommand('removeFormat', false, null);
+      } else {
+        // Wrap selection in span with color
+        const range = sel.getRangeAt(0);
+        const selectedText = range.toString();
+        if (selectedText) {
+          document.execCommand('insertHTML', false, `<span style="color: ${color}">${selectedText}</span>`);
+        }
+      }
       syncContent();
     }, 50);
   };
@@ -956,12 +969,26 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
     const sel = window.getSelection();
     if (!sel.rangeCount) return;
     const anchorNode = sel.anchorNode;
-    if (!anchorNode || anchorNode.nodeType !== Node.TEXT_NODE) return;
-    const text = anchorNode.textContent;
-    const offset = sel.anchorOffset;
     const block = getCurrentBlock(editor);
     if (!block) return;
     const blockText = block.textContent;
+    // For text-based shortcuts we need a text node
+    const isTextNode = anchorNode && anchorNode.nodeType === Node.TEXT_NODE;
+    const text = isTextNode ? anchorNode.textContent : '';
+    const offset = isTextNode ? sel.anchorOffset : 0;
+
+    // Block-level shortcuts that don't need text node
+    if (/^- \[[ x]\] /.test(blockText) && !block.classList?.contains('checklist-item')) {
+      const checked = blockText.startsWith('- [x] ');
+      const remaining = blockText.replace(/^- \[[ x]\] /, '');
+      block.innerHTML = `<div class="checklist-item"><input type="checkbox" ${checked ? 'checked' : ''}/> <span>${remaining || '\u200B'}</span></div>`;
+      const span = block.querySelector('.checklist-item span');
+      if (span) placeCursorAtEnd(span);
+      syncContent();
+      return;
+    }
+
+    if (!isTextNode) return;
 
     // Check for closing ]] to create note link
     if (text.slice(0, offset).match(/\[\[(.+?)\]\]$/)) {
@@ -1003,16 +1030,6 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
       const remaining = blockText.slice(2);
       document.execCommand('formatBlock', false, 'blockquote');
       const nb = getCurrentBlock(editor); if (nb) { nb.textContent = remaining || '\u200B'; placeCursorAtEnd(nb); } return;
-    }
-    if (/^- \[[ x]\] /.test(blockText)) {
-      const checked = blockText.startsWith('- [x] ');
-      const remaining = blockText.replace(/^- \[[ x]\] /, '');
-      block.innerHTML = '';
-      document.execCommand('insertHTML', false,
-        `<div class="checklist-item"><input type="checkbox" ${checked ? 'checked' : ''}/> <span>${remaining || '\u200B'}</span></div>`
-      );
-      syncContent();
-      return;
     }
     if (/^[-*] /.test(blockText) && block.nodeName !== 'LI' && block.nodeName !== 'UL') {
       const remaining = blockText.slice(2);
@@ -1104,22 +1121,96 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
     }
     if ((e.ctrlKey || e.metaKey) && e.key === 'b') { e.preventDefault(); execCmd('bold'); return; }
     if ((e.ctrlKey || e.metaKey) && e.key === 'i') { e.preventDefault(); execCmd('italic'); return; }
+
     if (e.key === 'Enter' && !e.shiftKey) {
       const block = getCurrentBlock(editorRef.current);
-      if (block && /^H[1-3]$/.test(block.nodeName)) {
+      if (!block) return;
+
+      // Heading → new paragraph
+      if (/^H[1-3]$/.test(block.nodeName)) {
         e.preventDefault(); const p = document.createElement('p'); p.innerHTML = '<br>'; block.after(p); placeCursorAtStart(p); syncContent(); return;
       }
+
+      // Checklist item → new checklist item
+      const checkItem = block.closest?.('.checklist-item') || (block.classList?.contains('checklist-item') ? block : null);
+      if (checkItem) {
+        const span = checkItem.querySelector('span');
+        const text = span?.textContent?.replace(/\u200B/g, '').trim() || '';
+        if (!text) {
+          // Empty checklist item → exit to paragraph
+          e.preventDefault();
+          const p = document.createElement('p'); p.innerHTML = '<br>';
+          checkItem.after(p); checkItem.remove(); placeCursorAtStart(p); syncContent();
+        } else {
+          // Create new checklist item
+          e.preventDefault();
+          const newItem = document.createElement('div');
+          newItem.className = 'checklist-item';
+          newItem.innerHTML = '<input type="checkbox" /> <span>\u200B</span>';
+          checkItem.after(newItem);
+          const newSpan = newItem.querySelector('span');
+          placeCursorAtStart(newSpan);
+          syncContent();
+        }
+        return;
+      }
+
+      // Empty list item → exit list
+      if (block.nodeName === 'LI') {
+        const text = block.textContent?.replace(/\u200B/g, '').trim() || '';
+        if (!text) {
+          e.preventDefault();
+          const list = block.parentNode;
+          const p = document.createElement('p'); p.innerHTML = '<br>';
+          list.after(p); block.remove();
+          if (!list.children.length) list.remove();
+          placeCursorAtStart(p); syncContent();
+          return;
+        }
+      }
     }
+
     if (e.key === 'Backspace') {
       const sel = window.getSelection();
       if (sel.rangeCount && sel.isCollapsed) {
+        const range = sel.getRangeAt(0);
         const block = getCurrentBlock(editorRef.current);
-        if (block && /^(H[1-3]|BLOCKQUOTE)$/.test(block.nodeName)) {
-          const range = sel.getRangeAt(0);
-          if (range.startOffset === 0) {
-            const textNode = sel.anchorNode;
-            const isAtStart = textNode === block || (textNode === block.firstChild && range.startOffset === 0);
-            if (isAtStart) { e.preventDefault(); document.execCommand('formatBlock', false, 'p'); syncContent(); return; }
+        if (!block) return;
+
+        // Heading/blockquote at start → convert to paragraph
+        if (/^(H[1-3]|BLOCKQUOTE)$/.test(block.nodeName) && range.startOffset === 0) {
+          const textNode = sel.anchorNode;
+          const isAtStart = textNode === block || (textNode === block.firstChild && range.startOffset === 0);
+          if (isAtStart) { e.preventDefault(); document.execCommand('formatBlock', false, 'p'); syncContent(); return; }
+        }
+
+        // List item at start → convert to paragraph (don't merge with above)
+        if (block.nodeName === 'LI' && range.startOffset === 0) {
+          const textNode = sel.anchorNode;
+          const isAtStart = textNode === block || textNode === block.firstChild;
+          if (isAtStart) {
+            e.preventDefault();
+            const list = block.parentNode;
+            const p = document.createElement('p');
+            p.innerHTML = block.innerHTML || '<br>';
+            list.before(p); block.remove();
+            if (!list.children.length) list.remove();
+            placeCursorAtStart(p); syncContent();
+            return;
+          }
+        }
+
+        // Checklist item at start → convert to paragraph
+        const checkItem = block.closest?.('.checklist-item') || (block.classList?.contains('checklist-item') ? block : null);
+        if (checkItem) {
+          const span = checkItem.querySelector('span');
+          if (span && sel.anchorNode === span && range.startOffset === 0) {
+            e.preventDefault();
+            const p = document.createElement('p');
+            p.innerHTML = span.innerHTML || '<br>';
+            checkItem.before(p); checkItem.remove();
+            placeCursorAtStart(p); syncContent();
+            return;
           }
         }
       }
@@ -1200,44 +1291,9 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar — toggle always visible, tools only in edit mode */}
-      <div className="px-6 py-2.5 flex items-center gap-0.5 flex-wrap border-b border-border-subtle relative">
-        {viewMode === 'edit' && toolbarActions.map((action, i) => {
-          if (action.type === 'divider') return <div key={i} className="w-px h-5 bg-white/8 mx-1.5" />;
-          const active = action.activeKey ? isActive(action.activeKey) : false;
-          return (
-            <div key={action.key} className="relative">
-              <button
-                onMouseDown={(e) => { e.preventDefault(); action.action(); }}
-                title={action.label}
-                className={`p-2 rounded-lg transition-all ${active ? 'text-primary bg-primary/10' : 'text-gray-500 hover:text-white hover:bg-white/[0.06]'}`}
-              >
-                <action.icon size={15} />
-              </button>
-              {action.isColorBtn && showColorPicker && (
-                <div ref={colorPickerRef} className="absolute top-full right-0 mt-2 z-50 glass-raised rounded-xl p-3 min-w-[180px] animate-fade-in shadow-modal">
-                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 px-1">Cor do texto</p>
-                  <div className="grid grid-cols-5 gap-1.5">
-                    {TEXT_COLORS.map((color) => (
-                      <button
-                        key={color.label}
-                        onMouseDown={(e) => { e.preventDefault(); applyColor(color.value); }}
-                        title={color.label}
-                        className="w-7 h-7 rounded-lg border border-white/10 hover:border-white/30 transition-all hover:scale-110 flex items-center justify-center"
-                        style={{ backgroundColor: color.value || '#18181D' }}
-                      >
-                        {!color.value && <X size={10} strokeWidth={2.5} className="text-gray-500" />}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
-
-        {/* View mode toggle — always in the same position */}
-        <div className="ml-auto flex gap-1 p-1 bg-surface-flat rounded-xl border border-border-subtle">
+      {/* Toggle — FIXED position, never moves */}
+      <div className="px-6 py-2 flex items-center justify-end border-b border-border-subtle">
+        <div className="flex gap-1 p-1 bg-surface-flat rounded-xl border border-border-subtle">
           <button
             onClick={() => { setViewMode('edit'); if (onPreviewToggle) onPreviewToggle(false); }}
             className={`p-1.5 rounded-lg transition-all ${viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
@@ -1254,6 +1310,45 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
           </button>
         </div>
       </div>
+
+      {/* Toolbar — only in edit mode, separate row */}
+      {viewMode === 'edit' && (
+        <div className="px-6 py-1.5 flex items-center gap-0.5 flex-wrap border-b border-border-subtle relative">
+          {toolbarActions.map((action, i) => {
+            if (action.type === 'divider') return <div key={i} className="w-px h-5 bg-white/8 mx-1.5" />;
+            const active = action.activeKey ? isActive(action.activeKey) : false;
+            return (
+              <div key={action.key} className="relative">
+                <button
+                  onMouseDown={(e) => { e.preventDefault(); action.action(); }}
+                  title={action.label}
+                  className={`p-2 rounded-lg transition-all ${active ? 'text-primary bg-primary/10' : 'text-gray-500 hover:text-white hover:bg-white/[0.06]'}`}
+                >
+                  <action.icon size={15} />
+                </button>
+                {action.isColorBtn && showColorPicker && (
+                  <div ref={colorPickerRef} className="absolute top-full right-0 mt-2 z-50 glass-raised rounded-xl p-3 min-w-[180px] animate-fade-in shadow-modal">
+                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 px-1">Cor do texto</p>
+                    <div className="grid grid-cols-5 gap-1.5">
+                      {TEXT_COLORS.map((color) => (
+                        <button
+                          key={color.label}
+                          onMouseDown={(e) => { e.preventDefault(); applyColor(color.value); }}
+                          title={color.label}
+                          className="w-7 h-7 rounded-lg border border-white/10 hover:border-white/30 transition-all hover:scale-110 flex items-center justify-center"
+                          style={{ backgroundColor: color.value || '#18181D' }}
+                        >
+                          {!color.value && <X size={10} strokeWidth={2.5} className="text-gray-500" />}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Title */}
       <div className="px-10 pt-8 pb-1">

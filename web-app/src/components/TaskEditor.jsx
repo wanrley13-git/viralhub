@@ -295,21 +295,26 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
 
   // ── Color: use execCommand with styleWithCSS ──
   const applyColor = (color) => {
+    const savedRange = savedSelectionRef.current;
+    setShowColorPicker(false);
     setTimeout(() => {
       editorRef.current?.focus();
-      if (savedSelectionRef.current) {
+      if (savedRange) {
         const sel = window.getSelection();
         sel.removeAllRanges();
-        sel.addRange(savedSelectionRef.current);
+        sel.addRange(savedRange);
       }
+      const sel = window.getSelection();
+      if (!sel.rangeCount || sel.isCollapsed) return;
       if (!color) {
         document.execCommand('removeFormat', false, null);
       } else {
-        document.execCommand('styleWithCSS', false, true);
-        document.execCommand('foreColor', false, color);
-        document.execCommand('styleWithCSS', false, false);
+        const range = sel.getRangeAt(0);
+        const selectedText = range.toString();
+        if (selectedText) {
+          document.execCommand('insertHTML', false, `<span style="color: ${color}">${selectedText}</span>`);
+        }
       }
-      setShowColorPicker(false);
       syncContent();
     }, 50);
   };
