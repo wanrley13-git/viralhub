@@ -24,7 +24,15 @@ function fmtDate(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.
 function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
 function getMonday(d) { const r = new Date(d); const day = r.getDay(); r.setDate(r.getDate()-(day===0?6:day-1)); return r; }
 function getSunday(d) { return addDays(getMonday(d),6); }
-function timeToMinutes(t) { if (!t) return 0; const [h,m] = t.split(':').map(Number); return (h-7)*60+m; }
+const GRID_START_HOUR = 7;
+function timeToPixels(t) {
+  if (!t) return 0;
+  const [h, m] = t.split(':').map(Number);
+  return (h - GRID_START_HOUR) * 60 + m; // 1 minute = 1 pixel, grid starts at 7am
+}
+function durationPixels(start, end) {
+  return Math.max(timeToPixels(end) - timeToPixels(start), 30);
+}
 
 
 // ── MONTH VIEW ──
@@ -173,8 +181,8 @@ function TimeGrid({ days, items, onSlotClick, onItemClick, onItemDrop }) {
               {dayItems.map(it => {
                 const startTime = it.start_time || it.scheduled_time || '09:00';
                 const endTime = it.end_time || (() => { const [h,m] = startTime.split(':').map(Number); return `${pad(h+1)}:${pad(m)}`; })();
-                const top = timeToMinutes(startTime);
-                const height = Math.max(timeToMinutes(endTime)-top, 30);
+                const top = timeToPixels(startTime);
+                const height = durationPixels(startTime, endTime);
                 const color = it.color || it.card_color || '#3b82f6';
 
                 return (
@@ -341,7 +349,7 @@ export default function CalendarView({ tasks, projectId, onEditTask }) {
       } else {
         await axios.patch(`${API_URL}/calendar/notes/${item.id}`, { scheduled_date: newDate, start_time: newTime, end_time: (() => {
           const [h,m] = newTime.split(':').map(Number);
-          const dur = item.end_time && item.start_time ? timeToMinutes(item.end_time) - timeToMinutes(item.start_time) : 60;
+          const dur = item.end_time && item.start_time ? timeToPixels(item.end_time) - timeToPixels(item.start_time) : 60;
           const endM = (h-7)*60+m+dur;
           return `${pad(Math.floor(endM/60)+7)}:${pad(endM%60)}`;
         })() }, { headers: { Authorization: `Bearer ${token}` } });
