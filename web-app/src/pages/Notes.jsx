@@ -22,7 +22,7 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 function cn(...inputs) { return twMerge(clsx(inputs)); }
 
-// ── Markdown helpers (same as TaskEditor) ──
+// —— Markdown helpers (same as TaskEditor) ——
 const turndown = new TurndownService({ headingStyle: 'atx', bulletListMarker: '-', codeBlockStyle: 'fenced' });
 turndown.addRule('coloredSpan', {
   filter: (node) => node.nodeName === 'SPAN' && node.style && node.style.color,
@@ -90,7 +90,7 @@ const placeCursorAtStart = (el) => {
   r.collapse(true); s.removeAllRanges(); s.addRange(r);
 };
 
-// ── Icon pack (curated SVG icons inspired by obsidian-iconize) ──
+// —— Icon pack (curated SVG icons inspired by obsidian-iconize) ——
 const FOLDER_ICONS = [
   { id: 'folder', label: 'Pasta', svg: '<path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' },
   { id: 'star', label: 'Estrela', svg: '<polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' },
@@ -126,7 +126,7 @@ const FolderIcon = ({ iconId, size = 16, className = '' }) => {
   );
 };
 
-// ── Icon Picker (fixed position portal) ──
+// —— Icon Picker (fixed position portal) ——
 const IconPicker = ({ currentIcon, onSelect, onClose, anchorRef }) => {
   const [pos, setPos] = useState({ top: 0, left: 0 });
   const pickerRef = useRef(null);
@@ -183,7 +183,7 @@ const IconPicker = ({ currentIcon, onSelect, onClose, anchorRef }) => {
   );
 };
 
-// ── Text Colors (same as TaskEditor) ──
+// —— Text Colors (same as TaskEditor) ——
 const TEXT_COLORS = [
   { label: 'Padrão', value: '' },
   { label: 'Branco', value: '#ffffff' },
@@ -416,7 +416,7 @@ const FolderTreeItem = ({ folder, depth = 0 }) => {
   );
 };
 
-// ── Note Item in tree ──
+// —— Note Item in tree ——
 const NoteItem = ({ note, depth }) => {
   const { activeNoteId, setActiveNoteId, deleteNote, updateNote, selectedFolderId, setSelectedFolderId, reorderNote } = useNotes();
   const isActive = activeNoteId === note.id;
@@ -570,7 +570,7 @@ const NoteLinkSuggestions = ({ query, notes, onSelect, position }) => {
 // ═══════════════════════════════════════════════
 // Note Editor (reuses TaskEditor markdown system)
 // ═══════════════════════════════════════════════
-const NoteEditor = ({ note, onPreviewToggle }) => {
+const NoteEditor = ({ note }) => {
   const { updateNote, notes, findNoteByTitle, setActiveNoteId } = useNotes();
   const [viewMode, setViewMode] = useState('edit');
   const [title, setTitle] = useState(note.title);
@@ -902,7 +902,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
     { key: 'image', icon: ImagePlus, label: 'Inserir imagem', action: () => imageInputRef.current?.click() },
   ];
 
-  // ── [[ note link detection ──
+  // —— [[ note link detection ——
   const checkNoteLinkTrigger = useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
@@ -1286,34 +1286,31 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
       setPreviewHtml(mdToHtml(contentRef.current) || '');
     }
     setViewMode('preview');
-    if (onPreviewToggle) onPreviewToggle(true);
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* Toggle — FIXED position, never moves */}
-      <div className="px-6 py-2 flex items-center justify-end border-b border-border-subtle">
-        <div className="flex gap-1 p-1 bg-surface-flat rounded-xl border border-border-subtle">
-          <button
-            onClick={() => { setViewMode('edit'); if (onPreviewToggle) onPreviewToggle(false); }}
-            className={`p-1.5 rounded-lg transition-all ${viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
-            title="Editar"
-          >
-            <Pencil size={13} strokeWidth={2.5} />
-          </button>
-          <button
-            onClick={switchToPreview}
-            className={`p-1.5 rounded-lg transition-all ${viewMode === 'preview' ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
-            title="Preview"
-          >
-            <Eye size={13} strokeWidth={2.5} />
-          </button>
-        </div>
+    <div className="flex flex-col h-full relative">
+      {/* Toggle — always visible, fixed top-right of note area */}
+      <div style={{position: 'fixed', top: '14px', right: '24px', zIndex: 9999}} className="flex gap-1 p-1 bg-surface-flat rounded-xl border border-border-subtle">
+        <button
+          onClick={() => { setViewMode('edit'); }}
+          className={`p-1.5 rounded-lg transition-all ${viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
+          title="Editar"
+        >
+          <Pencil size={13} strokeWidth={2.5} />
+        </button>
+        <button
+          onClick={switchToPreview}
+          className={`p-1.5 rounded-lg transition-all ${viewMode === 'preview' ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
+          title="Preview"
+        >
+          <Eye size={13} strokeWidth={2.5} />
+        </button>
       </div>
 
-      {/* Toolbar — only in edit mode, separate row */}
-      {viewMode === 'edit' && (
-        <div className="px-6 py-1.5 flex items-center gap-0.5 flex-wrap border-b border-border-subtle relative">
+      {/* Toolbar row — only in edit mode */}
+      <div className={`px-6 min-h-[52px] flex items-center border-b border-border-subtle ${viewMode !== 'edit' ? 'invisible' : ''}`}>
+        <div className="flex items-center gap-0.5 flex-wrap flex-1 pr-20">
           {toolbarActions.map((action, i) => {
             if (action.type === 'divider') return <div key={i} className="w-px h-5 bg-white/8 mx-1.5" />;
             const active = action.activeKey ? isActive(action.activeKey) : false;
@@ -1348,7 +1345,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
             );
           })}
         </div>
-      )}
+      </div>
 
       {/* Title */}
       <div className="px-10 pt-8 pb-1">
@@ -1556,21 +1553,19 @@ const Notes = () => {
         </div>
 
         {/* Main Content */}
-        <div className="flex-1 flex flex-col min-w-0">
+        <div className="flex-1 flex flex-col min-w-0 relative">
           {/* Expand button when sidebar is collapsed */}
-          {notesSidebarCollapsed && (
-            <div className="px-4 py-3 border-b border-border-subtle flex items-center">
-              <button
-                onClick={() => setNotesSidebarCollapsed(false)}
-                className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors"
-                title="Expandir painel"
-              >
-                <PanelLeftOpen size={18} />
-              </button>
-            </div>
-          )}
+          <div className={`px-4 py-3 border-b border-border-subtle flex items-center ${!notesSidebarCollapsed ? 'hidden' : ''}`} style={{position: 'absolute', top: 0, left: 0, zIndex: 40}}>
+            <button
+              onClick={() => setNotesSidebarCollapsed(false)}
+              className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors"
+              title="Expandir painel"
+            >
+              <PanelLeftOpen size={18} />
+            </button>
+          </div>
           {activeNote ? (
-            <NoteEditor key={activeNote.id} note={activeNote} onPreviewToggle={(isPreview) => setNotesSidebarCollapsed(isPreview)} />
+            <NoteEditor key={activeNote.id} note={activeNote} />
           ) : (
             <div className="flex-1 flex items-center justify-center">
               <div className="text-center">
