@@ -68,7 +68,7 @@ const Sidebar = () => {
   ];
 
   const menuItems = [
-    { icon: Sparkles, label: 'Criação AI', path: '/creator' },
+    { icon: Sparkles, label: 'Gerador', path: '/creator' },
     { icon: BookOpen, label: 'Notas', path: '/notes' },
   ];
 

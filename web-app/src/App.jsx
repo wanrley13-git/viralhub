@@ -5,7 +5,7 @@ import Sidebar from './components/Sidebar';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Analyzer from './pages/Analyzer';
-import Creator from './pages/Creator';
+import ContentGenerator from './pages/ContentGenerator';
 import Kanban from './pages/Kanban';
 import Transcriber from './pages/Transcriber';
 import Notes from './pages/Notes';
@@ -88,7 +88,7 @@ function App() {
             path="/creator"
             element={
               <ProtectedRoute>
-                <Creator />
+                <ContentGenerator />
               </ProtectedRoute>
             }
           />
