@@ -273,7 +273,7 @@ const Creator = () => {
   const toneDropzone = useDropzone({
     onDrop: (accepted) => setToneFiles(accepted),
     accept: { 'video/*': ['.mp4', '.mov', '.avi', '.mkv', '.webm'] },
-    maxFiles: 5,
+    maxFiles: 10,
   });
 
   // SSE para progresso do tom
