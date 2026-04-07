@@ -66,8 +66,7 @@ async def run_tone_task(task_id: str, video_paths: List[str], name: str, notes: 
             return
 
         # Extrair thumbnail do primeiro vídeo
-        thumb_name = extract_thumbnail(video_paths[0])
-        thumb_url = f"/thumbnails/{thumb_name}" if thumb_name else None
+        thumb_url = extract_thumbnail(video_paths[0])
 
         # Analisar tom usando todos os vídeos
         tone_md = await analyze_tone(video_paths, on_progress, notes=notes)

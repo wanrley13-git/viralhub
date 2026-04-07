@@ -12,22 +12,31 @@ import cv2
 TMP_THUMBNAILS_DIR = os.path.join(os.path.dirname(__file__), ".tmp", "thumbnails")
 os.makedirs(TMP_THUMBNAILS_DIR, exist_ok=True)
 
+from storage import upload_file as _upload_to_storage
+
+
 def extract_thumbnail(video_path: str) -> str:
-    """Extrai o primeiro frame do vídeo e salva como JPG."""
+    """Extrai o primeiro frame do vídeo, faz upload ao Supabase Storage
+    e retorna a URL pública. Retorna None se falhar."""
     try:
         cap = cv2.VideoCapture(video_path)
         success, frame = cap.read()
         if success:
             thumb_name = f"thumb_{uuid.uuid4()}.jpg"
             thumb_path = os.path.join(TMP_THUMBNAILS_DIR, thumb_name)
-            # Redimensiona para manter leve (ex: 480p de largura)
             height, width = frame.shape[:2]
             new_width = 480
             new_height = int(height * (new_width / width))
             resized = cv2.resize(frame, (new_width, new_height), interpolation=cv2.INTER_AREA)
             cv2.imwrite(thumb_path, resized)
             cap.release()
-            return thumb_name
+            # Upload to Supabase Storage
+            with open(thumb_path, "rb") as f:
+                public_url = _upload_to_storage(f.read(), thumb_name, "image/jpeg")
+            if public_url:
+                return public_url
+            # Fallback: return local path if upload fails
+            return f"/thumbnails/{thumb_name}"
         cap.release()
     except Exception as e:
         print(f"Erro ao extrair miniatura: {e}")

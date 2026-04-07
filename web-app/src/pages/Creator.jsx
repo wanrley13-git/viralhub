@@ -36,6 +36,7 @@ import { useDropzone } from 'react-dropzone';
 import { useSidebar } from '../contexts/SidebarContext';
 import ImageLightbox from '../components/ImageLightbox';
 import { getAccessToken } from '../supabaseClient';
+import { resolveThumbnailUrl } from '../components/Thumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -681,7 +682,7 @@ const Creator = () => {
         {/* Mention badges */}
         {selectedMentions.map((m, idx) => (
           <div key={idx} className="flex items-center gap-1.5 bg-primary/12 text-primary px-2.5 py-1 rounded-md text-[11px] font-bold shrink-0 animate-fade-in border border-primary/15">
-            {m.thumbnail_url && <img src={`${API_URL}${m.thumbnail_url}`} className="w-3.5 h-3.5 rounded object-cover"/>}
+            {m.thumbnail_url && <img src={resolveThumbnailUrl(m.thumbnail_url)} className="w-3.5 h-3.5 rounded object-cover"/>}
             <span className="truncate max-w-[100px]">{m.title}</span>
             <button
               type="button"
@@ -780,7 +781,7 @@ const Creator = () => {
             className="w-full text-left py-1.5 px-3 hover:bg-white/[0.04] rounded-xl transition-colors flex items-center gap-3 text-sm text-gray-300"
           >
             <div className="w-8 h-8 rounded-lg bg-surface border border-border-subtle overflow-hidden shrink-0">
-              {item.thumbnail_url && <img src={`${API_URL}${item.thumbnail_url}`} className="w-full h-full object-cover" />}
+              {item.thumbnail_url && <img src={resolveThumbnailUrl(item.thumbnail_url)} className="w-full h-full object-cover" />}
             </div>
             <div className="truncate">
               <p className="font-semibold text-white truncate text-[13px]">{item.title}</p>
@@ -1159,7 +1160,7 @@ const Creator = () => {
                           <div className="flex gap-1 shrink-0">
                             {thumbs.slice(0, 3).map((a, i) => (
                               <div key={i} className="w-10 h-10 rounded-lg overflow-hidden bg-surface-flat">
-                                <img src={`${API_URL}${a.thumbnail_url}`} alt="" className="w-full h-full object-cover opacity-70" />
+                                <img src={resolveThumbnailUrl(a.thumbnail_url)} alt="" className="w-full h-full object-cover opacity-70" />
                               </div>
                             ))}
                             {thumbs.length === 0 && (
@@ -1260,7 +1261,7 @@ const Creator = () => {
                           }`}
                         >
                           {a.thumbnail_url ? (
-                            <img src={`${API_URL}${a.thumbnail_url}`} alt={a.title} className={`w-full h-full object-cover transition-all ${isSelected ? 'opacity-100' : 'opacity-40 group-hover:opacity-70'}`} />
+                            <img src={resolveThumbnailUrl(a.thumbnail_url)} alt={a.title} className={`w-full h-full object-cover transition-all ${isSelected ? 'opacity-100' : 'opacity-40 group-hover:opacity-70'}`} />
                           ) : (
                             <div className="w-full h-full bg-surface-flat flex items-center justify-center">
                               <FileText size={20} strokeWidth={1.5} className="text-gray-700" />
@@ -1456,7 +1457,7 @@ const Creator = () => {
                           {/* Thumbnail */}
                           <div className="w-10 h-10 rounded-lg overflow-hidden bg-surface-flat shrink-0">
                             {tone.thumbnail_url ? (
-                              <img src={`${API_URL}${tone.thumbnail_url}`} alt="" className="w-full h-full object-cover opacity-70" />
+                              <img src={resolveThumbnailUrl(tone.thumbnail_url)} alt="" className="w-full h-full object-cover opacity-70" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center">
                                 <Mic size={14} strokeWidth={1.5} className="text-gray-700" />
@@ -1603,7 +1604,7 @@ const Creator = () => {
                       >
                         <div className="aspect-video bg-background overflow-hidden">
                           {item.thumbnail_url ? (
-                            <img src={`${API_URL}${item.thumbnail_url}`} alt="" className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity duration-300" />
+                            <img src={resolveThumbnailUrl(item.thumbnail_url)} alt="" className="w-full h-full object-cover opacity-70 group-hover:opacity-100 transition-opacity duration-300" />
                           ) : (
                             <div className="w-full h-full flex items-center justify-center">
                               <Film size={24} strokeWidth={1} className="text-gray-700" />

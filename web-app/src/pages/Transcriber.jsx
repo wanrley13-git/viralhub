@@ -10,6 +10,7 @@ import {
 import { motion } from 'framer-motion';
 import { useSidebar } from '../contexts/SidebarContext';
 import { getAccessToken } from '../supabaseClient';
+import Thumbnail from '../components/Thumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -436,15 +437,12 @@ const Transcriber = () => {
                     <span className="data-label text-red-400/80">Transcrição</span>
                   </div>
 
-                  {item.thumbnail_url && (
-                    <div className="w-full aspect-video rounded-2xl overflow-hidden mb-4 border border-border-subtle bg-surface relative">
-                      <img
-                        src={`${API_URL}${item.thumbnail_url}`}
-                        alt="Thumbnail"
-                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
-                      />
-                    </div>
-                  )}
+                  <div className="w-full aspect-video rounded-2xl overflow-hidden mb-4 border border-border-subtle bg-surface relative">
+                    <Thumbnail
+                      url={item.thumbnail_url}
+                      className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
+                    />
+                  </div>
 
                   <h3 className="text-[15px] font-extrabold text-white mb-2 line-clamp-2 group-hover:text-primary transition-colors tracking-tight">
                     {item.title}

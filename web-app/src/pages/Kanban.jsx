@@ -12,6 +12,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useSidebar } from '../contexts/SidebarContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { getAccessToken } from '../supabaseClient';
+import { resolveThumbnailUrl } from '../components/Thumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -512,9 +513,9 @@ const BoardView = ({ projectId, collapsed }) => {
               {previewTask.thumbnail_url && (
                 <div
                   className="w-full max-w-md rounded-2xl overflow-hidden border border-border-subtle mb-6 cursor-zoom-in"
-                  onClick={() => setLightboxSrc(`${API_URL}${previewTask.thumbnail_url}`)}
+                  onClick={() => setLightboxSrc(resolveThumbnailUrl(previewTask.thumbnail_url))}
                 >
-                  <img src={`${API_URL}${previewTask.thumbnail_url}`} alt="" className="w-full object-cover" />
+                  <img src={resolveThumbnailUrl(previewTask.thumbnail_url)} alt="" className="w-full object-cover" />
                 </div>
               )}
               {previewTask.content_md ? (

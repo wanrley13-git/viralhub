@@ -80,8 +80,7 @@ async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: b
         for idx, fp in enumerate(local_files):
             report_md, ai_title = await analyze_single_video(fp, on_progress, idx+1, total_files)
             
-            thumb_name = extract_thumbnail(fp)
-            thumb_url = f"/thumbnails/{thumb_name}" if thumb_name else None
+            thumb_url = extract_thumbnail(fp)
 
             # Salva no Banco de Dados
             async for db in db_factory():

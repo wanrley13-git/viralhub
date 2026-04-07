@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import ImageLightbox from './ImageLightbox';
+import { resolveThumbnailUrl } from './Thumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -203,10 +204,10 @@ const KanbanBoard = ({
                             {task.thumbnail_url && (
                               <div
                                 className="w-full aspect-video rounded-xl overflow-hidden border border-border-subtle bg-background cursor-zoom-in"
-                                onClick={(e) => { e.stopPropagation(); setLightboxSrc(`${API_URL}${task.thumbnail_url}`); }}
+                                onClick={(e) => { e.stopPropagation(); setLightboxSrc(resolveThumbnailUrl(task.thumbnail_url)); }}
                               >
                                 <img
-                                  src={`${API_URL}${task.thumbnail_url}`}
+                                  src={resolveThumbnailUrl(task.thumbnail_url)}
                                   alt="Preview"
                                   className="w-full h-full object-cover opacity-75 group-hover:opacity-100 transition-opacity duration-500"
                                 />

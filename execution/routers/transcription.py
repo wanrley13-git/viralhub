@@ -74,8 +74,7 @@ async def run_transcription_task(task_id: str, links: List[str], user_id: int, d
                 await on_progress(f"Erro ao baixar vídeo: {link}", base_pct + 20)
                 continue
 
-            thumb_name = extract_thumbnail(fp)
-            thumb_url = f"/thumbnails/{thumb_name}" if thumb_name else None
+            thumb_url = extract_thumbnail(fp)
 
             transcription, summary = await transcribe_video(fp, scoped_progress)
 
