@@ -113,6 +113,8 @@ const placeCursorAtStart = (el) => {
   sel.addRange(range);
 };
 
+import { resolveThumbnailUrl } from './Thumbnail';
+
 const API_URL = import.meta.env.VITE_API_URL;
 
 const TaskEditor = ({ task, onSave, onClose, initialStatus }) => {
@@ -369,7 +371,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus }) => {
     formData.append('file', file);
     try {
       const res = await axios.post(`${API_URL}/uploads/image`, formData);
-      const url = `${API_URL}${res.data.url}`;
+      const url = resolveThumbnailUrl(res.data.url);
       editorRef.current?.focus();
       document.execCommand('insertHTML', false,
         `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
@@ -671,7 +673,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus }) => {
           formData.append('file', file);
           try {
             const res = await axios.post(`${API_URL}/uploads/image`, formData);
-            const url = `${API_URL}${res.data.url}`;
+            const url = resolveThumbnailUrl(res.data.url);
             editorRef.current?.focus();
             document.execCommand('insertHTML', false,
               `<p><img src="${url}" alt="Imagem colada" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
@@ -712,7 +714,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus }) => {
       formData.append('file', file);
       try {
         const res = await axios.post(`${API_URL}/uploads/image`, formData);
-        const url = `${API_URL}${res.data.url}`;
+        const url = resolveThumbnailUrl(res.data.url);
         editorRef.current?.focus();
         document.execCommand('insertHTML', false,
           `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`

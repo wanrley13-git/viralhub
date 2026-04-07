@@ -18,6 +18,7 @@ import axios from 'axios';
 import { useSidebar } from '../contexts/SidebarContext';
 import { useNotes } from '../contexts/NotesContext';
 import ImageLightbox from '../components/ImageLightbox';
+import { resolveThumbnailUrl } from '../components/Thumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -755,7 +756,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
     formData.append('file', file);
     try {
       const res = await axios.post(`${API_URL}/uploads/image`, formData);
-      const url = `${API_URL}${res.data.url}`;
+      const url = resolveThumbnailUrl(res.data.url);
       editorRef.current?.focus();
       document.execCommand('insertHTML', false,
         `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
@@ -1114,7 +1115,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
           formData.append('file', file);
           try {
             const res = await axios.post(`${API_URL}/uploads/image`, formData);
-            const url = `${API_URL}${res.data.url}`;
+            const url = resolveThumbnailUrl(res.data.url);
             editorRef.current?.focus();
             document.execCommand('insertHTML', false,
               `<p><img src="${url}" alt="Imagem colada" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
@@ -1149,7 +1150,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
       formData.append('file', file);
       try {
         const res = await axios.post(`${API_URL}/uploads/image`, formData);
-        const url = `${API_URL}${res.data.url}`;
+        const url = resolveThumbnailUrl(res.data.url);
         editorRef.current?.focus();
         document.execCommand('insertHTML', false,
           `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`

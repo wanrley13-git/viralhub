@@ -520,7 +520,7 @@ const Creator = () => {
     if (loading) return;
 
     const finalMessage = input.trim() + " " + selectedMentions.map(m => `@${m.id}`).join(" ");
-    const userMessage = { role: 'user', content: input.trim(), image: chatImage ? `${API_URL}${chatImage.url}` : null };
+    const userMessage = { role: 'user', content: input.trim(), image: chatImage ? resolveThumbnailUrl(chatImage.url) : null };
     setMessages(prev => [...prev, userMessage]);
 
     setInput('');
