@@ -1,16 +1,18 @@
 import os
 import json
 import logging
+import datetime
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
+from sqlalchemy import desc
 import google.generativeai as genai
 from dotenv import load_dotenv
 
 from database import get_db
-from models import User, Analysis, Transcription, KnowledgeBase, Tone
+from models import User, Analysis, Transcription, KnowledgeBase, Tone, ContentIdea
 from auth import get_current_user_dual as get_current_user
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
@@ -28,11 +30,58 @@ class GenerateRequest(BaseModel):
     quantity: int = 5
 
 
-class IdeaItem(BaseModel):
+class IdeaOut(BaseModel):
+    id: int
     title: str
+    summary: Optional[str] = None
+    status: str
+    created_at: Optional[str] = None
+
+    class Config:
+        from_attributes = True
 
 
-@router.post("/generate", response_model=List[IdeaItem])
+@router.get("/ideas", response_model=List[IdeaOut])
+async def list_ideas(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(ContentIdea)
+        .where(ContentIdea.user_id == current_user.id)
+        .order_by(desc(ContentIdea.created_at))
+    )
+    ideas = result.scalars().all()
+    return [
+        IdeaOut(
+            id=i.id,
+            title=i.title,
+            summary=i.summary,
+            status=i.status,
+            created_at=i.created_at.isoformat() if i.created_at else None,
+        )
+        for i in ideas
+    ]
+
+
+@router.delete("/ideas/{idea_id}")
+async def delete_idea(
+    idea_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(ContentIdea).where(ContentIdea.id == idea_id, ContentIdea.user_id == current_user.id)
+    )
+    idea = result.scalars().first()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Ideia não encontrada.")
+    await db.delete(idea)
+    await db.commit()
+    return {"ok": True}
+
+
+@router.post("/generate", response_model=List[IdeaOut])
 async def generate_content(
     request: GenerateRequest,
     db: AsyncSession = Depends(get_db),
@@ -49,7 +98,6 @@ async def generate_content(
     base_text = ""
     references_text = ""
 
-    # Tone
     if request.tone_id:
         result = await db.execute(
             select(Tone).where(Tone.id == request.tone_id, Tone.user_id == current_user.id)
@@ -58,7 +106,6 @@ async def generate_content(
         if tone and tone.tone_md:
             tone_text = tone.tone_md
 
-    # Knowledge base
     if request.base_id:
         result = await db.execute(
             select(KnowledgeBase).where(
@@ -70,28 +117,23 @@ async def generate_content(
         if kb and kb.compiled_md:
             base_text = kb.compiled_md
 
-    # References (analyses + transcriptions)
     if request.reference_ids:
-        # Try analyses first
         result = await db.execute(
             select(Analysis).where(
                 Analysis.id.in_(request.reference_ids),
                 Analysis.user_id == current_user.id,
             )
         )
-        analyses = result.scalars().all()
-        for a in analyses:
+        for a in result.scalars().all():
             references_text += f"\n\n### Análise: {a.title}\n{a.report_md or ''}"
 
-        # Then transcriptions
         result = await db.execute(
             select(Transcription).where(
                 Transcription.id.in_(request.reference_ids),
                 Transcription.user_id == current_user.id,
             )
         )
-        transcriptions = result.scalars().all()
-        for t in transcriptions:
+        for t in result.scalars().all():
             references_text += f"\n\n### Transcrição: {t.title}\n{t.summary or ''}"
 
     # ── Build Gemini prompt ──
@@ -106,11 +148,12 @@ Sua tarefa é gerar ideias de conteúdo criativas, originais e com alto potencia
 
 REGRAS:
 - Gere exatamente {request.quantity} ideias
-- Cada ideia deve ter APENAS um título curto, criativo e chamativo (máx 15 palavras)
+- Cada ideia deve ter um título curto, criativo e chamativo (máx 15 palavras)
+- Cada ideia deve ter um resumo de 1-2 frases descrevendo o que seria o conteúdo
 - Os títulos devem funcionar como ganchos de vídeo viral
 - Considere o tom de voz, base de referência e contexto fornecidos
 - Retorne APENAS um JSON array válido, sem markdown, sem texto extra
-- Formato: [{{"title": "..."}}, {{"title": "..."}}, ...]
+- Formato: [{{"title": "...", "summary": "resumo curto de 1-2 frases"}}, ...]
 """
 
     user_message = f"Gere {request.quantity} ideias de conteúdo viral sobre: {request.prompt}"
@@ -127,19 +170,48 @@ REGRAS:
         response = model.generate_content(user_message)
         raw = response.text.strip()
 
-        # Strip markdown fences if present
+        # Strip markdown fences
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
         if raw.endswith("```"):
             raw = raw[: raw.rfind("```")]
         raw = raw.strip()
 
-        ideas = json.loads(raw)
-
-        if not isinstance(ideas, list):
+        parsed = json.loads(raw)
+        if not isinstance(parsed, list):
             raise ValueError("Resposta não é uma lista.")
 
-        return [IdeaItem(title=item.get("title", "Sem título")) for item in ideas[:request.quantity]]
+        # ── Save to DB ──
+        saved = []
+        now = datetime.datetime.utcnow()
+        for item in parsed[: request.quantity]:
+            idea = ContentIdea(
+                user_id=current_user.id,
+                title=item.get("title", "Sem título"),
+                summary=item.get("summary", ""),
+                prompt_used=request.prompt,
+                tone_id=request.tone_id,
+                base_id=request.base_id,
+                status="idea",
+                created_at=now,
+            )
+            db.add(idea)
+            saved.append(idea)
+
+        await db.commit()
+        for idea in saved:
+            await db.refresh(idea)
+
+        return [
+            IdeaOut(
+                id=i.id,
+                title=i.title,
+                summary=i.summary,
+                status=i.status,
+                created_at=i.created_at.isoformat() if i.created_at else None,
+            )
+            for i in saved
+        ]
 
     except json.JSONDecodeError as e:
         logger.error(f"Erro ao parsear JSON do Gemini: {e}\nRaw: {raw}")

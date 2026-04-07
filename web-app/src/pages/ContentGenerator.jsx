@@ -134,7 +134,16 @@ const ContentGenerator = () => {
     fetchAnalyses();
     fetchKnowledgeBases();
     fetchTones();
+    fetchIdeas();
   }, []);
+
+  const fetchIdeas = async () => {
+    try {
+      const token = await getAccessToken();
+      const res = await axios.get(`${API_URL}/content/ideas`, { headers: { Authorization: `Bearer ${token}` } });
+      setIdeas(res.data);
+    } catch (err) { console.error('Erro buscando ideias:', err); }
+  };
 
   const fetchAnalyses = async () => {
     try {
@@ -306,7 +315,7 @@ const ContentGenerator = () => {
         quantity,
       }, { headers: { Authorization: `Bearer ${token}` } });
 
-      setIdeas(res.data.map((item, i) => ({ ...item, id: Date.now() + i })));
+      setIdeas(prev => [...res.data, ...prev]);
       setSelectedIdeas([]);
       setActiveTab('ideas');
     } catch (err) {
@@ -388,6 +397,21 @@ const ContentGenerator = () => {
       else if (e.key === 'Enter') { e.preventDefault(); insertRef(filteredAnalyses[mentionIdx]); return; }
       else if (e.key === 'Escape') { e.preventDefault(); setMentionOpen(false); return; }
     }
+
+    // Backspace at start of textarea → remove previous ref chip
+    if (e.key === 'Backspace' && !mentionOpen) {
+      const cursor = textareaRef.current?.selectionStart || 0;
+      if (cursor === 0 && activeText === '' && segments.length > 1) {
+        // Find last ref before this text segment
+        const lastRefIdx = segments.length - 2;
+        if (segments[lastRefIdx]?.type === 'ref') {
+          e.preventDefault();
+          removeRef(segments[lastRefIdx].analysis.id);
+          return;
+        }
+      }
+    }
+
     if (e.key === 'Enter' && !e.shiftKey && !mentionOpen) { e.preventDefault(); if (hasContent && !generating) handleGenerate(); }
   };
 
@@ -417,11 +441,13 @@ const ContentGenerator = () => {
 
             {/* Loading skeleton */}
             {activeTab === 'ideas' && generating && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {Array.from({ length: quantity }).map((_, i) => (
-                  <div key={i} className="bg-white/[0.03] border border-white/[0.06] rounded-2xl p-5 animate-pulse" style={{ animationDelay: `${i * 80}ms` }}>
-                    <div className="h-4 bg-white/[0.06] rounded-lg w-3/4 mb-3" />
-                    <div className="h-3 bg-white/[0.04] rounded-lg w-1/2" />
+                  <div key={i} className="aspect-[4/3] bg-white/[0.03] border border-white/[0.06] rounded-2xl p-4 animate-pulse flex flex-col" style={{ animationDelay: `${i * 60}ms` }}>
+                    <div className="h-4 bg-white/[0.06] rounded-lg w-4/5 mb-2" />
+                    <div className="h-3 bg-white/[0.04] rounded-lg w-3/5 mb-3" />
+                    <div className="h-2.5 bg-white/[0.03] rounded-lg w-full mt-auto" />
+                    <div className="h-2.5 bg-white/[0.03] rounded-lg w-2/3 mt-1.5" />
                   </div>
                 ))}
               </div>
@@ -429,7 +455,7 @@ const ContentGenerator = () => {
 
             {/* Ideas cards */}
             {activeTab === 'ideas' && !generating && ideas.length > 0 && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
                 {ideas.map((idea, i) => {
                   const isSelected = selectedIdeas.includes(idea.id);
                   return (
@@ -437,21 +463,23 @@ const ContentGenerator = () => {
                       key={idea.id}
                       initial={{ opacity: 0, y: 16 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.25, delay: i * 0.05 }}
+                      transition={{ duration: 0.25, delay: i * 0.04 }}
                       onClick={() => toggleIdeaSelect(idea.id)}
-                      className={`relative p-5 rounded-2xl border cursor-pointer transition-all duration-200 group ${
+                      className={`relative aspect-[4/3] p-4 rounded-2xl border cursor-pointer transition-all duration-200 group flex flex-col ${
                         isSelected
                           ? 'bg-primary/5 border-primary/25 shadow-[0_0_20px_rgba(55,178,77,0.08)]'
                           : 'bg-white/[0.02] border-white/[0.06] hover:border-white/[0.1] hover:bg-white/[0.03]'
                       }`}
                     >
-                      <div className={`absolute top-3.5 right-3.5 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                      <div className={`absolute top-3 right-3 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
                         isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
                       }`}>
                         <Check size={12} strokeWidth={3} />
                       </div>
-                      <Lightbulb size={16} strokeWidth={1.5} className={`mb-2.5 ${isSelected ? 'text-primary' : 'text-gray-600'}`} />
-                      <p className="text-[14px] font-semibold text-white leading-snug pr-6">{idea.title}</p>
+                      <p className="text-[14px] font-bold text-white leading-snug pr-5 line-clamp-2">{idea.title}</p>
+                      {idea.summary && (
+                        <p className="text-[12px] text-gray-500 leading-relaxed mt-2 line-clamp-3 flex-1">{idea.summary}</p>
+                      )}
                     </motion.div>
                   );
                 })}

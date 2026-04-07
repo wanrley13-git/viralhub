@@ -116,6 +116,21 @@ class KnowledgeBase(Base):
 
     owner = relationship("Profile", back_populates="knowledge_bases")
 
+class ContentIdea(Base):
+    __tablename__ = "content_ideas"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"))
+    title = Column(String)
+    summary = Column(Text, nullable=True)
+    prompt_used = Column(Text, nullable=True)
+    tone_id = Column(Integer, nullable=True)
+    base_id = Column(Integer, nullable=True)
+    status = Column(String, default="idea")  # idea, developing, developed
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    owner = relationship("Profile")
+
+
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
     id = Column(Integer, primary_key=True, index=True)
