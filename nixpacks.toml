@@ -1,0 +1,8 @@
+[phases.setup]
+nixPkgs = ["python312", "gcc", "ffmpeg"]
+
+[phases.install]
+cmds = ["cd execution && pip install -r requirements.txt"]
+
+[start]
+cmd = "cd execution && alembic upgrade head && uvicorn api:app --host 0.0.0.0 --port ${PORT:-8000}"

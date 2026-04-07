@@ -10,3 +10,6 @@ asyncpg==0.30.0
 alembic==1.15.2
 PyJWT==2.12.1
 opencv-python-headless==4.13.0.92
+bcrypt==5.0.0
+aiofiles==24.1.0
+httpx==0.28.1
