@@ -710,16 +710,16 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
   };
 
   const applyColor = (color) => {
-    editorRef.current?.focus();
-    if (savedSelectionRef.current) {
-      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedSelectionRef.current);
-    }
     setTimeout(() => {
+      editorRef.current?.focus();
+      if (savedSelectionRef.current) {
+        const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(savedSelectionRef.current);
+      }
       if (!color) { document.execCommand('removeFormat', false, null); }
       else { document.execCommand('styleWithCSS', false, true); document.execCommand('foreColor', false, color); document.execCommand('styleWithCSS', false, false); }
       setShowColorPicker(false);
       syncContent();
-    }, 10);
+    }, 50);
   };
 
   const toggleCode = () => {
@@ -1004,6 +1004,16 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
       document.execCommand('formatBlock', false, 'blockquote');
       const nb = getCurrentBlock(editor); if (nb) { nb.textContent = remaining || '\u200B'; placeCursorAtEnd(nb); } return;
     }
+    if (/^- \[[ x]\] /.test(blockText)) {
+      const checked = blockText.startsWith('- [x] ');
+      const remaining = blockText.replace(/^- \[[ x]\] /, '');
+      block.innerHTML = '';
+      document.execCommand('insertHTML', false,
+        `<div class="checklist-item"><input type="checkbox" ${checked ? 'checked' : ''}/> <span>${remaining || '\u200B'}</span></div>`
+      );
+      syncContent();
+      return;
+    }
     if (/^[-*] /.test(blockText) && block.nodeName !== 'LI' && block.nodeName !== 'UL') {
       const remaining = blockText.slice(2);
       document.execCommand('insertUnorderedList', false, null);
@@ -1068,6 +1078,22 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
     checkNoteLinkTrigger();
     syncContent();
   }, [processMarkdownShortcuts, checkNoteLinkTrigger]);
+
+  const handleEditorClick = (e) => {
+    const link = e.target.closest('a');
+    if (link && link.href && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      window.open(link.href, '_blank', 'noopener');
+    }
+  };
+
+  const handlePreviewClick = (e) => {
+    const link = e.target.closest('a');
+    if (link && link.href) {
+      e.preventDefault();
+      window.open(link.href, '_blank', 'noopener');
+    }
+  };
 
   const handleEditorKeyDown = (e) => {
     // Close suggestions on Escape
@@ -1174,83 +1200,59 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Toolbar */}
-      <div className="border-b border-border-subtle">
-      {viewMode === 'edit' && (
-        <div className="px-6 py-2.5 flex items-center gap-0.5 flex-wrap relative">
-          {toolbarActions.map((action, i) => {
-            if (action.type === 'divider') return <div key={i} className="w-px h-5 bg-white/8 mx-1.5" />;
-            const active = action.activeKey ? isActive(action.activeKey) : false;
-            return (
-              <div key={action.key} className="relative">
-                <button
-                  onMouseDown={(e) => { e.preventDefault(); action.action(); }}
-                  title={action.label}
-                  className={`p-2 rounded-lg transition-all ${active ? 'text-primary bg-primary/10' : 'text-gray-500 hover:text-white hover:bg-white/[0.06]'}`}
-                >
-                  <action.icon size={15} />
-                </button>
-                {action.isColorBtn && showColorPicker && (
-                  <div ref={colorPickerRef} className="absolute top-full right-0 mt-2 z-50 glass-raised rounded-xl p-3 min-w-[180px] animate-fade-in shadow-modal">
-                    <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 px-1">Cor do texto</p>
-                    <div className="grid grid-cols-5 gap-1.5">
-                      {TEXT_COLORS.map((color) => (
-                        <button
-                          key={color.label}
-                          onMouseDown={(e) => { e.preventDefault(); applyColor(color.value); }}
-                          title={color.label}
-                          className="w-7 h-7 rounded-lg border border-white/10 hover:border-white/30 transition-all hover:scale-110 flex items-center justify-center"
-                          style={{ backgroundColor: color.value || '#18181D' }}
-                        >
-                          {!color.value && <X size={10} strokeWidth={2.5} className="text-gray-500" />}
-                        </button>
-                      ))}
-                    </div>
+      {/* Toolbar — toggle always visible, tools only in edit mode */}
+      <div className="px-6 py-2.5 flex items-center gap-0.5 flex-wrap border-b border-border-subtle relative">
+        {viewMode === 'edit' && toolbarActions.map((action, i) => {
+          if (action.type === 'divider') return <div key={i} className="w-px h-5 bg-white/8 mx-1.5" />;
+          const active = action.activeKey ? isActive(action.activeKey) : false;
+          return (
+            <div key={action.key} className="relative">
+              <button
+                onMouseDown={(e) => { e.preventDefault(); action.action(); }}
+                title={action.label}
+                className={`p-2 rounded-lg transition-all ${active ? 'text-primary bg-primary/10' : 'text-gray-500 hover:text-white hover:bg-white/[0.06]'}`}
+              >
+                <action.icon size={15} />
+              </button>
+              {action.isColorBtn && showColorPicker && (
+                <div ref={colorPickerRef} className="absolute top-full right-0 mt-2 z-50 glass-raised rounded-xl p-3 min-w-[180px] animate-fade-in shadow-modal">
+                  <p className="text-[10px] text-gray-500 font-bold uppercase tracking-wider mb-2 px-1">Cor do texto</p>
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {TEXT_COLORS.map((color) => (
+                      <button
+                        key={color.label}
+                        onMouseDown={(e) => { e.preventDefault(); applyColor(color.value); }}
+                        title={color.label}
+                        className="w-7 h-7 rounded-lg border border-white/10 hover:border-white/30 transition-all hover:scale-110 flex items-center justify-center"
+                        style={{ backgroundColor: color.value || '#18181D' }}
+                      >
+                        {!color.value && <X size={10} strokeWidth={2.5} className="text-gray-500" />}
+                      </button>
+                    ))}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                </div>
+              )}
+            </div>
+          );
+        })}
 
-          {/* View mode toggle */}
-          <div className="ml-auto flex gap-1 p-1 bg-surface-flat rounded-xl border border-border-subtle">
-            <button
-              onClick={() => { setViewMode('edit'); if (onPreviewToggle) onPreviewToggle(false); }}
-              className={`p-1.5 rounded-lg transition-all ${viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
-              title="Editar"
-            >
-              <Pencil size={13} strokeWidth={2.5} />
-            </button>
-            <button
-              onClick={switchToPreview}
-              className={`p-1.5 rounded-lg transition-all ${viewMode === 'preview' ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
-              title="Preview"
-            >
-              <Eye size={13} strokeWidth={2.5} />
-            </button>
-          </div>
+        {/* View mode toggle — always in the same position */}
+        <div className="ml-auto flex gap-1 p-1 bg-surface-flat rounded-xl border border-border-subtle">
+          <button
+            onClick={() => { setViewMode('edit'); if (onPreviewToggle) onPreviewToggle(false); }}
+            className={`p-1.5 rounded-lg transition-all ${viewMode === 'edit' ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
+            title="Editar"
+          >
+            <Pencil size={13} strokeWidth={2.5} />
+          </button>
+          <button
+            onClick={switchToPreview}
+            className={`p-1.5 rounded-lg transition-all ${viewMode === 'preview' ? 'bg-primary text-white' : 'text-gray-500 hover:text-gray-300'}`}
+            title="Preview"
+          >
+            <Eye size={13} strokeWidth={2.5} />
+          </button>
         </div>
-      )}
-
-      {viewMode === 'preview' && (
-        <div className="px-6 py-2.5 flex items-center justify-end">
-          <div className="flex gap-1 p-1 bg-surface-flat rounded-xl border border-border-subtle">
-            <button
-              onClick={() => { setViewMode('edit'); if (onPreviewToggle) onPreviewToggle(false); }}
-              className="p-1.5 rounded-lg transition-all text-gray-500 hover:text-gray-300"
-              title="Editar"
-            >
-              <Pencil size={13} strokeWidth={2.5} />
-            </button>
-            <button
-              className="p-1.5 rounded-lg transition-all bg-primary text-white"
-              title="Preview"
-            >
-              <Eye size={13} strokeWidth={2.5} />
-            </button>
-          </div>
-        </div>
-      )}
       </div>
 
       {/* Title */}
@@ -1278,6 +1280,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
               suppressContentEditableWarning
               onInput={handleEditorInput}
               onKeyDown={handleEditorKeyDown}
+              onClick={handleEditorClick}
               onPaste={handleEditorPaste}
               onDrop={handleEditorDrop}
               className="notion-editor w-full min-h-full px-10 py-4 focus:outline-none text-[1.171875rem] leading-[1.85]"
@@ -1290,6 +1293,7 @@ const NoteEditor = ({ note, onPreviewToggle }) => {
             {previewHtml?.trim() ? (
               <div
                 className="notion-editor w-full min-h-full px-10 py-4 text-[1.171875rem] leading-[1.85]"
+                onClick={handlePreviewClick}
                 dangerouslySetInnerHTML={{ __html: previewHtml }}
               />
             ) : (

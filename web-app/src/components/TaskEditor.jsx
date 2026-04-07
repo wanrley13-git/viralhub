@@ -295,28 +295,23 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
 
   // ── Color: use execCommand with styleWithCSS ──
   const applyColor = (color) => {
-    editorRef.current?.focus();
-
-    // Restore saved selection
-    if (savedSelectionRef.current) {
-      const sel = window.getSelection();
-      sel.removeAllRanges();
-      sel.addRange(savedSelectionRef.current);
-    }
-
-    // Small delay to ensure focus + selection are restored
     setTimeout(() => {
+      editorRef.current?.focus();
+      if (savedSelectionRef.current) {
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(savedSelectionRef.current);
+      }
       if (!color) {
         document.execCommand('removeFormat', false, null);
       } else {
-        // Enable CSS styling mode for foreColor
         document.execCommand('styleWithCSS', false, true);
         document.execCommand('foreColor', false, color);
         document.execCommand('styleWithCSS', false, false);
       }
       setShowColorPicker(false);
       syncContent();
-    }, 10);
+    }, 50);
   };
 
   // Code toggle
@@ -517,6 +512,17 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
       return;
     }
 
+    if (/^- \[[ x]\] /.test(blockText)) {
+      const checked = blockText.startsWith('- [x] ');
+      const remaining = blockText.replace(/^- \[[ x]\] /, '');
+      block.innerHTML = '';
+      document.execCommand('insertHTML', false,
+        `<div class="checklist-item"><input type="checkbox" ${checked ? 'checked' : ''}/> <span>${remaining || '\u200B'}</span></div>`
+      );
+      syncContent();
+      return;
+    }
+
     if (/^[-*] /.test(blockText) && block.nodeName !== 'LI' && block.nodeName !== 'UL') {
       const remaining = blockText.slice(2);
       document.execCommand('insertUnorderedList', false, null);
@@ -619,6 +625,14 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
     autoLinkify();
     syncContent();
   }, [processMarkdownShortcuts]);
+
+  const handleEditorClick = (e) => {
+    const link = e.target.closest('a');
+    if (link && link.href && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      window.open(link.href, '_blank', 'noopener');
+    }
+  };
 
   const handleEditorKeyDown = (e) => {
     if ((e.ctrlKey || e.metaKey) && e.key === 'b') {
@@ -995,6 +1009,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
                 suppressContentEditableWarning
                 onInput={handleEditorInput}
                 onKeyDown={handleEditorKeyDown}
+                onClick={handleEditorClick}
                 onPaste={handleEditorPaste}
                 onDrop={handleEditorDrop}
                 className="notion-editor w-full min-h-full px-10 py-4 focus:outline-none text-[1.171875rem] leading-[1.85]"
@@ -1005,7 +1020,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
           ) : (
             <div className="flex-1 overflow-y-auto custom-scrollbar px-10 py-6">
               {contentRef.current?.trim() ? (
-                <div className="markdown-body markdown-body-lg max-w-none" dangerouslySetInnerHTML={{ __html: mdToHtml(contentRef.current) }} />
+                <div className="markdown-body markdown-body-lg max-w-none" onClick={(e) => { const a = e.target.closest('a'); if (a?.href) { e.preventDefault(); window.open(a.href, '_blank', 'noopener'); } }} dangerouslySetInnerHTML={{ __html: mdToHtml(contentRef.current) }} />
               ) : (
                 <div className="flex items-center justify-center h-full">
                   <p className="text-gray-600 text-sm font-serif italic">Nenhum conteúdo ainda...</p>
