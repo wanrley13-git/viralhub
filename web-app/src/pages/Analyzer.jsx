@@ -124,7 +124,7 @@ const Analyzer = () => {
       let res;
       if (activeTab === 'upload') {
         if (files.length === 0) throw new Error("Anexe pelo menos um vídeo ou arquivo ZIP.");
-        if (files.length > 5) throw new Error("O limite atual é de 5 arquivos por análise.");
+        if (files.length > 10) throw new Error("O limite atual é de 10 arquivos por análise.");
 
         const formData = new FormData();
         files.forEach(file => formData.append('files', file));
@@ -135,7 +135,7 @@ const Analyzer = () => {
       } else {
         const linkList = links.split('\n').map(l => l.trim()).filter(l => l);
         if (linkList.length === 0) throw new Error("Insira pelo menos um link.");
-        if (linkList.length > 5) throw new Error("O limite atual é de 5 links por análise.");
+        if (linkList.length > 10) throw new Error("O limite atual é de 10 links por análise.");
         res = await axios.post(`${API_URL}/analyze/links`, { links: linkList }, config);
       }
       if (res.data.taskId) setTaskId(res.data.taskId);

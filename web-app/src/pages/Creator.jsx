@@ -334,7 +334,7 @@ const Creator = () => {
       } else {
         const linkList = toneLinks.split('\n').map(l => l.trim()).filter(l => l);
         if (linkList.length === 0) throw new Error('Insira pelo menos um link.');
-        if (linkList.length > 5) throw new Error('Máximo de 5 links.');
+        if (linkList.length > 10) throw new Error('Máximo de 10 links.');
         res = await axios.post(`${API_URL}/tone/links`, { links: linkList, name: finalToneName, notes: toneNotes }, {
           headers: { Authorization: `Bearer ${token}` }
         });
