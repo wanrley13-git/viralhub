@@ -10,7 +10,9 @@ Escolha fontes bonitas, únicas e interessantes.
 
 **PROIBIDO:** Inter, Roboto, Arial, Open Sans, Lato, system fonts.
 
-**USE:** Satoshi, Clash Display, Bricolage Grotesque, Playfair Display, JetBrains Mono, Fraunces.
+**EM USO NO PROJETO:** Plus Jakarta Sans (UI principal), Instrument Serif (títulos decorativos), IBM Plex Mono (código/dados).
+
+**ALTERNATIVAS APROVADAS:** Satoshi, Clash Display, Bricolage Grotesque, Playfair Display, Fraunces.
 
 Use extremos de peso (100/200 vs 800/900), não 400 vs 600. Saltos de tamanho de 3x+.
 
