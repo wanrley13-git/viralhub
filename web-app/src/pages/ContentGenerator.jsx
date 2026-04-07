@@ -12,7 +12,8 @@ const TABS = [
   { id: 'developed', label: 'Desenvolvidos', icon: FileCheck },
 ];
 
-const QUANTITY_OPTIONS = [3, 5, 10];
+const MIN_QTY = 1;
+const MAX_QTY = 20;
 
 const ContentGenerator = () => {
   const { collapsed } = useSidebar();
@@ -65,11 +66,7 @@ const ContentGenerator = () => {
 
   // ─── Quantity stepper ───
   const stepQuantity = (dir) => {
-    const idx = QUANTITY_OPTIONS.indexOf(quantity);
-    const next = idx + dir;
-    if (next >= 0 && next < QUANTITY_OPTIONS.length) {
-      setQuantity(QUANTITY_OPTIONS[next]);
-    }
+    setQuantity((prev) => Math.min(MAX_QTY, Math.max(MIN_QTY, prev + dir)));
   };
 
   const selectedToneLabel = tones.find(t => t.id === tone)?.label || 'Tom';
@@ -149,31 +146,27 @@ const ContentGenerator = () => {
         </AnimatePresence>
       </div>
 
-      {/* ═══════ BOTTOM PROMPT BAR ═══════ */}
-      <div className="shrink-0 border-t border-white/[0.06] bg-[#0e0e11]">
-        <div className="px-8 py-4">
-          {/* Textarea row */}
-          <div className="flex items-end gap-3">
-            <div className="flex-1 relative">
-              <textarea
-                ref={textareaRef}
-                value={prompt}
-                onChange={(e) => setPrompt(e.target.value)}
-                placeholder="Descreva o conteúdo que deseja criar..."
-                rows={1}
-                className="w-full bg-[#18181d] border border-white/[0.06] rounded-2xl px-5 py-3.5 pr-4 text-[14px] text-white placeholder-gray-600 resize-none outline-none transition-all duration-200 focus:border-primary/40 focus:shadow-[0_0_0_2px_rgba(55,178,77,0.15)] custom-scrollbar leading-relaxed"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && !e.shiftKey) {
-                    e.preventDefault();
-                    // Will trigger generate later
-                  }
-                }}
-              />
-            </div>
-          </div>
+      {/* ═══════ FLOATING BOTTOM PROMPT BAR ═══════ */}
+      <div className="shrink-0 flex justify-center px-6 pb-6">
+        <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.08] rounded-2xl p-4 shadow-[0_-4px_32px_rgba(0,0,0,0.3)]">
+          {/* Textarea */}
+          <textarea
+            ref={textareaRef}
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Descreva o conteúdo que deseja criar..."
+            rows={1}
+            className="w-full bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                // Will trigger generate later
+              }
+            }}
+          />
 
           {/* Controls row */}
-          <div className="flex items-center gap-2.5 mt-3 flex-wrap">
+          <div className="flex items-center gap-2.5 mt-3 pt-3 border-t border-white/[0.06]">
             {/* Tone selector */}
             <div ref={toneRef} className="relative">
               <button
@@ -257,7 +250,7 @@ const ContentGenerator = () => {
             <div className="flex items-center gap-0 rounded-xl bg-white/[0.04] border border-white/[0.06] overflow-hidden">
               <button
                 onClick={() => stepQuantity(-1)}
-                disabled={quantity === QUANTITY_OPTIONS[0]}
+                disabled={quantity <= MIN_QTY}
                 className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 disabled:hover:text-gray-500 transition-colors"
               >
                 <Minus size={14} strokeWidth={2} />
@@ -267,7 +260,7 @@ const ContentGenerator = () => {
               </span>
               <button
                 onClick={() => stepQuantity(1)}
-                disabled={quantity === QUANTITY_OPTIONS[QUANTITY_OPTIONS.length - 1]}
+                disabled={quantity >= MAX_QTY}
                 className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 disabled:hover:text-gray-500 transition-colors"
               >
                 <Plus size={14} strokeWidth={2} />
