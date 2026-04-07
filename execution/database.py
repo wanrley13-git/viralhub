@@ -1,9 +1,12 @@
 import os
+import logging
 from dotenv import load_dotenv
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker, declarative_base
 
 load_dotenv(os.path.join(os.path.dirname(__file__), ".env"))
+
+logger = logging.getLogger("database")
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL:
@@ -12,6 +15,13 @@ if not DATABASE_URL:
     DATABASE_URL = f"sqlite+aiosqlite:///{DB_PATH}"
 
 _is_postgres = DATABASE_URL.startswith("postgresql")
+
+# Log de diagnóstico (sem expor senha)
+if _is_postgres:
+    _safe_url = DATABASE_URL.split("@")[-1] if "@" in DATABASE_URL else "???"
+    logger.info(f"[database] Connecting to PostgreSQL: ...@{_safe_url}")
+else:
+    logger.info("[database] Using SQLite (local)")
 
 engine = create_async_engine(
     DATABASE_URL,
