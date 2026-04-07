@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Lightbulb, FileCheck, Minus, Plus,
-  ChevronDown, FileText, Video, X, User, ImagePlus,
+  ChevronDown, Video, X, ImagePlus, BookOpen, Mic, Check,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSidebar } from '../contexts/SidebarContext';
@@ -31,10 +31,15 @@ const MOCK_ANALYSES = [
 ];
 
 const MOCK_BASES = [
-  { id: 'default', label: 'Padrão' },
-  { id: 'educator', label: 'Educador' },
-  { id: 'storyteller', label: 'Storyteller' },
-  { id: 'provocateur', label: 'Provocador' },
+  { id: 1, name: 'Hooks Virais', video_count: 8, compiled: true },
+  { id: 2, name: 'Storytelling Curto', video_count: 5, compiled: true },
+  { id: 3, name: 'CTAs que Convertem', video_count: 12, compiled: false },
+];
+
+const MOCK_TONES = [
+  { id: 1, name: 'Casual Educativo', video_count: 4, ready: true },
+  { id: 2, name: 'Provocativo Direto', video_count: 6, ready: true },
+  { id: 3, name: 'Storyteller Emocional', video_count: 3, ready: false },
 ];
 
 // ─── Inline reference chip ───
@@ -73,11 +78,11 @@ const ContentGenerator = () => {
   // Prompt bar — segments model: [{type:'text', value:''}, {type:'ref', analysis:{...}}, ...]
   // Invariant: always starts & ends with a text segment, no adjacent text segments
   const [segments, setSegments] = useState([{ type: 'text', value: '' }]);
-  const [tone, setTone] = useState('');
-  const [base, setBase] = useState('');
+  const [selectedBaseId, setSelectedBaseId] = useState(null);
+  const [selectedToneId, setSelectedToneId] = useState(null);
   const [quantity, setQuantity] = useState(5);
-  const [toneOpen, setToneOpen] = useState(false);
-  const [baseOpen, setBaseOpen] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [configTab, setConfigTab] = useState('bases');
   const [uploadedImages, setUploadedImages] = useState([]);
 
   // @ mention state
@@ -86,8 +91,6 @@ const ContentGenerator = () => {
   const [mentionIdx, setMentionIdx] = useState(0);
 
   const textareaRef = useRef(null);
-  const toneRef = useRef(null);
-  const baseRef = useRef(null);
   const mentionRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -95,15 +98,6 @@ const ContentGenerator = () => {
   const selectedRefs = segments.filter(s => s.type === 'ref').map(s => s.analysis);
   const activeText = segments[segments.length - 1].value;
   const hasContent = segments.some(s => (s.type === 'text' && s.value.trim()) || s.type === 'ref');
-
-  // Placeholder tones
-  const tones = [
-    { id: 'casual', label: 'Casual' },
-    { id: 'professional', label: 'Profissional' },
-    { id: 'humorous', label: 'Humorístico' },
-    { id: 'educational', label: 'Educativo' },
-    { id: 'provocative', label: 'Provocativo' },
-  ];
 
   // Filtered analyses for @ popup
   const filteredAnalyses = MOCK_ANALYSES.filter((a) =>
@@ -122,12 +116,17 @@ const ContentGenerator = () => {
   // ─── Close dropdowns on outside click ───
   useEffect(() => {
     const handleClick = (e) => {
-      if (toneRef.current && !toneRef.current.contains(e.target)) setToneOpen(false);
-      if (baseRef.current && !baseRef.current.contains(e.target)) setBaseOpen(false);
       if (mentionRef.current && !mentionRef.current.contains(e.target)) setMentionOpen(false);
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  // ─── Close modal on ESC ───
+  useEffect(() => {
+    const handleEsc = (e) => { if (e.key === 'Escape') setConfigOpen(false); };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
   }, []);
 
   // ─── Quantity stepper ───
@@ -234,8 +233,8 @@ const ContentGenerator = () => {
     }
   };
 
-  const selectedToneLabel = tones.find(t => t.id === tone)?.label || 'Tom';
-  const selectedBaseLabel = MOCK_BASES.find(b => b.id === base)?.label || 'Base';
+  const activeBase = MOCK_BASES.find(b => b.id === selectedBaseId);
+  const activeTone = MOCK_TONES.find(t => t.id === selectedToneId);
 
   return (
     <div
@@ -415,81 +414,33 @@ const ContentGenerator = () => {
 
           {/* Controls row */}
           <div className="flex items-center gap-2 mt-5">
-            {/* Base selector */}
-            <div ref={baseRef} className="relative">
-              <button
-                onClick={() => { setBaseOpen(!baseOpen); setToneOpen(false); }}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/[0.05] text-[13px] font-semibold text-gray-400 hover:text-white hover:bg-white/[0.06] hover:border-white/[0.08] transition-all duration-200"
-              >
-                <User size={14} strokeWidth={1.8} className="text-gray-500 shrink-0" />
-                <span className="truncate max-w-[100px]">{selectedBaseLabel}</span>
-                <ChevronDown size={12} className={`text-gray-600 transition-transform duration-200 ${baseOpen ? 'rotate-180' : ''}`} />
-              </button>
+            {/* Active selection badges */}
+            {activeBase && (
+              <div className="flex items-center gap-1.5 bg-primary/12 text-primary px-3 py-1.5 rounded-lg text-[11px] font-bold border border-primary/15 animate-fade-in">
+                <BookOpen size={12} strokeWidth={1.5} />
+                <span className="truncate max-w-[120px]">{activeBase.name}</span>
+                <button onClick={() => setSelectedBaseId(null)} className="hover:text-white transition-colors ml-0.5 bg-black/20 rounded-full p-0.5">
+                  <X size={9} strokeWidth={2.5} />
+                </button>
+              </div>
+            )}
+            {activeTone && (
+              <div className="flex items-center gap-1.5 bg-purple-500/12 text-purple-400 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-purple-500/15 animate-fade-in">
+                <Mic size={12} strokeWidth={1.5} />
+                <span className="truncate max-w-[120px]">{activeTone.name}</span>
+                <button onClick={() => setSelectedToneId(null)} className="hover:text-white transition-colors ml-0.5 bg-black/20 rounded-full p-0.5">
+                  <X size={9} strokeWidth={2.5} />
+                </button>
+              </div>
+            )}
 
-              <AnimatePresence>
-                {baseOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 6, scale: 0.97 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute bottom-full mb-2 left-0 w-48 bg-[#16161a] border border-white/[0.08] rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden z-50"
-                  >
-                    {MOCK_BASES.map((b) => (
-                      <button
-                        key={b.id}
-                        onClick={() => { setBase(b.id); setBaseOpen(false); }}
-                        className={`w-full text-left px-4 py-2.5 text-[13px] font-medium transition-colors duration-150 ${
-                          base === b.id
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
-                        }`}
-                      >
-                        {b.label}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
-
-            {/* Tone selector */}
-            <div ref={toneRef} className="relative">
-              <button
-                onClick={() => { setToneOpen(!toneOpen); setBaseOpen(false); }}
-                className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white/[0.04] border border-white/[0.05] text-[13px] font-semibold text-gray-400 hover:text-white hover:bg-white/[0.06] hover:border-white/[0.08] transition-all duration-200"
-              >
-                <FileText size={14} strokeWidth={1.8} className="text-gray-500 shrink-0" />
-                <span className="truncate max-w-[100px]">{selectedToneLabel}</span>
-                <ChevronDown size={12} className={`text-gray-600 transition-transform duration-200 ${toneOpen ? 'rotate-180' : ''}`} />
-              </button>
-
-              <AnimatePresence>
-                {toneOpen && (
-                  <motion.div
-                    initial={{ opacity: 0, y: 6, scale: 0.97 }}
-                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                    exit={{ opacity: 0, y: 6, scale: 0.97 }}
-                    transition={{ duration: 0.15 }}
-                    className="absolute bottom-full mb-2 left-0 w-48 bg-[#16161a] border border-white/[0.08] rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden z-50"
-                  >
-                    {tones.map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => { setTone(t.id); setToneOpen(false); }}
-                        className={`w-full text-left px-4 py-2.5 text-[13px] font-medium transition-colors duration-150 ${
-                          tone === t.id
-                            ? 'bg-primary/10 text-primary'
-                            : 'text-gray-400 hover:text-white hover:bg-white/[0.04]'
-                        }`}
-                      >
-                        {t.label}
-                      </button>
-                    ))}
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+            {/* Base / Tom button */}
+            <button
+              onClick={() => { setConfigOpen(true); setConfigTab('bases'); }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] text-gray-500 hover:text-gray-300 transition-colors shrink-0 whitespace-nowrap"
+            >
+              Base / Tom <ChevronDown size={13} />
+            </button>
 
             {/* Quantity stepper */}
             <div className="flex items-center gap-0 rounded-xl bg-white/[0.04] border border-white/[0.05]">
@@ -525,6 +476,146 @@ const ContentGenerator = () => {
           </div>
         </div>
       </div>
+
+      {/* ═══════ BASE / TOM CONFIG MODAL ═══════ */}
+      <AnimatePresence>
+        {configOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-md bg-black/50"
+            onClick={() => setConfigOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="glass-raised w-full max-w-2xl max-h-[70vh] rounded-3xl flex flex-col overflow-hidden shadow-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Modal Header */}
+              <div className="pt-6 px-6 pb-5 border-b border-white/[0.06] flex items-center justify-between">
+                <div className="flex gap-1 p-1 bg-[#18181d] border border-white/[0.06] rounded-xl">
+                  <button
+                    onClick={() => setConfigTab('bases')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                      configTab === 'bases' ? 'bg-primary text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    <BookOpen size={13} /> Bases
+                  </button>
+                  <button
+                    onClick={() => setConfigTab('tone')}
+                    className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${
+                      configTab === 'tone' ? 'bg-primary text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    <Mic size={13} /> Tom
+                  </button>
+                </div>
+                <button
+                  onClick={() => setConfigOpen(false)}
+                  className="p-2 bg-white/5 hover:bg-white/8 rounded-xl transition-colors text-gray-400 hover:text-white"
+                >
+                  <X size={16} strokeWidth={2.5} />
+                </button>
+              </div>
+
+              {/* Modal Body */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar p-5">
+                {configTab === 'bases' && (
+                  <div className="space-y-3">
+                    {MOCK_BASES.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center min-h-[200px] space-y-4 opacity-60">
+                        <div className="p-8 bg-white/[0.03] rounded-3xl border border-white/[0.06]">
+                          <BookOpen size={40} strokeWidth={1.5} className="text-primary" />
+                        </div>
+                        <h4 className="text-lg font-extrabold text-white">Nenhuma base criada</h4>
+                        <p className="text-sm text-gray-500 max-w-xs text-center">Crie bases de conhecimento no Hub Analítico.</p>
+                      </div>
+                    ) : (
+                      MOCK_BASES.map((kb) => {
+                        const isActive = selectedBaseId === kb.id;
+                        return (
+                          <div
+                            key={kb.id}
+                            onClick={() => { setSelectedBaseId(kb.id); setConfigOpen(false); }}
+                            className={`p-4 rounded-2xl border transition-all flex items-center gap-4 group cursor-pointer ${
+                              isActive ? 'bg-primary/5 border-primary/20' : 'bg-[#111113] border-white/[0.06] hover:border-white/[0.1]'
+                            }`}
+                          >
+                            <div className="w-10 h-10 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0">
+                              <BookOpen size={16} strokeWidth={1.5} className={isActive ? 'text-primary' : 'text-gray-600'} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-sm font-bold text-white truncate">{kb.name}</h4>
+                              <div className="flex items-center gap-2 text-[11px] font-mono text-gray-600 mt-0.5">
+                                <span>{kb.video_count} vídeo{kb.video_count !== 1 ? 's' : ''}</span>
+                                {kb.compiled ? (
+                                  <span className="text-primary flex items-center gap-1"><Check size={9} strokeWidth={1.5} /> Compilada</span>
+                                ) : (
+                                  <span className="text-amber-500/70">Pendente</span>
+                                )}
+                                {isActive && <span className="text-primary">· Ativa</span>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+
+                {configTab === 'tone' && (
+                  <div className="space-y-3">
+                    {MOCK_TONES.length === 0 ? (
+                      <div className="flex flex-col items-center justify-center min-h-[200px] space-y-4 opacity-60">
+                        <div className="p-8 bg-white/[0.03] rounded-3xl border border-white/[0.06]">
+                          <Mic size={40} strokeWidth={1.5} className="text-primary" />
+                        </div>
+                        <h4 className="text-lg font-extrabold text-white">Nenhum tom criado</h4>
+                        <p className="text-sm text-gray-500 max-w-xs text-center">Crie perfis de voz no Hub Analítico.</p>
+                      </div>
+                    ) : (
+                      MOCK_TONES.map((t) => {
+                        const isActive = selectedToneId === t.id;
+                        return (
+                          <div
+                            key={t.id}
+                            onClick={() => { setSelectedToneId(t.id); setConfigOpen(false); }}
+                            className={`p-4 rounded-2xl border transition-all flex items-center gap-4 group cursor-pointer ${
+                              isActive ? 'bg-primary/5 border-primary/20' : 'bg-[#111113] border-white/[0.06] hover:border-white/[0.1]'
+                            }`}
+                          >
+                            <div className="w-10 h-10 rounded-lg bg-white/[0.04] flex items-center justify-center shrink-0">
+                              <Mic size={16} strokeWidth={1.5} className={isActive ? 'text-purple-400' : 'text-gray-600'} />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <h4 className="text-sm font-bold text-white truncate">{t.name}</h4>
+                              <div className="flex items-center gap-2 text-[11px] font-mono text-gray-600 mt-0.5">
+                                <span>{t.video_count} vídeo{t.video_count !== 1 ? 's' : ''}</span>
+                                {t.ready ? (
+                                  <span className="text-primary flex items-center gap-1"><Check size={9} strokeWidth={1.5} /> Pronto</span>
+                                ) : (
+                                  <span className="text-amber-500/70">Pendente</span>
+                                )}
+                                {isActive && <span className="text-purple-400">· Ativo</span>}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
