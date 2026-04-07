@@ -1,70 +1,55 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X, Trash2 } from 'lucide-react';
 import axios from 'axios';
 import { getAccessToken } from '../supabaseClient';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
-const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
 const WEEKDAYS_SHORT = ['DOM.', 'SEG.', 'TER.', 'QUA.', 'QUI.', 'SEX.', 'SÁB.'];
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
   'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
-const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 7am-9pm
-
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 7);
 const NOTE_COLORS = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#a855f7','#ec4899','#06b6d4'];
 
 const hexToRgba = (hex, a) => {
   if (!hex || hex[0] !== '#') return 'transparent';
-  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
   return `rgba(${r},${g},${b},${a})`;
 };
 
-function pad(n) { return String(n).padStart(2, '0'); }
-function dateStr(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function pad(n) { return String(n).padStart(2,'0'); }
+function fmtDate(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
 function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
-function getMonday(d) { const r = new Date(d); const day = r.getDay(); r.setDate(r.getDate() - (day === 0 ? 6 : day - 1)); return r; }
-function getSunday(d) { return addDays(getMonday(d), 6); }
-
-function timeToRow(time) {
-  if (!time) return 0;
-  const [h, m] = time.split(':').map(Number);
-  return (h - 7) * 60 + m;
-}
-function durationMinutes(start, end) {
-  return timeToRow(end) - timeToRow(start);
-}
+function getMonday(d) { const r = new Date(d); const day = r.getDay(); r.setDate(r.getDate()-(day===0?6:day-1)); return r; }
+function getSunday(d) { return addDays(getMonday(d),6); }
+function timeToMinutes(t) { if (!t) return 0; const [h,m] = t.split(':').map(Number); return (h-7)*60+m; }
 
 
 // ── MONTH VIEW ──
 function MonthView({ date, items, onDayClick }) {
   const year = date.getFullYear(), month = date.getMonth();
-  const daysInMonth = new Date(year, month+1, 0).getDate();
-  const firstDay = new Date(year, month, 1).getDay();
-  const todayStr = dateStr(new Date());
+  const daysInMonth = new Date(year,month+1,0).getDate();
+  const firstDay = new Date(year,month,1).getDay();
+  const todayStr = fmtDate(new Date());
 
   const itemsByDate = useMemo(() => {
     const map = {};
-    items.forEach(it => {
-      const d = it.scheduled_date;
-      if (!d) return;
-      if (!map[d]) map[d] = [];
-      map[d].push(it);
-    });
+    items.forEach(it => { if (!it.scheduled_date) return; (map[it.scheduled_date] ??= []).push(it); });
     return map;
   }, [items]);
 
   const cells = [];
   for (let i = 0; i < firstDay; i++) cells.push(null);
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
+  while (cells.length % 7) cells.push(null);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
       <div className="grid grid-cols-7">
         {WEEKDAYS_SHORT.map(d => (
-          <div key={d} className="text-center text-[10px] font-bold uppercase tracking-widest text-gray-600 py-3 border-b border-white/[0.04]">{d}</div>
+          <div key={d} className="text-center text-[11px] font-bold uppercase tracking-widest text-gray-600 py-3 border-b border-white/[0.04]">{d}</div>
         ))}
       </div>
       <div className="grid grid-cols-7 flex-1 auto-rows-fr">
@@ -74,27 +59,21 @@ function MonthView({ date, items, onDayClick }) {
           const dayItems = itemsByDate[ds] || [];
           const isToday = ds === todayStr;
           return (
-            <div
-              key={day}
-              onClick={() => onDayClick(new Date(year, month, day))}
-              className="border-b border-r border-white/[0.04] p-1.5 flex flex-col cursor-pointer hover:bg-white/[0.015] transition-colors min-h-0"
-            >
-              <span className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full self-center ${
-                isToday ? 'bg-blue-500 text-white' : 'text-gray-400'
-              }`}>{day}</span>
+            <div key={day} onClick={() => onDayClick(new Date(year,month,day))}
+              className="border-b border-r border-white/[0.04] p-2 flex flex-col cursor-pointer hover:bg-white/[0.015] transition-colors min-h-0">
+              <span className={`text-[13px] font-semibold mb-1.5 w-7 h-7 flex items-center justify-center rounded-full self-center ${
+                isToday ? 'bg-blue-500 text-white' : 'text-gray-400'}`}>{day}</span>
               <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
-                {dayItems.slice(0, 3).map(it => (
-                  <div key={`${it.type}-${it.id}`} className="flex items-center gap-1.5 px-1 py-0.5 rounded text-[10px] truncate">
-                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: it.color || it.card_color || '#3b82f6' }} />
+                {dayItems.slice(0,3).map(it => (
+                  <div key={`${it.type}-${it.id}`} className="flex items-center gap-1.5 px-1.5 py-0.5 rounded text-[13px] truncate">
+                    <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: it.color || it.card_color || '#3b82f6' }} />
                     <span className="truncate text-gray-300 font-medium">
                       {it.start_time || it.scheduled_time ? `${(it.start_time || it.scheduled_time).slice(0,5)} ` : ''}
                       {it.title}
                     </span>
                   </div>
                 ))}
-                {dayItems.length > 3 && (
-                  <span className="text-[9px] text-gray-600 font-mono pl-1">+{dayItems.length - 3} mais</span>
-                )}
+                {dayItems.length > 3 && <span className="text-[11px] text-gray-600 font-mono pl-1">+{dayItems.length-3} mais</span>}
               </div>
             </div>
           );
@@ -105,29 +84,48 @@ function MonthView({ date, items, onDayClick }) {
 }
 
 
-// ── TIME GRID (shared by Day and Week) ──
-function TimeGrid({ days, items, onSlotClick, onItemClick }) {
+// ── TIME GRID (Day + Week) with drag-and-drop ──
+function TimeGrid({ days, items, onSlotClick, onItemClick, onItemDrop }) {
   const scrollRef = useRef(null);
-  const todayStr = dateStr(new Date());
+  const todayStr = fmtDate(new Date());
   const now = new Date();
-  const nowMinutes = (now.getHours() - 7) * 60 + now.getMinutes();
+  const nowMinutes = (now.getHours()-7)*60+now.getMinutes();
 
-  useEffect(() => {
-    if (scrollRef.current) scrollRef.current.scrollTop = 8 * 60; // scroll to 8am area
-  }, []);
+  // Drag state
+  const [dragging, setDragging] = useState(null);
+  const gridRef = useRef(null);
+
+  useEffect(() => { if (scrollRef.current) scrollRef.current.scrollTop = 2*60; }, []);
 
   const itemsByDate = useMemo(() => {
     const map = {};
     items.forEach(it => {
-      const d = it.scheduled_date;
-      if (!d) return;
+      if (!it.scheduled_date) return;
       const time = it.start_time || it.scheduled_time;
       if (!time) return;
-      if (!map[d]) map[d] = [];
-      map[d].push(it);
+      (map[it.scheduled_date] ??= []).push(it);
     });
     return map;
   }, [items]);
+
+  // Drag handlers
+  const handleDragStart = useCallback((e, item) => {
+    setDragging(item);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', ''); // required for firefox
+  }, []);
+
+  const handleDragOver = useCallback((e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }, []);
+
+  const handleDrop = useCallback((e, targetDate, targetHour) => {
+    e.preventDefault();
+    if (!dragging) return;
+    const newTime = `${pad(targetHour)}:00`;
+    onItemDrop(dragging, targetDate, newTime);
+    setDragging(null);
+  }, [dragging, onItemDrop]);
+
+  const handleDragEnd = useCallback(() => setDragging(null), []);
 
   return (
     <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar">
@@ -135,82 +133,69 @@ function TimeGrid({ days, items, onSlotClick, onItemClick }) {
       <div className="flex sticky top-0 z-20 bg-background border-b border-white/[0.04]">
         <div className="w-16 shrink-0" />
         {days.map(d => {
-          const ds = dateStr(d);
+          const ds = fmtDate(d);
           const isToday = ds === todayStr;
           return (
             <div key={ds} className="flex-1 text-center py-3 border-l border-white/[0.04]">
-              <div className="text-[10px] font-bold uppercase tracking-widest text-gray-600">
-                {WEEKDAYS_SHORT[d.getDay()]}
-              </div>
-              <div className={`text-lg font-bold mt-0.5 w-9 h-9 flex items-center justify-center rounded-full mx-auto ${
-                isToday ? 'bg-blue-500 text-white' : 'text-gray-300'
-              }`}>{d.getDate()}</div>
+              <div className="text-[11px] font-bold uppercase tracking-widest text-gray-600">{WEEKDAYS_SHORT[d.getDay()]}</div>
+              <div className={`text-xl font-bold mt-0.5 w-10 h-10 flex items-center justify-center rounded-full mx-auto ${
+                isToday ? 'bg-blue-500 text-white' : 'text-gray-300'}`}>{d.getDate()}</div>
             </div>
           );
         })}
       </div>
 
       {/* Time rows */}
-      <div className="flex relative">
-        {/* Hour labels */}
+      <div ref={gridRef} className="flex relative">
         <div className="w-16 shrink-0">
           {HOURS.map(h => (
             <div key={h} className="h-[60px] flex items-start justify-end pr-3 -mt-2">
-              <span className="text-[10px] font-mono text-gray-600">{h > 12 ? `${h-12} PM` : h === 12 ? '12 PM' : `${h} AM`}</span>
+              <span className="text-[11px] font-mono text-gray-600">{h > 12 ? `${h-12} PM` : h === 12 ? '12 PM' : `${h} AM`}</span>
             </div>
           ))}
         </div>
 
-        {/* Day columns */}
         {days.map(d => {
-          const ds = dateStr(d);
+          const ds = fmtDate(d);
           const isToday = ds === todayStr;
           const dayItems = itemsByDate[ds] || [];
 
           return (
             <div key={ds} className="flex-1 relative border-l border-white/[0.04]">
-              {/* Hour lines */}
               {HOURS.map(h => (
-                <div
-                  key={h}
-                  className="h-[60px] border-b border-white/[0.04] cursor-pointer hover:bg-white/[0.01]"
-                  onClick={() => onSlotClick(ds, `${pad(h)}:00`)}
+                <div key={h}
+                  className={`h-[60px] border-b border-white/[0.04] cursor-pointer hover:bg-white/[0.01] ${dragging ? 'hover:bg-blue-500/[0.06]' : ''}`}
+                  onClick={() => !dragging && onSlotClick(ds, `${pad(h)}:00`)}
+                  onDragOver={handleDragOver}
+                  onDrop={(e) => handleDrop(e, ds, h)}
                 />
               ))}
 
-              {/* Now indicator */}
-              {isToday && nowMinutes >= 0 && nowMinutes <= HOURS.length * 60 && (
-                <div className="absolute left-0 right-0 z-10 flex items-center pointer-events-none" style={{ top: nowMinutes }}>
-                  <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1" />
-                  <div className="flex-1 h-[2px] bg-red-500" />
+              {/* Now line — subtle */}
+              {isToday && nowMinutes >= 0 && nowMinutes <= HOURS.length*60 && (
+                <div className="absolute left-0 right-0 z-10 pointer-events-none" style={{ top: nowMinutes }}>
+                  <div className="h-[1.5px] bg-red-500/40 w-full" />
                 </div>
               )}
 
               {/* Events */}
               {dayItems.map(it => {
                 const startTime = it.start_time || it.scheduled_time || '09:00';
-                const endTime = it.end_time || (() => {
-                  const [h, m] = startTime.split(':').map(Number);
-                  return `${pad(h + 1)}:${pad(m)}`;
-                })();
-                const top = timeToRow(startTime);
-                const height = Math.max(durationMinutes(startTime, endTime), 30);
+                const endTime = it.end_time || (() => { const [h,m] = startTime.split(':').map(Number); return `${pad(h+1)}:${pad(m)}`; })();
+                const top = timeToMinutes(startTime);
+                const height = Math.max(timeToMinutes(endTime)-top, 30);
                 const color = it.color || it.card_color || '#3b82f6';
 
                 return (
-                  <div
-                    key={`${it.type}-${it.id}`}
+                  <div key={`${it.type}-${it.id}`}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, it)}
+                    onDragEnd={handleDragEnd}
                     onClick={(e) => { e.stopPropagation(); onItemClick(it); }}
-                    className="absolute left-1 right-1 rounded-lg px-2 py-1 cursor-pointer overflow-hidden hover:brightness-110 transition-all z-10"
-                    style={{
-                      top,
-                      height,
-                      backgroundColor: hexToRgba(color, 0.25),
-                      borderLeft: `3px solid ${color}`,
-                    }}
-                  >
-                    <div className="text-[11px] font-bold text-white truncate">{it.title}</div>
-                    <div className="text-[9px] text-white/60 font-mono">{startTime} – {endTime}</div>
+                    className="absolute left-1 right-1 rounded-lg px-3 py-2 cursor-grab active:cursor-grabbing overflow-hidden hover:brightness-110 transition-all z-10"
+                    style={{ top, height, backgroundColor: hexToRgba(color,0.25), borderLeft: `3px solid ${color}` }}>
+                    <div className="text-[15px] font-bold text-white truncate leading-tight">{it.title}</div>
+                    <div className="text-[13px] text-white/60 font-mono mt-0.5">{startTime} – {endTime}</div>
                   </div>
                 );
               })}
@@ -231,15 +216,14 @@ function NoteEditor({ note, initialDate, initialTime, projectId, onSave, onDelet
   const [startTime, setStartTime] = useState(note?.start_time || initialTime || '09:00');
   const [endTime, setEndTime] = useState(note?.end_time || (() => {
     const t = note?.start_time || initialTime || '09:00';
-    const [h, m] = t.split(':').map(Number);
-    return `${pad(h + 1)}:${pad(m)}`;
+    const [h,m] = t.split(':').map(Number);
+    return `${pad(h+1)}:${pad(m)}`;
   })());
   const [color, setColor] = useState(note?.color || '#3b82f6');
 
   const handleSave = async () => {
     if (!title.trim() || !date) return;
-    const data = { title: title.trim(), description, scheduled_date: date, start_time: startTime, end_time: endTime, color, project_id: projectId };
-    await onSave(data, note?.id);
+    await onSave({ title: title.trim(), description, scheduled_date: date, start_time: startTime, end_time: endTime, color, project_id: projectId }, note?.id);
     onClose();
   };
 
@@ -250,42 +234,22 @@ function NoteEditor({ note, initialDate, initialTime, projectId, onSave, onDelet
           <h3 className="text-lg font-extrabold text-white">{note ? 'Editar Nota' : 'Nova Nota'}</h3>
           <button onClick={onClose} className="p-2 text-gray-500 hover:text-white hover:bg-white/5 rounded-xl"><X size={16} /></button>
         </div>
-
-        <input
-          autoFocus
-          value={title}
-          onChange={e => setTitle(e.target.value)}
-          placeholder="Título"
-          className="w-full bg-surface-flat border border-border-subtle rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50"
-        />
-        <textarea
-          value={description}
-          onChange={e => setDescription(e.target.value)}
-          placeholder="Descrição (opcional)"
-          rows={3}
-          className="w-full bg-surface-flat border border-border-subtle rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-none"
-        />
-
+        <input autoFocus value={title} onChange={e => setTitle(e.target.value)} placeholder="Título"
+          className="w-full bg-surface-flat border border-border-subtle rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+        <textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Descrição (opcional)" rows={3}
+          className="w-full bg-surface-flat border border-border-subtle rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-none" />
         <div className="grid grid-cols-3 gap-3">
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Data</label>
+          <div><label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Data</label>
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              className="w-full bg-surface-flat border border-border-subtle rounded-xl px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Início</label>
+              className="w-full bg-surface-flat border border-border-subtle rounded-xl px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-blue-500/50" /></div>
+          <div><label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Início</label>
             <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
-              className="w-full bg-surface-flat border border-border-subtle rounded-xl px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
-          </div>
-          <div>
-            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Fim</label>
+              className="w-full bg-surface-flat border border-border-subtle rounded-xl px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-blue-500/50" /></div>
+          <div><label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Fim</label>
             <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
-              className="w-full bg-surface-flat border border-border-subtle rounded-xl px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
-          </div>
+              className="w-full bg-surface-flat border border-border-subtle rounded-xl px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-blue-500/50" /></div>
         </div>
-
-        <div>
-          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 block">Cor</label>
+        <div><label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 block">Cor</label>
           <div className="flex gap-2">
             {NOTE_COLORS.map(c => (
               <button key={c} onClick={() => setColor(c)}
@@ -294,20 +258,16 @@ function NoteEditor({ note, initialDate, initialTime, projectId, onSave, onDelet
             ))}
           </div>
         </div>
-
         <div className="flex gap-3 pt-2">
           {note && onDelete && (
             <button onClick={() => { onDelete(note.id); onClose(); }}
               className="px-4 py-2.5 text-red-400 hover:bg-red-400/10 rounded-xl text-sm font-bold transition-colors flex items-center gap-2">
-              <Trash2 size={14} /> Excluir
-            </button>
+              <Trash2 size={14} /> Excluir</button>
           )}
           <div className="flex-1" />
           <button onClick={onClose} className="px-5 py-2.5 text-gray-400 hover:text-white rounded-xl text-sm font-medium transition-colors">Cancelar</button>
           <button onClick={handleSave} disabled={!title.trim() || !date}
-            className="px-6 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white rounded-xl text-sm font-bold transition-colors">
-            Salvar
-          </button>
+            className="px-6 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white rounded-xl text-sm font-bold transition-colors">Salvar</button>
         </div>
       </div>
     </div>
@@ -315,7 +275,7 @@ function NoteEditor({ note, initialDate, initialTime, projectId, onSave, onDelet
 }
 
 
-// ── MAIN CALENDAR VIEW ──
+// ── MAIN ──
 export default function CalendarView({ tasks, projectId, onEditTask }) {
   const [view, setView] = useState('month');
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -325,7 +285,6 @@ export default function CalendarView({ tasks, projectId, onEditTask }) {
   const [noteInitialDate, setNoteInitialDate] = useState('');
   const [noteInitialTime, setNoteInitialTime] = useState('');
 
-  // Fetch calendar notes
   const fetchNotes = async () => {
     try {
       const token = await getAccessToken();
@@ -339,11 +298,8 @@ export default function CalendarView({ tasks, projectId, onEditTask }) {
 
   const saveNote = async (data, noteId) => {
     const token = await getAccessToken();
-    if (noteId) {
-      await axios.patch(`${API_URL}/calendar/notes/${noteId}`, data, { headers: { Authorization: `Bearer ${token}` } });
-    } else {
-      await axios.post(`${API_URL}/calendar/notes`, data, { headers: { Authorization: `Bearer ${token}` } });
-    }
+    if (noteId) await axios.patch(`${API_URL}/calendar/notes/${noteId}`, data, { headers: { Authorization: `Bearer ${token}` } });
+    else await axios.post(`${API_URL}/calendar/notes`, data, { headers: { Authorization: `Bearer ${token}` } });
     fetchNotes();
   };
 
@@ -353,24 +309,19 @@ export default function CalendarView({ tasks, projectId, onEditTask }) {
     fetchNotes();
   };
 
-  // Merge tasks (with date) + notes into single items list
   const allItems = useMemo(() => {
-    const taskItems = tasks
-      .filter(t => t.scheduled_date)
-      .map(t => ({ ...t, type: 'task' }));
+    const taskItems = tasks.filter(t => t.scheduled_date).map(t => ({ ...t, type: 'task' }));
     const noteItems = notes.map(n => ({ ...n, type: 'note' }));
     return [...taskItems, ...noteItems];
   }, [tasks, notes]);
 
-  // Navigation
-  const today = new Date();
   const goToday = () => setCurrentDate(new Date());
 
-  const navigate = (dir) => {
+  const nav = (dir) => {
     const d = new Date(currentDate);
-    if (view === 'month') d.setMonth(d.getMonth() + dir);
-    else if (view === 'week') d.setDate(d.getDate() + dir * 7);
-    else d.setDate(d.getDate() + dir);
+    if (view === 'month') d.setMonth(d.getMonth()+dir);
+    else if (view === 'week') d.setDate(d.getDate()+dir*7);
+    else d.setDate(d.getDate()+dir);
     setCurrentDate(d);
   };
 
@@ -384,98 +335,63 @@ export default function CalendarView({ tasks, projectId, onEditTask }) {
     return `${currentDate.getDate()} de ${MONTH_NAMES[currentDate.getMonth()]} de ${currentDate.getFullYear()}`;
   };
 
-  // Days for week/day view
-  const viewDays = view === 'week'
-    ? Array.from({ length: 7 }, (_, i) => addDays(getMonday(currentDate), i))
-    : [currentDate];
+  const viewDays = view === 'week' ? Array.from({length:7},(_,i) => addDays(getMonday(currentDate),i)) : [currentDate];
 
-  const handleSlotClick = (date, time) => {
-    setEditingNote(null);
-    setNoteInitialDate(date);
-    setNoteInitialTime(time);
-    setNoteEditorOpen(true);
-  };
+  const handleSlotClick = (date, time) => { setEditingNote(null); setNoteInitialDate(date); setNoteInitialTime(time); setNoteEditorOpen(true); };
+  const handleItemClick = (item) => { if (item.type === 'task') onEditTask(item); else { setEditingNote(item); setNoteEditorOpen(true); } };
+  const handleDayClick = (d) => { setCurrentDate(d); setView('day'); };
 
-  const handleItemClick = (item) => {
-    if (item.type === 'task') {
-      onEditTask(item);
-    } else {
-      setEditingNote(item);
-      setNoteEditorOpen(true);
-    }
-  };
-
-  const handleDayClick = (d) => {
-    setCurrentDate(d);
-    setView('day');
-  };
+  // Drag-and-drop: update item date/time
+  const handleItemDrop = useCallback(async (item, newDate, newTime) => {
+    const token = await getAccessToken();
+    try {
+      if (item.type === 'task') {
+        await axios.patch(`${API_URL}/tasks/${item.id}`, { scheduled_date: newDate, scheduled_time: newTime }, { headers: { Authorization: `Bearer ${token}` } });
+      } else {
+        await axios.patch(`${API_URL}/calendar/notes/${item.id}`, { scheduled_date: newDate, start_time: newTime, end_time: (() => {
+          const [h,m] = newTime.split(':').map(Number);
+          const dur = item.end_time && item.start_time ? timeToMinutes(item.end_time) - timeToMinutes(item.start_time) : 60;
+          const endM = (h-7)*60+m+dur;
+          return `${pad(Math.floor(endM/60)+7)}:${pad(endM%60)}`;
+        })() }, { headers: { Authorization: `Bearer ${token}` } });
+        fetchNotes();
+      }
+    } catch (err) { console.error('Erro ao mover:', err); }
+  }, [fetchNotes]);
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
-      {/* Header */}
       <div className="flex items-center justify-between px-2 pb-4">
         <div className="flex items-center gap-3">
-          <button onClick={goToday}
-            className="px-4 py-2 text-xs font-bold text-gray-300 bg-surface-flat border border-border-subtle rounded-xl hover:bg-white/[0.06] transition-colors">
-            Hoje
-          </button>
-          <button onClick={() => navigate(-1)} className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg"><ChevronLeft size={18} /></button>
-          <button onClick={() => navigate(1)} className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg"><ChevronRight size={18} /></button>
+          <button onClick={goToday} className="px-4 py-2 text-xs font-bold text-gray-300 bg-surface-flat border border-border-subtle rounded-xl hover:bg-white/[0.06] transition-colors">Hoje</button>
+          <button onClick={() => nav(-1)} className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg"><ChevronLeft size={18} /></button>
+          <button onClick={() => nav(1)} className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg"><ChevronRight size={18} /></button>
           <h3 className="text-xl font-bold text-white ml-2">{headerLabel()}</h3>
         </div>
-
         <div className="flex items-center gap-3">
-          <button
-            onClick={() => { setEditingNote(null); setNoteInitialDate(dateStr(currentDate)); setNoteInitialTime('09:00'); setNoteEditorOpen(true); }}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 text-blue-400 border border-blue-500/15 rounded-xl text-xs font-bold hover:bg-blue-500/15 transition-colors"
-          >
-            <Plus size={14} /> Nova Nota
-          </button>
-
-          {/* View selector */}
+          <button onClick={() => { setEditingNote(null); setNoteInitialDate(fmtDate(currentDate)); setNoteInitialTime('09:00'); setNoteEditorOpen(true); }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 text-blue-400 border border-blue-500/15 rounded-xl text-xs font-bold hover:bg-blue-500/15 transition-colors">
+            <Plus size={14} /> Nova Nota</button>
           <div className="flex gap-0.5 p-0.5 bg-surface-flat rounded-xl border border-border-subtle">
-            {[
-              { id: 'day', label: 'Dia' },
-              { id: 'week', label: 'Semana' },
-              { id: 'month', label: 'Mês' },
-            ].map(v => (
-              <button
-                key={v.id}
-                onClick={() => setView(v.id)}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
-                  view === v.id ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-300'
-                }`}
-              >
-                {v.label}
-              </button>
+            {[{id:'day',label:'Dia'},{id:'week',label:'Semana'},{id:'month',label:'Mês'}].map(v => (
+              <button key={v.id} onClick={() => setView(v.id)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${view === v.id ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
+                {v.label}</button>
             ))}
           </div>
         </div>
       </div>
 
-      {/* View Content */}
       {view === 'month' ? (
         <MonthView date={currentDate} items={allItems} onDayClick={handleDayClick} />
       ) : (
-        <TimeGrid
-          days={viewDays}
-          items={allItems}
-          onSlotClick={handleSlotClick}
-          onItemClick={handleItemClick}
-        />
+        <TimeGrid days={viewDays} items={allItems} onSlotClick={handleSlotClick} onItemClick={handleItemClick} onItemDrop={handleItemDrop} />
       )}
 
-      {/* Note Editor */}
       {noteEditorOpen && (
-        <NoteEditor
-          note={editingNote}
-          initialDate={noteInitialDate}
-          initialTime={noteInitialTime}
-          projectId={projectId ? parseInt(projectId) : null}
-          onSave={saveNote}
-          onDelete={deleteNote}
-          onClose={() => { setNoteEditorOpen(false); setEditingNote(null); }}
-        />
+        <NoteEditor note={editingNote} initialDate={noteInitialDate} initialTime={noteInitialTime}
+          projectId={projectId ? parseInt(projectId) : null} onSave={saveNote} onDelete={deleteNote}
+          onClose={() => { setNoteEditorOpen(false); setEditingNote(null); }} />
       )}
     </div>
   );

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -351,18 +351,21 @@ const BoardView = ({ projectId, collapsed }) => {
     setPreviewTask(task);
   };
 
+  const createdTaskRef = useRef(null);
+
   const handleSaveTask = async (taskData) => {
     const token = await getAccessToken();
     try {
-      if (editingTask) {
-        await axios.patch(`${API_URL}/tasks/${editingTask.id}`, taskData, {
+      const existingTask = editingTask || createdTaskRef.current;
+      if (existingTask) {
+        await axios.patch(`${API_URL}/tasks/${existingTask.id}`, taskData, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } else {
         const res = await axios.post(`${API_URL}/tasks/`, { ...taskData, project_id: parseInt(projectId) }, {
           headers: { Authorization: `Bearer ${token}` }
         });
-        // After first create, switch to editing mode so subsequent auto-saves do PATCH
+        createdTaskRef.current = res.data;
         setEditingTask(res.data);
       }
       fetchTasks();
@@ -504,7 +507,7 @@ const BoardView = ({ projectId, collapsed }) => {
           initialDate={createDate}
           initialStatus={createStatus}
           onSave={handleSaveTask}
-          onClose={() => { setEditorOpen(false); setEditingTask(null); setCreateDate(null); }}
+          onClose={() => { setEditorOpen(false); setEditingTask(null); setCreateDate(null); createdTaskRef.current = null; }}
         />
       )}
 
