@@ -494,17 +494,8 @@ const ContentGenerator = () => {
                     </button>
                   )}
 
-                  {!isSubPage && (
-                    <div className="flex gap-1 p-1 bg-[#18181d] border border-white/[0.06] rounded-xl">
-                      <button onClick={() => setConfigTab('bases')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${configTab === 'bases' ? 'bg-primary text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}>
-                        <BookOpen size={13} /> Bases
-                      </button>
-                      <button onClick={() => setConfigTab('tone')} className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold transition-all ${configTab === 'tone' ? 'bg-primary text-white shadow-lg' : 'text-gray-500 hover:text-gray-300'}`}>
-                        <Mic size={13} /> Tom
-                      </button>
-                    </div>
-                  )}
-
+                  {configTab === 'bases' && <><BookOpen size={20} strokeWidth={1.5} className="text-primary" /><h3 className="text-lg font-extrabold text-white tracking-tight">Bases</h3></>}
+                  {configTab === 'tone' && <><Mic size={20} strokeWidth={1.5} className="text-primary" /><h3 className="text-lg font-extrabold text-white tracking-tight">Tom</h3></>}
                   {configTab === 'create' && <><BookOpen size={20} strokeWidth={1.5} className="text-primary" /><h3 className="text-lg font-extrabold text-white tracking-tight">{kbEditId ? 'Editar Base' : 'Nova Base'}</h3></>}
                   {configTab === 'view' && <><BookOpen size={20} strokeWidth={1.5} className="text-primary" /><h3 className="text-lg font-extrabold text-white tracking-tight">Visualizar Base</h3></>}
                   {configTab === 'tone-view' && <><Mic size={20} strokeWidth={1.5} className="text-primary" /><h3 className="text-lg font-extrabold text-white tracking-tight">Visualizar Tom</h3></>}
