@@ -438,19 +438,29 @@ const ContentGenerator = () => {
 
           {/* Controls */}
           <div className="flex items-center gap-2 mt-5">
-            {activeBase && (
-              <div className="flex items-center gap-1.5 bg-primary/12 text-primary px-3 py-1.5 rounded-lg text-[11px] font-bold border border-primary/15 animate-fade-in">
-                <BookOpen size={12} strokeWidth={1.5} /><span className="truncate max-w-[120px]">{activeBase.name}</span>
-                <button onClick={() => setSelectedBaseId(null)} className="hover:text-white transition-colors ml-0.5 bg-black/20 rounded-full p-0.5"><X size={9} strokeWidth={2.5} /></button>
-              </div>
-            )}
-            {activeTone && (
-              <div className="flex items-center gap-1.5 bg-purple-500/12 text-purple-400 px-3 py-1.5 rounded-lg text-[11px] font-bold border border-purple-500/15 animate-fade-in">
-                <Mic size={12} strokeWidth={1.5} /><span className="truncate max-w-[120px]">{activeTone.name}</span>
-                <button onClick={() => setSelectedToneId(null)} className="hover:text-white transition-colors ml-0.5 bg-black/20 rounded-full p-0.5"><X size={9} strokeWidth={2.5} /></button>
-              </div>
-            )}
-            <button onClick={() => { setConfigOpen(true); setConfigTab('bases'); fetchKnowledgeBases(); fetchTones(); }} className="flex items-center gap-1.5 px-2.5 py-1.5 text-[13px] text-gray-500 hover:text-gray-300 transition-colors shrink-0">Base / Tom <ChevronDown size={13} /></button>
+            {/* Base button */}
+            <button
+              onClick={() => { setConfigOpen(true); setConfigTab('bases'); fetchKnowledgeBases(); fetchTones(); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.05] text-[13px] font-semibold transition-all duration-200 shrink-0 ${
+                activeBase ? 'text-primary border-primary/20' : 'text-gray-500 hover:text-gray-300 hover:border-white/[0.08]'
+              }`}
+            >
+              <BookOpen size={14} strokeWidth={1.8} className={activeBase ? 'text-primary' : 'text-gray-500'} />
+              {activeBase ? activeBase.name : 'Base'}
+              <ChevronDown size={12} />
+            </button>
+
+            {/* Tom button */}
+            <button
+              onClick={() => { setConfigOpen(true); setConfigTab('tone'); fetchKnowledgeBases(); fetchTones(); }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/[0.04] border border-white/[0.05] text-[13px] font-semibold transition-all duration-200 shrink-0 ${
+                activeTone ? 'text-primary border-primary/20' : 'text-gray-500 hover:text-gray-300 hover:border-white/[0.08]'
+              }`}
+            >
+              <Mic size={14} strokeWidth={1.8} className={activeTone ? 'text-primary' : 'text-gray-500'} />
+              {activeTone ? activeTone.name : 'Tom'}
+              <ChevronDown size={12} />
+            </button>
 
             <div className="flex items-center gap-0 rounded-xl bg-white/[0.04] border border-white/[0.05]">
               <button onClick={() => stepQuantity(-1)} disabled={quantity <= MIN_QTY} className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 transition-colors rounded-l-xl"><Minus size={14} strokeWidth={2} /></button>
