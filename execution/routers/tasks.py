@@ -19,6 +19,7 @@ class TaskCreate(BaseModel):
     thumbnail_url: Optional[str] = None
     card_color: Optional[str] = "#1c1c24"
     project_id: Optional[int] = None
+    scheduled_date: Optional[str] = None
 
 class TaskUpdate(BaseModel):
     status: Optional[str] = None
@@ -28,6 +29,23 @@ class TaskUpdate(BaseModel):
     thumbnail_url: Optional[str] = None
     card_color: Optional[str] = None
     project_id: Optional[int] = None
+    scheduled_date: Optional[str] = None
+
+
+def _serialize_task(t):
+    return {
+        "id": t.id,
+        "user_id": t.user_id,
+        "project_id": t.project_id,
+        "title": t.title,
+        "content_md": t.content_md,
+        "tag": t.tag,
+        "status": t.status,
+        "thumbnail_url": t.thumbnail_url,
+        "card_color": t.card_color,
+        "scheduled_date": t.scheduled_date,
+        "created_at": t.created_at.isoformat() if t.created_at else None,
+    }
 
 @router.post("/")
 async def create_task(task_in: TaskCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -39,23 +57,13 @@ async def create_task(task_in: TaskCreate, current_user: User = Depends(get_curr
         tag=task_in.tag,
         status=task_in.status,
         thumbnail_url=task_in.thumbnail_url,
-        card_color=task_in.card_color
+        card_color=task_in.card_color,
+        scheduled_date=task_in.scheduled_date,
     )
     db.add(new_task)
     await db.commit()
     await db.refresh(new_task)
-    return {
-        "id": new_task.id,
-        "user_id": new_task.user_id,
-        "project_id": new_task.project_id,
-        "title": new_task.title,
-        "content_md": new_task.content_md,
-        "tag": new_task.tag,
-        "status": new_task.status,
-        "thumbnail_url": new_task.thumbnail_url,
-        "card_color": new_task.card_color,
-        "created_at": new_task.created_at.isoformat() if new_task.created_at else None,
-    }
+    return _serialize_task(new_task)
 
 @router.get("/")
 async def get_tasks(project_id: int = None, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -64,18 +72,7 @@ async def get_tasks(project_id: int = None, current_user: User = Depends(get_cur
         query = query.filter(ContentTask.project_id == project_id)
     result = await db.execute(query.order_by(ContentTask.created_at.desc()))
     tasks = result.scalars().all()
-    return [{
-        "id": t.id,
-        "user_id": t.user_id,
-        "project_id": t.project_id,
-        "title": t.title,
-        "content_md": t.content_md,
-        "tag": t.tag,
-        "status": t.status,
-        "thumbnail_url": t.thumbnail_url,
-        "card_color": t.card_color,
-        "created_at": t.created_at.isoformat() if t.created_at else None,
-    } for t in tasks]
+    return [_serialize_task(t) for t in tasks]
 
 @router.patch("/{task_id}")
 async def update_task(task_id: int, task_up: TaskUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -91,17 +88,7 @@ async def update_task(task_id: int, task_up: TaskUpdate, current_user: User = De
 
     await db.commit()
     await db.refresh(task)
-    return {
-        "id": task.id,
-        "user_id": task.user_id,
-        "title": task.title,
-        "content_md": task.content_md,
-        "tag": task.tag,
-        "status": task.status,
-        "thumbnail_url": task.thumbnail_url,
-        "card_color": task.card_color,
-        "created_at": task.created_at.isoformat() if task.created_at else None,
-    }
+    return _serialize_task(task)
 
 @router.delete("/{task_id}")
 async def delete_task(task_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

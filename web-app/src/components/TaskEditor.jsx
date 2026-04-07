@@ -117,12 +117,13 @@ import { resolveThumbnailUrl } from './Thumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
-const TaskEditor = ({ task, onSave, onClose, initialStatus }) => {
+const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
   const isEditing = !!task;
   const [title, setTitle] = useState(task?.title || '');
   const [tag, setTag] = useState(task?.tag || 'Nota');
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [scheduledDate, setScheduledDate] = useState(task?.scheduled_date || initialDate || '');
   const [viewMode, setViewMode] = useState('edit');
   const [activeFormats, setActiveFormats] = useState({});
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -191,6 +192,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus }) => {
         content_md: contentRef.current || '',
         tag,
         status: task?.status || initialStatus || 'todo',
+        scheduled_date: scheduledDate || null,
       });
       taskCreatedRef.current = true;
     } catch (err) {
@@ -867,6 +869,17 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus }) => {
                   ))}
                 </div>
               )}
+            </div>
+
+            {/* Scheduled Date */}
+            <div className="relative">
+              <input
+                type="date"
+                value={scheduledDate}
+                onChange={(e) => { setScheduledDate(e.target.value); triggerAutoSave(); }}
+                className="px-3.5 py-1.5 bg-surface-flat text-gray-300 rounded-xl text-xs font-mono border border-border-subtle hover:border-border-hover focus:outline-none focus:ring-1 focus:ring-primary/50 transition-colors [color-scheme:dark]"
+                title="Data de publicação"
+              />
             </div>
 
             {/* View Mode Toggle */}

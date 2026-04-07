@@ -3,10 +3,11 @@ import axios from 'axios';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
-import { Layout, Search, Loader2, Sparkles, Plus, X, Pencil, Calendar, ArrowLeft, FolderKanban, Trash2, Check } from 'lucide-react';
+import { Layout, Search, Loader2, Sparkles, Plus, X, Pencil, Calendar, ArrowLeft, FolderKanban, Trash2, Check, CalendarDays, Columns3 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import ImageLightbox from '../components/ImageLightbox';
 import KanbanBoard from '../components/KanbanBoard';
+import CalendarView from '../components/CalendarView';
 import TaskEditor from '../components/TaskEditor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSidebar } from '../contexts/SidebarContext';
@@ -243,6 +244,7 @@ const BoardView = ({ projectId, collapsed }) => {
   const [previewTask, setPreviewTask] = useState(null);
   const [columns, setColumns] = useState(DEFAULT_COLUMNS);
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  const [viewMode, setViewMode] = useState('kanban');
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -331,9 +333,12 @@ const BoardView = ({ projectId, collapsed }) => {
     }
   };
 
-  const handleCreateTask = (status) => {
+  const [createDate, setCreateDate] = useState(null);
+
+  const handleCreateTask = (status, scheduledDate = null) => {
     setEditingTask(null);
     setCreateStatus(status);
+    setCreateDate(scheduledDate);
     setEditorOpen(true);
   };
 
@@ -418,8 +423,32 @@ const BoardView = ({ projectId, collapsed }) => {
             </h2>
           </div>
 
-          <div className="flex gap-3">
-            <div className="relative w-64">
+          <div className="flex gap-3 items-center">
+            {/* View Toggle */}
+            <div className="flex gap-0.5 p-1 bg-surface-flat rounded-2xl border border-border-subtle">
+              <button
+                onClick={() => setViewMode('kanban')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  viewMode === 'kanban'
+                    ? 'bg-primary text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                <Columns3 size={14} strokeWidth={2} /> Kanban
+              </button>
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                  viewMode === 'calendar'
+                    ? 'bg-blue-500 text-white shadow-sm'
+                    : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                <CalendarDays size={14} strokeWidth={2} /> Calendário
+              </button>
+            </div>
+
+            <div className="relative w-56">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={14} strokeWidth={2} />
               <input
                 type="text"
@@ -435,12 +464,6 @@ const BoardView = ({ projectId, collapsed }) => {
             >
               <Plus size={15} strokeWidth={2.5} /> Novo Card
             </button>
-            <button
-              onClick={() => navigate('/creator')}
-              className="btn-primary px-6 py-2.5 rounded-2xl text-sm flex items-center gap-2"
-            >
-              <Sparkles size={15} strokeWidth={2.5} /> Gerar com IA
-            </button>
           </div>
         </div>
 
@@ -450,7 +473,7 @@ const BoardView = ({ projectId, collapsed }) => {
             <Loader2 className="animate-spin text-primary" size={32} />
             <p className="text-gray-600 text-sm animate-pulse font-mono tracking-wide">Organizando roteiros e pautas...</p>
           </div>
-        ) : (
+        ) : viewMode === 'kanban' ? (
           <div className="flex-1 overflow-hidden -mx-4">
             <KanbanBoard
               tasks={filteredTasks}
@@ -465,6 +488,12 @@ const BoardView = ({ projectId, collapsed }) => {
               onDeleteColumn={deleteColumn}
             />
           </div>
+        ) : (
+          <CalendarView
+            tasks={filteredTasks}
+            onEditTask={handleEditTask}
+            onCreateTask={handleCreateTask}
+          />
         )}
       </div>
 
@@ -472,9 +501,10 @@ const BoardView = ({ projectId, collapsed }) => {
       {editorOpen && (
         <TaskEditor
           task={editingTask}
+          initialDate={createDate}
           initialStatus={createStatus}
           onSave={handleSaveTask}
-          onClose={() => { setEditorOpen(false); setEditingTask(null); }}
+          onClose={() => { setEditorOpen(false); setEditingTask(null); setCreateDate(null); }}
         />
       )}
 

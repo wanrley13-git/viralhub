@@ -79,6 +79,7 @@ class ContentTask(Base):
     status = Column(String, default="todo") # todo, doing, done
     thumbnail_url = Column(String, nullable=True)
     card_color = Column(String, default="#1c1c24")
+    scheduled_date = Column(String, nullable=True)  # ISO date string YYYY-MM-DD
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("Profile", back_populates="tasks")
