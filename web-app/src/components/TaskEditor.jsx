@@ -124,6 +124,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
   const [showTagMenu, setShowTagMenu] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [scheduledDate, setScheduledDate] = useState(task?.scheduled_date || initialDate || '');
+  const [scheduledTime, setScheduledTime] = useState(task?.scheduled_time || '');
   const [viewMode, setViewMode] = useState('edit');
   const [activeFormats, setActiveFormats] = useState({});
   const [lightboxSrc, setLightboxSrc] = useState(null);
@@ -193,6 +194,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
         tag,
         status: task?.status || initialStatus || 'todo',
         scheduled_date: scheduledDate || null,
+        scheduled_time: scheduledTime || null,
       });
       taskCreatedRef.current = true;
     } catch (err) {
@@ -871,14 +873,21 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
               )}
             </div>
 
-            {/* Scheduled Date */}
-            <div className="relative">
+            {/* Scheduled Date + Time */}
+            <div className="flex gap-1.5">
               <input
                 type="date"
                 value={scheduledDate}
                 onChange={(e) => { setScheduledDate(e.target.value); triggerAutoSave(); }}
-                className="px-3.5 py-1.5 bg-surface-flat text-gray-300 rounded-xl text-xs font-mono border border-border-subtle hover:border-border-hover focus:outline-none focus:ring-1 focus:ring-primary/50 transition-colors [color-scheme:dark]"
-                title="Data de publicação"
+                className="px-3 py-1.5 bg-surface-flat text-gray-300 rounded-xl text-xs font-mono border border-border-subtle hover:border-border-hover focus:outline-none focus:ring-1 focus:ring-primary/50 transition-colors [color-scheme:dark]"
+                title="Data"
+              />
+              <input
+                type="time"
+                value={scheduledTime}
+                onChange={(e) => { setScheduledTime(e.target.value); triggerAutoSave(); }}
+                className="px-2.5 py-1.5 bg-surface-flat text-gray-300 rounded-xl text-xs font-mono border border-border-subtle hover:border-border-hover focus:outline-none focus:ring-1 focus:ring-primary/50 transition-colors [color-scheme:dark] w-[90px]"
+                title="Hora"
               />
             </div>
 

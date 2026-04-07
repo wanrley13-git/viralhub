@@ -491,8 +491,8 @@ const BoardView = ({ projectId, collapsed }) => {
         ) : (
           <CalendarView
             tasks={filteredTasks}
+            projectId={projectId}
             onEditTask={handleEditTask}
-            onCreateTask={handleCreateTask}
           />
         )}
       </div>

@@ -79,11 +79,30 @@ class ContentTask(Base):
     status = Column(String, default="todo") # todo, doing, done
     thumbnail_url = Column(String, nullable=True)
     card_color = Column(String, default="#1c1c24")
-    scheduled_date = Column(String, nullable=True)  # ISO date string YYYY-MM-DD
+    scheduled_date = Column(String, nullable=True)  # YYYY-MM-DD
+    scheduled_time = Column(String, nullable=True)  # HH:MM (24h)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("Profile", back_populates="tasks")
     project = relationship("Project", back_populates="tasks")
+
+
+class CalendarNote(Base):
+    __tablename__ = "calendar_notes"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"))
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    title = Column(String)
+    description = Column(Text, nullable=True)
+    scheduled_date = Column(String)       # YYYY-MM-DD
+    start_time = Column(String)           # HH:MM
+    end_time = Column(String)             # HH:MM
+    color = Column(String, default="#3b82f6")
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    owner = relationship("Profile")
+    project = relationship("Project")
+
 
 class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"

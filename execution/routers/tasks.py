@@ -20,6 +20,7 @@ class TaskCreate(BaseModel):
     card_color: Optional[str] = "#1c1c24"
     project_id: Optional[int] = None
     scheduled_date: Optional[str] = None
+    scheduled_time: Optional[str] = None
 
 class TaskUpdate(BaseModel):
     status: Optional[str] = None
@@ -30,11 +31,13 @@ class TaskUpdate(BaseModel):
     card_color: Optional[str] = None
     project_id: Optional[int] = None
     scheduled_date: Optional[str] = None
+    scheduled_time: Optional[str] = None
 
 
 def _serialize_task(t):
     return {
         "id": t.id,
+        "type": "task",
         "user_id": t.user_id,
         "project_id": t.project_id,
         "title": t.title,
@@ -44,6 +47,7 @@ def _serialize_task(t):
         "thumbnail_url": t.thumbnail_url,
         "card_color": t.card_color,
         "scheduled_date": t.scheduled_date,
+        "scheduled_time": t.scheduled_time,
         "created_at": t.created_at.isoformat() if t.created_at else None,
     }
 
@@ -59,6 +63,7 @@ async def create_task(task_in: TaskCreate, current_user: User = Depends(get_curr
         thumbnail_url=task_in.thumbnail_url,
         card_color=task_in.card_color,
         scheduled_date=task_in.scheduled_date,
+        scheduled_time=task_in.scheduled_time,
     )
     db.add(new_task)
     await db.commit()

@@ -1,188 +1,482 @@
-import { useState, useMemo } from 'react';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { useState, useMemo, useEffect, useRef } from 'react';
+import { ChevronLeft, ChevronRight, Plus, X, Trash2 } from 'lucide-react';
+import axios from 'axios';
+import { getAccessToken } from '../supabaseClient';
+
+const API_URL = import.meta.env.VITE_API_URL;
 
 const WEEKDAYS = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];
+const WEEKDAYS_SHORT = ['DOM.', 'SEG.', 'TER.', 'QUA.', 'QUI.', 'SEX.', 'SÁB.'];
 const MONTH_NAMES = [
   'Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho',
-  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'
+  'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro',
 ];
+const HOURS = Array.from({ length: 15 }, (_, i) => i + 7); // 7am-9pm
 
-const hexToRgba = (hex, alpha) => {
-  if (!hex || hex === 'none' || hex[0] !== '#') return null;
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+const NOTE_COLORS = ['#3b82f6','#22c55e','#f59e0b','#ef4444','#a855f7','#ec4899','#06b6d4'];
+
+const hexToRgba = (hex, a) => {
+  if (!hex || hex[0] !== '#') return 'transparent';
+  const r = parseInt(hex.slice(1, 3), 16), g = parseInt(hex.slice(3, 5), 16), b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r},${g},${b},${a})`;
 };
 
-function getDaysInMonth(year, month) {
-  return new Date(year, month + 1, 0).getDate();
+function pad(n) { return String(n).padStart(2, '0'); }
+function dateStr(d) { return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function addDays(d, n) { const r = new Date(d); r.setDate(r.getDate()+n); return r; }
+function getMonday(d) { const r = new Date(d); const day = r.getDay(); r.setDate(r.getDate() - (day === 0 ? 6 : day - 1)); return r; }
+function getSunday(d) { return addDays(getMonday(d), 6); }
+
+function timeToRow(time) {
+  if (!time) return 0;
+  const [h, m] = time.split(':').map(Number);
+  return (h - 7) * 60 + m;
+}
+function durationMinutes(start, end) {
+  return timeToRow(end) - timeToRow(start);
 }
 
-function getFirstDayOfWeek(year, month) {
-  return new Date(year, month, 1).getDay();
-}
 
-export default function CalendarView({ tasks, onEditTask, onCreateTask }) {
-  const today = new Date();
-  const [year, setYear] = useState(today.getFullYear());
-  const [month, setMonth] = useState(today.getMonth());
+// ── MONTH VIEW ──
+function MonthView({ date, items, onDayClick }) {
+  const year = date.getFullYear(), month = date.getMonth();
+  const daysInMonth = new Date(year, month+1, 0).getDate();
+  const firstDay = new Date(year, month, 1).getDay();
+  const todayStr = dateStr(new Date());
 
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-
-  const tasksByDate = useMemo(() => {
+  const itemsByDate = useMemo(() => {
     const map = {};
-    tasks.forEach(t => {
-      if (!t.scheduled_date) return;
-      if (!map[t.scheduled_date]) map[t.scheduled_date] = [];
-      map[t.scheduled_date].push(t);
+    items.forEach(it => {
+      const d = it.scheduled_date;
+      if (!d) return;
+      if (!map[d]) map[d] = [];
+      map[d].push(it);
     });
     return map;
-  }, [tasks]);
-
-  const daysInMonth = getDaysInMonth(year, month);
-  const firstDay = getFirstDayOfWeek(year, month);
-
-  const prevMonth = () => {
-    if (month === 0) { setMonth(11); setYear(y => y - 1); }
-    else setMonth(m => m - 1);
-  };
-  const nextMonth = () => {
-    if (month === 11) { setMonth(0); setYear(y => y + 1); }
-    else setMonth(m => m + 1);
-  };
-  const goToday = () => { setYear(today.getFullYear()); setMonth(today.getMonth()); };
+  }, [items]);
 
   const cells = [];
-  // Empty cells before first day
   for (let i = 0; i < firstDay; i++) cells.push(null);
-  // Day cells
   for (let d = 1; d <= daysInMonth; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
 
   return (
-    <div className="flex-1 flex flex-col p-6 overflow-hidden">
-      {/* Month header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-4">
-          <h3 className="text-2xl font-extrabold text-white tracking-tight">
-            {MONTH_NAMES[month]}
-            <span className="text-gray-500 font-medium ml-2">{year}</span>
-          </h3>
-          {(() => {
-            const prefix = `${year}-${String(month + 1).padStart(2, '0')}`;
-            const count = tasks.filter(t => t.scheduled_date && t.scheduled_date.startsWith(prefix)).length;
-            return count > 0 ? (
-              <span className="px-2.5 py-1 text-[10px] font-bold text-blue-400 bg-blue-400/10 border border-blue-400/15 rounded-lg font-mono">
-                {count} agendado{count !== 1 ? 's' : ''}
-              </span>
-            ) : null;
-          })()}
-          <button
-            onClick={goToday}
-            className="px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-primary bg-primary/10 border border-primary/15 rounded-lg hover:bg-primary/15 transition-colors"
-          >
-            Hoje
-          </button>
-        </div>
-        <div className="flex gap-1">
-          <button onClick={prevMonth} className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
-            <ChevronLeft size={18} strokeWidth={2} />
-          </button>
-          <button onClick={nextMonth} className="p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-xl transition-colors">
-            <ChevronRight size={18} strokeWidth={2} />
-          </button>
-        </div>
-      </div>
-
-      {/* Weekday headers */}
-      <div className="grid grid-cols-7 mb-2">
-        {WEEKDAYS.map(d => (
-          <div key={d} className="text-center text-[10px] font-bold uppercase tracking-widest text-gray-600 py-2">
-            {d}
-          </div>
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <div className="grid grid-cols-7">
+        {WEEKDAYS_SHORT.map(d => (
+          <div key={d} className="text-center text-[10px] font-bold uppercase tracking-widest text-gray-600 py-3 border-b border-white/[0.04]">{d}</div>
         ))}
       </div>
-
-      {/* Day grid */}
-      <div className="grid grid-cols-7 flex-1 gap-px bg-white/[0.03] rounded-2xl overflow-hidden border border-border-subtle">
+      <div className="grid grid-cols-7 flex-1 auto-rows-fr">
         {cells.map((day, i) => {
-          if (day === null) {
-            return <div key={`empty-${i}`} className="bg-background min-h-[100px]" />;
-          }
-
-          const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-          const dayTasks = tasksByDate[dateStr] || [];
-          const isToday = dateStr === todayStr;
-          const hasCards = dayTasks.length > 0;
-
-          // Use the first card's color for the day glow
-          const primaryCard = dayTasks[0];
-          const cardColor = primaryCard?.card_color && primaryCard.card_color !== 'none' && primaryCard.card_color !== '#1c1c24'
-            ? primaryCard.card_color : null;
-
+          if (day === null) return <div key={`e${i}`} className="border-b border-r border-white/[0.04] bg-background" />;
+          const ds = `${year}-${pad(month+1)}-${pad(day)}`;
+          const dayItems = itemsByDate[ds] || [];
+          const isToday = ds === todayStr;
           return (
             <div
               key={day}
-              onClick={() => {
-                if (!hasCards) onCreateTask('todo', dateStr);
-              }}
-              className={`bg-background min-h-[100px] p-2 flex flex-col transition-colors relative group ${
-                !hasCards ? 'cursor-pointer hover:bg-white/[0.02]' : ''
-              }`}
-              style={cardColor ? {
-                background: `linear-gradient(160deg, ${hexToRgba(cardColor, 0.12)} 0%, transparent 60%)`
-              } : undefined}
+              onClick={() => onDayClick(new Date(year, month, day))}
+              className="border-b border-r border-white/[0.04] p-1.5 flex flex-col cursor-pointer hover:bg-white/[0.015] transition-colors min-h-0"
             >
-              {/* Accent line */}
-              {cardColor && (
-                <div
-                  className="absolute top-0 left-2 right-2 h-[2px] rounded-full opacity-50"
-                  style={{ backgroundColor: cardColor }}
-                />
-              )}
-
-              {/* Day number */}
-              <div className="flex items-center justify-between mb-1.5">
-                <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full ${
-                  isToday
-                    ? 'bg-blue-500 text-white'
-                    : 'text-gray-400'
-                }`}>
-                  {day}
-                </span>
-                {dayTasks.length > 2 && (
-                  <span className="text-[9px] font-mono text-gray-600">+{dayTasks.length - 2}</span>
+              <span className={`text-xs font-semibold mb-1 w-6 h-6 flex items-center justify-center rounded-full self-center ${
+                isToday ? 'bg-blue-500 text-white' : 'text-gray-400'
+              }`}>{day}</span>
+              <div className="flex flex-col gap-0.5 overflow-hidden flex-1">
+                {dayItems.slice(0, 3).map(it => (
+                  <div key={`${it.type}-${it.id}`} className="flex items-center gap-1.5 px-1 py-0.5 rounded text-[10px] truncate">
+                    <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: it.color || it.card_color || '#3b82f6' }} />
+                    <span className="truncate text-gray-300 font-medium">
+                      {it.start_time || it.scheduled_time ? `${(it.start_time || it.scheduled_time).slice(0,5)} ` : ''}
+                      {it.title}
+                    </span>
+                  </div>
+                ))}
+                {dayItems.length > 3 && (
+                  <span className="text-[9px] text-gray-600 font-mono pl-1">+{dayItems.length - 3} mais</span>
                 )}
-              </div>
-
-              {/* Cards (max 2) */}
-              <div className="flex flex-col gap-1 flex-1 overflow-hidden">
-                {dayTasks.slice(0, 2).map(task => {
-                  const tc = task.card_color && task.card_color !== 'none' && task.card_color !== '#1c1c24' ? task.card_color : null;
-                  return (
-                    <button
-                      key={task.id}
-                      onClick={(e) => { e.stopPropagation(); onEditTask(task); }}
-                      className="text-left w-full p-1.5 rounded-lg bg-surface/80 border border-border-subtle hover:border-border-hover transition-all group/card cursor-pointer overflow-hidden"
-                      style={tc ? { borderColor: hexToRgba(tc, 0.2) } : undefined}
-                    >
-                      <div
-                        className="text-[8px] font-bold uppercase tracking-wider font-mono mb-0.5 truncate"
-                        style={{ color: tc ? hexToRgba(tc, 0.9) : 'rgb(156 163 175)' }}
-                      >
-                        {task.tag}
-                      </div>
-                      <div className="text-[10px] text-white/60 leading-tight line-clamp-2 font-medium">
-                        {task.title}
-                      </div>
-                    </button>
-                  );
-                })}
               </div>
             </div>
           );
         })}
       </div>
+    </div>
+  );
+}
+
+
+// ── TIME GRID (shared by Day and Week) ──
+function TimeGrid({ days, items, onSlotClick, onItemClick }) {
+  const scrollRef = useRef(null);
+  const todayStr = dateStr(new Date());
+  const now = new Date();
+  const nowMinutes = (now.getHours() - 7) * 60 + now.getMinutes();
+
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = 8 * 60; // scroll to 8am area
+  }, []);
+
+  const itemsByDate = useMemo(() => {
+    const map = {};
+    items.forEach(it => {
+      const d = it.scheduled_date;
+      if (!d) return;
+      const time = it.start_time || it.scheduled_time;
+      if (!time) return;
+      if (!map[d]) map[d] = [];
+      map[d].push(it);
+    });
+    return map;
+  }, [items]);
+
+  return (
+    <div ref={scrollRef} className="flex-1 overflow-y-auto custom-scrollbar">
+      {/* Day headers */}
+      <div className="flex sticky top-0 z-20 bg-background border-b border-white/[0.04]">
+        <div className="w-16 shrink-0" />
+        {days.map(d => {
+          const ds = dateStr(d);
+          const isToday = ds === todayStr;
+          return (
+            <div key={ds} className="flex-1 text-center py-3 border-l border-white/[0.04]">
+              <div className="text-[10px] font-bold uppercase tracking-widest text-gray-600">
+                {WEEKDAYS_SHORT[d.getDay()]}
+              </div>
+              <div className={`text-lg font-bold mt-0.5 w-9 h-9 flex items-center justify-center rounded-full mx-auto ${
+                isToday ? 'bg-blue-500 text-white' : 'text-gray-300'
+              }`}>{d.getDate()}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Time rows */}
+      <div className="flex relative">
+        {/* Hour labels */}
+        <div className="w-16 shrink-0">
+          {HOURS.map(h => (
+            <div key={h} className="h-[60px] flex items-start justify-end pr-3 -mt-2">
+              <span className="text-[10px] font-mono text-gray-600">{h > 12 ? `${h-12} PM` : h === 12 ? '12 PM' : `${h} AM`}</span>
+            </div>
+          ))}
+        </div>
+
+        {/* Day columns */}
+        {days.map(d => {
+          const ds = dateStr(d);
+          const isToday = ds === todayStr;
+          const dayItems = itemsByDate[ds] || [];
+
+          return (
+            <div key={ds} className="flex-1 relative border-l border-white/[0.04]">
+              {/* Hour lines */}
+              {HOURS.map(h => (
+                <div
+                  key={h}
+                  className="h-[60px] border-b border-white/[0.04] cursor-pointer hover:bg-white/[0.01]"
+                  onClick={() => onSlotClick(ds, `${pad(h)}:00`)}
+                />
+              ))}
+
+              {/* Now indicator */}
+              {isToday && nowMinutes >= 0 && nowMinutes <= HOURS.length * 60 && (
+                <div className="absolute left-0 right-0 z-10 flex items-center pointer-events-none" style={{ top: nowMinutes }}>
+                  <div className="w-2.5 h-2.5 rounded-full bg-red-500 -ml-1" />
+                  <div className="flex-1 h-[2px] bg-red-500" />
+                </div>
+              )}
+
+              {/* Events */}
+              {dayItems.map(it => {
+                const startTime = it.start_time || it.scheduled_time || '09:00';
+                const endTime = it.end_time || (() => {
+                  const [h, m] = startTime.split(':').map(Number);
+                  return `${pad(h + 1)}:${pad(m)}`;
+                })();
+                const top = timeToRow(startTime);
+                const height = Math.max(durationMinutes(startTime, endTime), 30);
+                const color = it.color || it.card_color || '#3b82f6';
+
+                return (
+                  <div
+                    key={`${it.type}-${it.id}`}
+                    onClick={(e) => { e.stopPropagation(); onItemClick(it); }}
+                    className="absolute left-1 right-1 rounded-lg px-2 py-1 cursor-pointer overflow-hidden hover:brightness-110 transition-all z-10"
+                    style={{
+                      top,
+                      height,
+                      backgroundColor: hexToRgba(color, 0.25),
+                      borderLeft: `3px solid ${color}`,
+                    }}
+                  >
+                    <div className="text-[11px] font-bold text-white truncate">{it.title}</div>
+                    <div className="text-[9px] text-white/60 font-mono">{startTime} – {endTime}</div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+// ── NOTE EDITOR MODAL ──
+function NoteEditor({ note, initialDate, initialTime, projectId, onSave, onDelete, onClose }) {
+  const [title, setTitle] = useState(note?.title || '');
+  const [description, setDescription] = useState(note?.description || '');
+  const [date, setDate] = useState(note?.scheduled_date || initialDate || '');
+  const [startTime, setStartTime] = useState(note?.start_time || initialTime || '09:00');
+  const [endTime, setEndTime] = useState(note?.end_time || (() => {
+    const t = note?.start_time || initialTime || '09:00';
+    const [h, m] = t.split(':').map(Number);
+    return `${pad(h + 1)}:${pad(m)}`;
+  })());
+  const [color, setColor] = useState(note?.color || '#3b82f6');
+
+  const handleSave = async () => {
+    if (!title.trim() || !date) return;
+    const data = { title: title.trim(), description, scheduled_date: date, start_time: startTime, end_time: endTime, color, project_id: projectId };
+    await onSave(data, note?.id);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-md bg-black/50 animate-fade-in" onClick={onClose}>
+      <div className="glass-raised w-full max-w-md rounded-3xl p-7 space-y-5 shadow-modal" onClick={e => e.stopPropagation()}>
+        <div className="flex justify-between items-center">
+          <h3 className="text-lg font-extrabold text-white">{note ? 'Editar Nota' : 'Nova Nota'}</h3>
+          <button onClick={onClose} className="p-2 text-gray-500 hover:text-white hover:bg-white/5 rounded-xl"><X size={16} /></button>
+        </div>
+
+        <input
+          autoFocus
+          value={title}
+          onChange={e => setTitle(e.target.value)}
+          placeholder="Título"
+          className="w-full bg-surface-flat border border-border-subtle rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50"
+        />
+        <textarea
+          value={description}
+          onChange={e => setDescription(e.target.value)}
+          placeholder="Descrição (opcional)"
+          rows={3}
+          className="w-full bg-surface-flat border border-border-subtle rounded-xl px-4 py-3 text-sm text-white focus:outline-none focus:ring-1 focus:ring-blue-500/50 resize-none"
+        />
+
+        <div className="grid grid-cols-3 gap-3">
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Data</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)}
+              className="w-full bg-surface-flat border border-border-subtle rounded-xl px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Início</label>
+            <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)}
+              className="w-full bg-surface-flat border border-border-subtle rounded-xl px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+          </div>
+          <div>
+            <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1 block">Fim</label>
+            <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)}
+              className="w-full bg-surface-flat border border-border-subtle rounded-xl px-3 py-2.5 text-sm text-white [color-scheme:dark] focus:outline-none focus:ring-1 focus:ring-blue-500/50" />
+          </div>
+        </div>
+
+        <div>
+          <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-2 block">Cor</label>
+          <div className="flex gap-2">
+            {NOTE_COLORS.map(c => (
+              <button key={c} onClick={() => setColor(c)}
+                className={`w-6 h-6 rounded-full border-2 transition-transform ${color === c ? 'border-white scale-125' : 'border-transparent hover:scale-110'}`}
+                style={{ backgroundColor: c }} />
+            ))}
+          </div>
+        </div>
+
+        <div className="flex gap-3 pt-2">
+          {note && onDelete && (
+            <button onClick={() => { onDelete(note.id); onClose(); }}
+              className="px-4 py-2.5 text-red-400 hover:bg-red-400/10 rounded-xl text-sm font-bold transition-colors flex items-center gap-2">
+              <Trash2 size={14} /> Excluir
+            </button>
+          )}
+          <div className="flex-1" />
+          <button onClick={onClose} className="px-5 py-2.5 text-gray-400 hover:text-white rounded-xl text-sm font-medium transition-colors">Cancelar</button>
+          <button onClick={handleSave} disabled={!title.trim() || !date}
+            className="px-6 py-2.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-40 text-white rounded-xl text-sm font-bold transition-colors">
+            Salvar
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
+// ── MAIN CALENDAR VIEW ──
+export default function CalendarView({ tasks, projectId, onEditTask }) {
+  const [view, setView] = useState('month');
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [notes, setNotes] = useState([]);
+  const [noteEditorOpen, setNoteEditorOpen] = useState(false);
+  const [editingNote, setEditingNote] = useState(null);
+  const [noteInitialDate, setNoteInitialDate] = useState('');
+  const [noteInitialTime, setNoteInitialTime] = useState('');
+
+  // Fetch calendar notes
+  const fetchNotes = async () => {
+    try {
+      const token = await getAccessToken();
+      const url = projectId ? `${API_URL}/calendar/notes?project_id=${projectId}` : `${API_URL}/calendar/notes`;
+      const res = await axios.get(url, { headers: { Authorization: `Bearer ${token}` } });
+      setNotes(res.data);
+    } catch (err) { console.error('Erro ao buscar notas:', err); }
+  };
+
+  useEffect(() => { fetchNotes(); }, [projectId]);
+
+  const saveNote = async (data, noteId) => {
+    const token = await getAccessToken();
+    if (noteId) {
+      await axios.patch(`${API_URL}/calendar/notes/${noteId}`, data, { headers: { Authorization: `Bearer ${token}` } });
+    } else {
+      await axios.post(`${API_URL}/calendar/notes`, data, { headers: { Authorization: `Bearer ${token}` } });
+    }
+    fetchNotes();
+  };
+
+  const deleteNote = async (noteId) => {
+    const token = await getAccessToken();
+    await axios.delete(`${API_URL}/calendar/notes/${noteId}`, { headers: { Authorization: `Bearer ${token}` } });
+    fetchNotes();
+  };
+
+  // Merge tasks (with date) + notes into single items list
+  const allItems = useMemo(() => {
+    const taskItems = tasks
+      .filter(t => t.scheduled_date)
+      .map(t => ({ ...t, type: 'task' }));
+    const noteItems = notes.map(n => ({ ...n, type: 'note' }));
+    return [...taskItems, ...noteItems];
+  }, [tasks, notes]);
+
+  // Navigation
+  const today = new Date();
+  const goToday = () => setCurrentDate(new Date());
+
+  const navigate = (dir) => {
+    const d = new Date(currentDate);
+    if (view === 'month') d.setMonth(d.getMonth() + dir);
+    else if (view === 'week') d.setDate(d.getDate() + dir * 7);
+    else d.setDate(d.getDate() + dir);
+    setCurrentDate(d);
+  };
+
+  const headerLabel = () => {
+    if (view === 'month') return `${MONTH_NAMES[currentDate.getMonth()]} de ${currentDate.getFullYear()}`;
+    if (view === 'week') {
+      const mon = getMonday(currentDate), sun = getSunday(currentDate);
+      if (mon.getMonth() === sun.getMonth()) return `${mon.getDate()} – ${sun.getDate()} de ${MONTH_NAMES[mon.getMonth()]} de ${mon.getFullYear()}`;
+      return `${mon.getDate()} ${MONTH_NAMES[mon.getMonth()].slice(0,3)} – ${sun.getDate()} ${MONTH_NAMES[sun.getMonth()].slice(0,3)} ${sun.getFullYear()}`;
+    }
+    return `${currentDate.getDate()} de ${MONTH_NAMES[currentDate.getMonth()]} de ${currentDate.getFullYear()}`;
+  };
+
+  // Days for week/day view
+  const viewDays = view === 'week'
+    ? Array.from({ length: 7 }, (_, i) => addDays(getMonday(currentDate), i))
+    : [currentDate];
+
+  const handleSlotClick = (date, time) => {
+    setEditingNote(null);
+    setNoteInitialDate(date);
+    setNoteInitialTime(time);
+    setNoteEditorOpen(true);
+  };
+
+  const handleItemClick = (item) => {
+    if (item.type === 'task') {
+      onEditTask(item);
+    } else {
+      setEditingNote(item);
+      setNoteEditorOpen(true);
+    }
+  };
+
+  const handleDayClick = (d) => {
+    setCurrentDate(d);
+    setView('day');
+  };
+
+  return (
+    <div className="flex-1 flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-2 pb-4">
+        <div className="flex items-center gap-3">
+          <button onClick={goToday}
+            className="px-4 py-2 text-xs font-bold text-gray-300 bg-surface-flat border border-border-subtle rounded-xl hover:bg-white/[0.06] transition-colors">
+            Hoje
+          </button>
+          <button onClick={() => navigate(-1)} className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg"><ChevronLeft size={18} /></button>
+          <button onClick={() => navigate(1)} className="p-1.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg"><ChevronRight size={18} /></button>
+          <h3 className="text-xl font-bold text-white ml-2">{headerLabel()}</h3>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => { setEditingNote(null); setNoteInitialDate(dateStr(currentDate)); setNoteInitialTime('09:00'); setNoteEditorOpen(true); }}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 text-blue-400 border border-blue-500/15 rounded-xl text-xs font-bold hover:bg-blue-500/15 transition-colors"
+          >
+            <Plus size={14} /> Nova Nota
+          </button>
+
+          {/* View selector */}
+          <div className="flex gap-0.5 p-0.5 bg-surface-flat rounded-xl border border-border-subtle">
+            {[
+              { id: 'day', label: 'Dia' },
+              { id: 'week', label: 'Semana' },
+              { id: 'month', label: 'Mês' },
+            ].map(v => (
+              <button
+                key={v.id}
+                onClick={() => setView(v.id)}
+                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all ${
+                  view === v.id ? 'bg-blue-500 text-white' : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {v.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* View Content */}
+      {view === 'month' ? (
+        <MonthView date={currentDate} items={allItems} onDayClick={handleDayClick} />
+      ) : (
+        <TimeGrid
+          days={viewDays}
+          items={allItems}
+          onSlotClick={handleSlotClick}
+          onItemClick={handleItemClick}
+        />
+      )}
+
+      {/* Note Editor */}
+      {noteEditorOpen && (
+        <NoteEditor
+          note={editingNote}
+          initialDate={noteInitialDate}
+          initialTime={noteInitialTime}
+          projectId={projectId ? parseInt(projectId) : null}
+          onSave={saveNote}
+          onDelete={deleteNote}
+          onClose={() => { setNoteEditorOpen(false); setEditingNote(null); }}
+        />
+      )}
     </div>
   );
 }
