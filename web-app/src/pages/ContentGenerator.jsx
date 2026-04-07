@@ -1,15 +1,15 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Sparkles, Lightbulb, FileCheck, Minus, Plus,
-  ChevronDown, FileText, Video, X, User,
+  ChevronDown, FileText, Video, X, User, ImagePlus,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSidebar } from '../contexts/SidebarContext';
 
 // ─── Tab config ───
 const TABS = [
-  { id: 'ideas', label: 'Ideias', icon: Lightbulb },
-  { id: 'developed', label: 'Desenvolvidos', icon: FileCheck },
+  { id: 'ideas', label: 'Ideias' },
+  { id: 'developed', label: 'Desenvolvidos' },
 ];
 
 const MIN_QTY = 1;
@@ -30,18 +30,35 @@ const MOCK_BASES = [
   { id: 'provocateur', label: 'Provocador' },
 ];
 
-// ─── Inline reference chip ───
+// ─── Inline reference chip (inside textarea flow) ───
 const RefChip = ({ analysis, onRemove }) => (
-  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 border border-primary/20 text-[12px] font-semibold text-primary mr-1 align-middle whitespace-nowrap select-none">
-    <Video size={12} strokeWidth={2} className="shrink-0 opacity-70" />
-    <span className="truncate max-w-[140px]">{analysis.title}</span>
+  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/[0.08] text-[12px] font-semibold text-gray-300 whitespace-nowrap select-none shrink-0">
+    <Video size={11} strokeWidth={2} className="shrink-0 text-primary/70" />
+    <span className="truncate max-w-[120px]">{analysis.title}</span>
     <button
       onClick={(e) => { e.stopPropagation(); onRemove(analysis.id); }}
-      className="ml-0.5 opacity-50 hover:opacity-100 transition-opacity"
+      className="opacity-40 hover:opacity-100 transition-opacity"
     >
-      <X size={11} strokeWidth={2.5} />
+      <X size={10} strokeWidth={2.5} />
     </button>
   </span>
+);
+
+// ─── Uploaded image thumbnail ───
+const ImageThumb = ({ file, onRemove }) => (
+  <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/[0.08] shrink-0 group">
+    <img
+      src={URL.createObjectURL(file)}
+      alt=""
+      className="w-full h-full object-cover"
+    />
+    <button
+      onClick={onRemove}
+      className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
+    >
+      <X size={12} strokeWidth={2.5} className="text-white" />
+    </button>
+  </div>
 );
 
 const ContentGenerator = () => {
@@ -58,19 +75,20 @@ const ContentGenerator = () => {
   const [toneOpen, setToneOpen] = useState(false);
   const [baseOpen, setBaseOpen] = useState(false);
   const [selectedRefs, setSelectedRefs] = useState([]);
+  const [uploadedImages, setUploadedImages] = useState([]);
 
   // @ mention state
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionQuery, setMentionQuery] = useState('');
   const [mentionIdx, setMentionIdx] = useState(0);
-  const [mentionAnchor, setMentionAnchor] = useState(null);
 
   const textareaRef = useRef(null);
   const toneRef = useRef(null);
   const baseRef = useRef(null);
   const mentionRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  // Placeholder tones — will be replaced by API calls
+  // Placeholder tones
   const tones = [
     { id: 'casual', label: 'Casual' },
     { id: 'professional', label: 'Profissional' },
@@ -122,11 +140,6 @@ const ContentGenerator = () => {
       setMentionQuery(atMatch[1]);
       setMentionOpen(true);
       setMentionIdx(0);
-
-      // Anchor position for popup
-      const el = e.target;
-      const rect = el.getBoundingClientRect();
-      setMentionAnchor({ bottom: rect.top, left: rect.left + 16 });
     } else {
       setMentionOpen(false);
     }
@@ -153,6 +166,20 @@ const ContentGenerator = () => {
     setSelectedRefs((prev) => prev.filter((r) => r.id !== id));
   }, []);
 
+  // ─── Image upload ───
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setUploadedImages((prev) => [...prev, ...files]);
+    }
+    // Reset input so same file can be re-selected
+    e.target.value = '';
+  };
+
+  const removeImage = (idx) => {
+    setUploadedImages((prev) => prev.filter((_, i) => i !== idx));
+  };
+
   // ─── Keyboard nav for @ popup ───
   const handleKeyDown = (e) => {
     if (mentionOpen && filteredAnalyses.length > 0) {
@@ -175,17 +202,7 @@ const ContentGenerator = () => {
 
     if (e.key === 'Enter' && !e.shiftKey && !mentionOpen) {
       e.preventDefault();
-      // Will trigger generate later
     }
-  };
-
-  // ─── Open @ popup from + button ───
-  const openMentionFromButton = () => {
-    setPrompt((prev) => prev + '@');
-    setMentionQuery('');
-    setMentionOpen(true);
-    setMentionIdx(0);
-    setTimeout(() => textareaRef.current?.focus(), 0);
   };
 
   const selectedToneLabel = tones.find(t => t.id === tone)?.label || 'Tom';
@@ -212,18 +229,30 @@ const ContentGenerator = () => {
           </div>
         </div>
 
-        <div className="tab-group rounded-2xl w-fit">
+        {/* Subtle text tabs */}
+        <div className="flex items-center gap-6">
           {TABS.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`tab-item rounded-xl ${activeTab === tab.id ? 'active' : ''}`}
+              className={`relative pb-2.5 text-[13px] font-semibold transition-colors duration-200 ${
+                activeTab === tab.id
+                  ? 'text-white'
+                  : 'text-gray-600 hover:text-gray-400'
+              }`}
             >
-              <tab.icon size={15} strokeWidth={1.8} />
               {tab.label}
+              {activeTab === tab.id && (
+                <motion.div
+                  layoutId="tab-underline"
+                  className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-full"
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                />
+              )}
             </button>
           ))}
         </div>
+        <div className="h-px bg-white/[0.04] -mx-8" />
       </div>
 
       {/* ═══════ CONTENT GRID ═══════ */}
@@ -263,38 +292,60 @@ const ContentGenerator = () => {
       </div>
 
       {/* ═══════ FLOATING BOTTOM PROMPT BAR ═══════ */}
-      <div className="shrink-0 flex justify-center px-6 pb-6">
-        <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-2xl px-5 pt-5 pb-4 shadow-[0_-8px_40px_rgba(0,0,0,0.35)]">
+      <div className="shrink-0 flex justify-center px-6 pb-7">
+        <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-8px_40px_rgba(0,0,0,0.35)]">
 
-          {/* Reference chips */}
-          {selectedRefs.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {selectedRefs.map((ref) => (
-                <RefChip key={ref.id} analysis={ref} onRemove={removeRef} />
+          {/* Uploaded images row */}
+          {uploadedImages.length > 0 && (
+            <div className="flex items-center gap-2 mb-3">
+              {uploadedImages.map((file, i) => (
+                <ImageThumb key={i} file={file} onRemove={() => removeImage(i)} />
               ))}
             </div>
           )}
 
-          {/* Textarea area with + button */}
-          <div className="relative flex items-start gap-3">
-            {/* + button for references */}
-            <button
-              onClick={openMentionFromButton}
-              className="shrink-0 mt-0.5 w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-white/[0.07] hover:border-white/[0.1] transition-all duration-200"
-              title="Adicionar referência (@)"
+          {/* Textarea with inline ref chips */}
+          <div className="relative">
+            <div
+              className="flex flex-wrap items-center gap-1.5 min-h-[28px] cursor-text"
+              onClick={() => textareaRef.current?.focus()}
             >
-              <Plus size={16} strokeWidth={2} />
-            </button>
+              {/* + button for image upload */}
+              <button
+                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                className="shrink-0 w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-white/[0.07] hover:border-white/[0.1] transition-all duration-200"
+                title="Anexar imagem de referência"
+              >
+                <ImagePlus size={15} strokeWidth={1.8} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageUpload}
+                className="hidden"
+              />
 
-            <textarea
-              ref={textareaRef}
-              value={prompt}
-              onChange={handlePromptChange}
-              onKeyDown={handleKeyDown}
-              placeholder="Descreva o conteúdo que deseja criar... Use @ para referenciar análises"
-              rows={1}
-              className="flex-1 bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed pt-1"
-            />
+              {/* Inline ref chips */}
+              {selectedRefs.map((ref) => (
+                <RefChip key={ref.id} analysis={ref} onRemove={removeRef} />
+              ))}
+
+              {/* Textarea */}
+              <textarea
+                ref={textareaRef}
+                value={prompt}
+                onChange={handlePromptChange}
+                onKeyDown={handleKeyDown}
+                placeholder={selectedRefs.length === 0
+                  ? 'Descreva o conteúdo que deseja criar... Use @ para referenciar análises'
+                  : 'Continue descrevendo... Use @ para mais referências'
+                }
+                rows={1}
+                className="flex-1 min-w-[180px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1"
+              />
+            </div>
 
             {/* @ Mention popup */}
             <AnimatePresence>
@@ -333,8 +384,8 @@ const ContentGenerator = () => {
             </AnimatePresence>
           </div>
 
-          {/* Controls row — no separator border */}
-          <div className="flex items-center gap-2 mt-4">
+          {/* Controls row */}
+          <div className="flex items-center gap-2 mt-5">
             {/* Base selector */}
             <div ref={baseRef} className="relative">
               <button
@@ -411,7 +462,7 @@ const ContentGenerator = () => {
               </AnimatePresence>
             </div>
 
-            {/* Quantity stepper — no inner borders */}
+            {/* Quantity stepper */}
             <div className="flex items-center gap-0 rounded-xl bg-white/[0.04] border border-white/[0.05]">
               <button
                 onClick={() => stepQuantity(-1)}
@@ -437,7 +488,7 @@ const ContentGenerator = () => {
 
             {/* Generate button */}
             <button
-              disabled={!prompt.trim()}
+              disabled={!prompt.trim() && selectedRefs.length === 0}
               className="btn-primary flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
             >
               <Sparkles size={15} strokeWidth={2} />
