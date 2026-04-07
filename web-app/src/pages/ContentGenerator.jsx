@@ -1,10 +1,17 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Sparkles, Lightbulb, FileCheck, Minus, Plus,
+  Lightbulb, FileCheck, Minus, Plus,
   ChevronDown, FileText, Video, X, User, ImagePlus,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useSidebar } from '../contexts/SidebarContext';
+
+// ─── Filled 4-point star icon ───
+const StarFilled = ({ size = 14, className = '' }) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" className={className}>
+    <path d="M12 0L15 9L24 12L15 15L12 24L9 15L0 12L9 9L12 0Z" />
+  </svg>
+);
 
 // ─── Tab config ───
 const TABS = [
@@ -30,7 +37,7 @@ const MOCK_BASES = [
   { id: 'provocateur', label: 'Provocador' },
 ];
 
-// ─── Inline reference chip (inside textarea flow) ───
+// ─── Inline reference chip ───
 const RefChip = ({ analysis, onRemove }) => (
   <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/[0.08] text-[12px] font-semibold text-gray-300 whitespace-nowrap select-none shrink-0">
     <Video size={11} strokeWidth={2} className="shrink-0 text-primary/70" />
@@ -47,11 +54,7 @@ const RefChip = ({ analysis, onRemove }) => (
 // ─── Uploaded image thumbnail ───
 const ImageThumb = ({ file, onRemove }) => (
   <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/[0.08] shrink-0 group">
-    <img
-      src={URL.createObjectURL(file)}
-      alt=""
-      className="w-full h-full object-cover"
-    />
+    <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
     <button
       onClick={onRemove}
       className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity"
@@ -67,14 +70,14 @@ const ContentGenerator = () => {
   // Tabs
   const [activeTab, setActiveTab] = useState('ideas');
 
-  // Prompt bar state
-  const [prompt, setPrompt] = useState('');
+  // Prompt bar — segments model: [{type:'text', value:''}, {type:'ref', analysis:{...}}, ...]
+  // Invariant: always starts & ends with a text segment, no adjacent text segments
+  const [segments, setSegments] = useState([{ type: 'text', value: '' }]);
   const [tone, setTone] = useState('');
   const [base, setBase] = useState('');
   const [quantity, setQuantity] = useState(5);
   const [toneOpen, setToneOpen] = useState(false);
   const [baseOpen, setBaseOpen] = useState(false);
-  const [selectedRefs, setSelectedRefs] = useState([]);
   const [uploadedImages, setUploadedImages] = useState([]);
 
   // @ mention state
@@ -87,6 +90,11 @@ const ContentGenerator = () => {
   const baseRef = useRef(null);
   const mentionRef = useRef(null);
   const fileInputRef = useRef(null);
+
+  // Derived
+  const selectedRefs = segments.filter(s => s.type === 'ref').map(s => s.analysis);
+  const activeText = segments[segments.length - 1].value;
+  const hasContent = segments.some(s => (s.type === 'text' && s.value.trim()) || s.type === 'ref');
 
   // Placeholder tones
   const tones = [
@@ -109,7 +117,7 @@ const ContentGenerator = () => {
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = Math.min(el.scrollHeight, 140) + 'px';
-  }, [prompt]);
+  }, [activeText]);
 
   // ─── Close dropdowns on outside click ───
   useEffect(() => {
@@ -127,15 +135,19 @@ const ContentGenerator = () => {
     setQuantity((prev) => Math.min(MAX_QTY, Math.max(MIN_QTY, prev + dir)));
   };
 
-  // ─── @ mention detection ───
-  const handlePromptChange = useCallback((e) => {
+  // ─── Handle text change in active (last) textarea ───
+  const handleTextChange = useCallback((e) => {
     const val = e.target.value;
-    setPrompt(val);
+    setSegments((prev) => {
+      const updated = [...prev];
+      updated[updated.length - 1] = { type: 'text', value: val };
+      return updated;
+    });
 
+    // @ mention detection
     const cursor = e.target.selectionStart;
     const before = val.slice(0, cursor);
     const atMatch = before.match(/@([^@\n]*)$/);
-
     if (atMatch) {
       setMentionQuery(atMatch[1]);
       setMentionOpen(true);
@@ -145,34 +157,52 @@ const ContentGenerator = () => {
     }
   }, []);
 
-  // ─── Insert reference from @ popup ───
+  // ─── Insert reference at @ position ───
   const insertRef = useCallback((analysis) => {
-    setSelectedRefs((prev) => [...prev, analysis]);
+    const cursor = textareaRef.current?.selectionStart || activeText.length;
+    const before = activeText.slice(0, cursor).replace(/@[^@\n]*$/, '');
+    const after = activeText.slice(cursor);
 
-    // Remove @query from prompt text
-    const cursor = textareaRef.current?.selectionStart || prompt.length;
-    const before = prompt.slice(0, cursor);
-    const after = prompt.slice(cursor);
-    const cleaned = before.replace(/@[^@\n]*$/, '');
-    setPrompt(cleaned + after);
+    setSegments((prev) => [
+      ...prev.slice(0, -1),
+      { type: 'text', value: before },
+      { type: 'ref', analysis },
+      { type: 'text', value: after },
+    ]);
 
     setMentionOpen(false);
     setMentionQuery('');
-    textareaRef.current?.focus();
-  }, [prompt]);
+    setTimeout(() => textareaRef.current?.focus(), 0);
+  }, [activeText]);
 
   // ─── Remove reference chip ───
-  const removeRef = useCallback((id) => {
-    setSelectedRefs((prev) => prev.filter((r) => r.id !== id));
+  const removeRef = useCallback((refId) => {
+    setSegments((prev) => {
+      const idx = prev.findIndex(s => s.type === 'ref' && s.analysis.id === refId);
+      if (idx === -1) return prev;
+
+      const prevSeg = prev[idx - 1];
+      const nextSeg = prev[idx + 1];
+      const mergedText = (prevSeg?.type === 'text' ? prevSeg.value : '') +
+                         (nextSeg?.type === 'text' ? nextSeg.value : '');
+
+      const startSlice = prevSeg?.type === 'text' ? idx - 1 : idx;
+      const endSlice = nextSeg?.type === 'text' ? idx + 2 : idx + 1;
+
+      const result = [
+        ...prev.slice(0, startSlice),
+        { type: 'text', value: mergedText },
+        ...prev.slice(endSlice),
+      ];
+
+      return result.length === 0 ? [{ type: 'text', value: '' }] : result;
+    });
   }, []);
 
   // ─── Image upload ───
   const handleImageUpload = (e) => {
     const files = Array.from(e.target.files || []);
-    if (files.length > 0) {
-      setUploadedImages((prev) => [...prev, ...files]);
-    }
-    // Reset input so same file can be re-selected
+    if (files.length > 0) setUploadedImages((prev) => [...prev, ...files]);
     e.target.value = '';
   };
 
@@ -199,7 +229,6 @@ const ContentGenerator = () => {
         return;
       }
     }
-
     if (e.key === 'Enter' && !e.shiftKey && !mentionOpen) {
       e.preventDefault();
     }
@@ -213,23 +242,8 @@ const ContentGenerator = () => {
       className="flex flex-col h-screen transition-all duration-300"
       style={{ marginLeft: collapsed ? 72 : 260 }}
     >
-      {/* ═══════ HEADER ═══════ */}
-      <div className="shrink-0 px-8 pt-8 pb-2">
-        <div className="flex items-center gap-4 mb-6">
-          <div className="w-11 h-11 bg-primary/15 rounded-2xl flex items-center justify-center border border-primary/20 glow-primary shrink-0">
-            <Sparkles size={20} strokeWidth={1.5} className="text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight leading-none">
-              Gerador de Conteúdo
-            </h1>
-            <p className="text-[13px] text-gray-500 mt-1 font-medium">
-              Gere ideias e roteiros com IA a partir das suas análises
-            </p>
-          </div>
-        </div>
-
-        {/* Subtle text tabs */}
+      {/* ═══════ TABS (top of page) ═══════ */}
+      <div className="shrink-0 px-8 pt-6">
         <div className="flex items-center gap-6">
           {TABS.map((tab) => (
             <button
@@ -304,7 +318,7 @@ const ContentGenerator = () => {
             </div>
           )}
 
-          {/* Textarea with inline ref chips */}
+          {/* Textarea with inline ref chips at correct positions */}
           <div className="relative">
             <div
               className="flex flex-wrap items-center gap-1.5 min-h-[28px] cursor-text"
@@ -327,24 +341,39 @@ const ContentGenerator = () => {
                 className="hidden"
               />
 
-              {/* Inline ref chips */}
-              {selectedRefs.map((ref) => (
-                <RefChip key={ref.id} analysis={ref} onRemove={removeRef} />
-              ))}
-
-              {/* Textarea */}
-              <textarea
-                ref={textareaRef}
-                value={prompt}
-                onChange={handlePromptChange}
-                onKeyDown={handleKeyDown}
-                placeholder={selectedRefs.length === 0
-                  ? 'Descreva o conteúdo que deseja criar... Use @ para referenciar análises'
-                  : 'Continue descrevendo... Use @ para mais referências'
+              {/* Render segments in order: static text → chip → ... → active textarea */}
+              {segments.map((seg, i) => {
+                if (seg.type === 'ref') {
+                  return <RefChip key={`ref-${seg.analysis.id}`} analysis={seg.analysis} onRemove={removeRef} />;
                 }
-                rows={1}
-                className="flex-1 min-w-[180px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1"
-              />
+
+                // Last text segment → active textarea
+                if (i === segments.length - 1) {
+                  return (
+                    <textarea
+                      key="active-input"
+                      ref={textareaRef}
+                      value={seg.value}
+                      onChange={handleTextChange}
+                      onKeyDown={handleKeyDown}
+                      placeholder={segments.length === 1 && !seg.value
+                        ? 'Descreva o conteúdo que deseja criar... Use @ para referenciar análises'
+                        : ''
+                      }
+                      rows={1}
+                      className="flex-1 min-w-[120px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1"
+                    />
+                  );
+                }
+
+                // Previous text segments → static spans
+                if (!seg.value) return null;
+                return (
+                  <span key={`text-${i}`} className="text-[14px] text-white whitespace-pre-wrap leading-relaxed py-1">
+                    {seg.value}
+                  </span>
+                );
+              })}
             </div>
 
             {/* @ Mention popup */}
@@ -483,15 +512,14 @@ const ContentGenerator = () => {
               </button>
             </div>
 
-            {/* Spacer */}
             <div className="flex-1" />
 
             {/* Generate button */}
             <button
-              disabled={!prompt.trim() && selectedRefs.length === 0}
+              disabled={!hasContent}
               className="btn-primary flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none"
             >
-              <Sparkles size={15} strokeWidth={2} />
+              <StarFilled size={14} />
               Gerar
             </button>
           </div>
