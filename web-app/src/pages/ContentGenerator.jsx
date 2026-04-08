@@ -101,8 +101,12 @@ const ContentGenerator = () => {
   const [toneTaskId, setToneTaskId] = useState(null);
   const [toneViewingId, setToneViewingId] = useState(null);
 
-  // Grid size (3-6 cols)
-  const [gridCols, setGridCols] = useState(4);
+  // Grid size (4-6 cols) — fewer cols = bigger cards + bigger text
+  const [gridCols, setGridCols] = useState(5);
+
+  // Scale text sizes based on grid: 4 cols = large, 6 cols = compact
+  const cardScale = { 4: { label: '13px', title: '19px', summary: '15px', pad: 'p-6', clampTitle: 'line-clamp-4', clampSum: 'line-clamp-5' }, 5: { label: '11px', title: '15px', summary: '13px', pad: 'p-5', clampTitle: 'line-clamp-3', clampSum: 'line-clamp-4' }, 6: { label: '10px', title: '13px', summary: '11px', pad: 'p-4', clampTitle: 'line-clamp-3', clampSum: 'line-clamp-3' } };
+  const cs = cardScale[gridCols] || cardScale[5];
 
   // Generation state
   const [generating, setGenerating] = useState(false);
@@ -478,13 +482,13 @@ const ContentGenerator = () => {
             {activeTab === 'ideas' && generating && (
               <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
                 {Array.from({ length: quantity }).map((_, i) => (
-                  <div key={i} className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5 animate-pulse flex flex-col gap-2.5" style={{ animationDelay: `${i * 40}ms` }}>
+                  <div key={i} className={`bg-white/[0.03] border border-white/[0.08] rounded-2xl ${cs.pad} animate-pulse flex flex-col gap-2.5`} style={{ animationDelay: `${i * 40}ms` }}>
                     <div className="h-3 bg-white/[0.04] rounded w-16" />
-                    <div className="h-4 bg-white/[0.06] rounded w-full" />
-                    <div className="h-4 bg-white/[0.05] rounded w-3/4" />
+                    <div className="h-5 bg-white/[0.06] rounded w-full" />
+                    <div className="h-5 bg-white/[0.05] rounded w-3/4" />
                     <div className="mt-2 pt-2 space-y-2">
-                      <div className="h-3 bg-white/[0.03] rounded w-full" />
-                      <div className="h-3 bg-white/[0.03] rounded w-5/6" />
+                      <div className="h-3.5 bg-white/[0.03] rounded w-full" />
+                      <div className="h-3.5 bg-white/[0.03] rounded w-5/6" />
                     </div>
                   </div>
                 ))}
@@ -503,7 +507,7 @@ const ContentGenerator = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.25, delay: i * 0.03 }}
                       onClick={() => toggleIdeaSelect(idea.id)}
-                      className={`relative p-5 rounded-2xl border cursor-pointer transition-all duration-300 group flex flex-col ${
+                      className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-all duration-300 group flex flex-col ${
                         isSelected
                           ? 'bg-primary/5 border-primary/30'
                           : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
@@ -514,10 +518,10 @@ const ContentGenerator = () => {
                       }`}>
                         <Check size={12} strokeWidth={3} />
                       </div>
-                      <p className="text-[11px] font-bold uppercase tracking-widest text-white/25 mb-2">Ideia {String(i + 1).padStart(2, '0')}</p>
-                      <p className="text-[15px] font-bold text-white leading-snug uppercase tracking-wide pr-6 line-clamp-3">{idea.title}</p>
+                      <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>Ideia {String(i + 1).padStart(2, '0')}</p>
+                      <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-6 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>{idea.title}</p>
                       {idea.summary && (
-                        <p className="text-[13px] text-white/40 leading-relaxed mt-3 line-clamp-4">{idea.summary}</p>
+                        <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>{idea.summary}</p>
                       )}
                     </motion.div>
                   );
