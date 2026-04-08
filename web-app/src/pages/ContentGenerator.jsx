@@ -77,42 +77,15 @@ const IdeaCard = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, s
         : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
     }`}
   >
-    {/* Selection checkbox */}
-    <div className={`absolute top-3 right-3 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
-      isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
-    }`}>
-      <Check size={12} strokeWidth={3} />
-    </div>
-
-    <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
-      Ideia {String(index + 1).padStart(2, '0')}
-    </p>
-    <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-6 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
-      {idea.title}
-    </p>
-    {idea.summary && (
-      <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>
-        {idea.summary}
-      </p>
-    )}
-
-    {/* Footer: date + bookmark */}
-    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.04]">
-      {showDate && idea.created_at ? (
-        <span className="text-[10px] text-white/30 font-mono flex items-center gap-1">
-          <Clock size={10} strokeWidth={1.5} />
-          {formatDateHeader(idea.created_at)}
-        </span>
-      ) : <span />}
-      <motion.button
+    {/* Top-right corner: heart + selection checkbox side by side */}
+    <div className="absolute top-3 right-3 flex items-center gap-2">
+      <button
         onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
-        whileTap={{ scale: 1.2 }}
-        transition={{ duration: 0.1 }}
-        className={`flex items-center justify-center transition-colors ${
-          idea.is_saved
-            ? 'p-1.5 rounded-full bg-[#2E0B15] border border-[#38161F]'
-            : ''
-        }`}
+        className="w-7 h-7 flex items-center justify-center rounded-full transition-transform duration-200 active:scale-125 overflow-visible"
+        style={{
+          backgroundColor: idea.is_saved ? '#2E0B15' : 'transparent',
+          border: idea.is_saved ? '1px solid #38161F' : '1px solid transparent',
+        }}
         title={idea.is_saved ? 'Remover dos favoritos' : 'Favoritar'}
       >
         <Heart
@@ -121,8 +94,32 @@ const IdeaCard = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, s
           fill={idea.is_saved ? '#E2272F' : 'none'}
           stroke={idea.is_saved ? '#E2272F' : '#ffffff'}
         />
-      </motion.button>
+      </button>
+      <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+        isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
+      }`}>
+        <Check size={12} strokeWidth={3} />
+      </div>
     </div>
+
+    <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
+      Ideia {String(index + 1).padStart(2, '0')}
+    </p>
+    <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-20 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
+      {idea.title}
+    </p>
+    {idea.summary && (
+      <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>
+        {idea.summary}
+      </p>
+    )}
+
+    {showDate && idea.created_at && (
+      <span className="text-[10px] text-white/30 font-mono flex items-center gap-1 mt-3">
+        <Clock size={10} strokeWidth={1.5} />
+        {formatDateHeader(idea.created_at)}
+      </span>
+    )}
   </motion.div>
 );
 
