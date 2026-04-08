@@ -659,7 +659,7 @@ const NoteEditor = ({ note }) => {
     return () => editor.removeEventListener('click', handleClick);
   }, [note.id, findNoteByTitle, setActiveNoteId]);
 
-  // Auto-save
+  // Auto-save (300ms debounce)
   const triggerAutoSave = useCallback(() => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
@@ -668,7 +668,7 @@ const NoteEditor = ({ note }) => {
         contentRef.current = htmlToMd(cleanEditorHtml(editorRef.current));
       }
       updateNote(note.id, { title: titleRef.current?.value || title, content: contentRef.current });
-    }, 600);
+    }, 300);
   }, [note.id, title, updateNote]);
 
   useEffect(() => () => { if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current); }, []);
@@ -813,7 +813,7 @@ const NoteEditor = ({ note }) => {
       const url = resolveThumbnailUrl(res.data.url);
       editorRef.current?.focus();
       document.execCommand('insertHTML', false,
-        `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
+        `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" loading="lazy" decoding="async" class="uploaded-img" /></p><p><br></p>`
       );
       syncContent();
     } catch (err) {
@@ -1321,7 +1321,7 @@ const NoteEditor = ({ note }) => {
             const url = resolveThumbnailUrl(res.data.url);
             editorRef.current?.focus();
             document.execCommand('insertHTML', false,
-              `<p><img src="${url}" alt="Imagem colada" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
+              `<p><img src="${url}" alt="Imagem colada" style="max-width:100%;border-radius:12px;cursor:pointer;" loading="lazy" decoding="async" class="uploaded-img" /></p><p><br></p>`
             );
             syncContent();
           } catch (err) {
@@ -1356,7 +1356,7 @@ const NoteEditor = ({ note }) => {
         const url = resolveThumbnailUrl(res.data.url);
         editorRef.current?.focus();
         document.execCommand('insertHTML', false,
-          `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
+          `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" loading="lazy" decoding="async" class="uploaded-img" /></p><p><br></p>`
         );
         syncContent();
       } catch (err) {

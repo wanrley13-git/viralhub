@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import {
   Lightbulb, FileCheck, FileText, Minus, Plus, ChevronDown, ChevronUp, Video, X, ImagePlus,
   BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
@@ -45,7 +45,7 @@ const RefChip = ({ analysis, onRemove }) => (
 
 const ImageThumb = ({ file, onRemove }) => (
   <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/[0.08] shrink-0 group">
-    <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
+    <img src={URL.createObjectURL(file)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
     <button onClick={onRemove} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
       <X size={12} strokeWidth={2.5} className="text-white" />
     </button>
@@ -65,14 +65,18 @@ const formatDateHeader = (iso) => {
 };
 
 // ─── Idea card component (reused across tabs) ───
-const IdeaCard = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, showDate = false, bgColor = null }) => (
+// Wrapped in React.memo so cards only re-render when their OWN props
+// change (idea data, selected flag, card scale) — not on every keystroke
+// in the prompt bar. The parent passes stable useCallback'd handlers
+// so callback identity doesn't invalidate the memo.
+const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, showDate = false, bgColor = null }) => (
   <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.5) }}
+    transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
     onClick={() => onToggleSelect(idea.id)}
     style={bgColor && !isSelected ? { backgroundColor: bgColor } : undefined}
-    className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-all duration-300 group flex flex-col ${
+    className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-colors duration-200 group flex flex-col ${
       isSelected
         ? 'bg-primary/5 border-primary/30'
         : bgColor
@@ -125,6 +129,7 @@ const IdeaCard = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, s
     )}
   </motion.div>
 );
+const IdeaCard = memo(IdeaCardBase);
 
 const ContentGenerator = () => {
   const { collapsed } = useSidebar();
@@ -301,8 +306,10 @@ const ContentGenerator = () => {
     else if (activeTab === 'developed') fetchDeveloped();
   }, [activeTab]);
 
-  // Toggle bookmark/save on a specific idea
-  const toggleSaveIdea = async (ideaId) => {
+  // Toggle bookmark/save on a specific idea.
+  // useCallback keeps the reference stable so memo'd IdeaCards don't
+  // invalidate on unrelated parent re-renders.
+  const toggleSaveIdea = useCallback(async (ideaId) => {
     try {
       const token = await getAccessToken();
       const headers = { Authorization: `Bearer ${token}` };
@@ -319,9 +326,6 @@ const ContentGenerator = () => {
         }
       }
       const updated = res.data;
-      // Update the is_saved flag across all local lists — never remove rows.
-      // Cards only disappear from Favoritos when the user leaves and returns
-      // (which triggers a refetch filtered by is_saved=1).
       const updater = (list) => list.map(i => i.id === ideaId ? { ...i, is_saved: updated.is_saved } : i);
       setIdeas(updater);
       setHistoryIdeas(updater);
@@ -330,7 +334,7 @@ const ContentGenerator = () => {
       setErrorToast('Erro ao salvar ideia.');
       setTimeout(() => setErrorToast(null), 4000);
     }
-  };
+  }, []);
 
   const fetchAnalyses = async () => {
     try {
@@ -571,9 +575,11 @@ const ContentGenerator = () => {
     }
   };
 
-  const toggleIdeaSelect = (id) => {
+  // Stable reference so memo'd IdeaCard children don't re-render on every
+  // keystroke in the prompt bar.
+  const toggleIdeaSelect = useCallback((id) => {
     setSelectedIdeas(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
-  };
+  }, []);
 
   // ─── Develop selected ideas into full content ───
   const handleDevelop = async () => {
@@ -1111,10 +1117,9 @@ const ContentGenerator = () => {
                   return (
                     <motion.div
                       key={idea.id}
-                      layout
                       initial={{ opacity: 0, y: 16 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.35, delay: Math.min(i * 0.03, 0.3), ease: 'easeOut' }}
+                      transition={{ duration: 0.2, delay: Math.min(i * 0.02, 0.2), ease: 'easeOut' }}
                       onClick={() => !isDeveloping && !hasFailed && setDevelopedViewing(idea)}
                       style={!hasFailed ? { backgroundColor: '#121E13' } : undefined}
                       className={`relative ${cs.pad} rounded-2xl border transition-all duration-300 flex flex-col ${
@@ -1350,7 +1355,7 @@ const ContentGenerator = () => {
                     {filteredAnalyses.map((a, i) => (
                       <button key={a.id} onClick={() => insertRef(a)} className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-left transition-colors ${i === mentionIdx ? 'bg-white/[0.06] text-white' : 'text-gray-400 hover:bg-white/[0.04]'}`}>
                         <div className="w-9 h-9 rounded-lg bg-white/[0.06] border border-white/[0.04] flex items-center justify-center shrink-0 overflow-hidden">
-                          {a.thumbnail_url ? <img src={resolveThumbnailUrl(a.thumbnail_url)} alt="" className="w-full h-full object-cover" /> : <Video size={14} strokeWidth={1.5} className="text-gray-500" />}
+                          {a.thumbnail_url ? <img src={resolveThumbnailUrl(a.thumbnail_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" /> : <Video size={14} strokeWidth={1.5} className="text-gray-500" />}
                         </div>
                         <span className="text-[13px] font-medium truncate">{a.title}</span>
                       </button>
@@ -1511,7 +1516,7 @@ const ContentGenerator = () => {
                             <div className="flex gap-1 shrink-0">
                               {thumbs.slice(0, 3).map((a, i) => (
                                 <div key={i} className="w-10 h-10 rounded-lg overflow-hidden bg-white/[0.04]">
-                                  <img src={resolveThumbnailUrl(a.thumbnail_url)} alt="" className="w-full h-full object-cover opacity-70" />
+                                  <img src={resolveThumbnailUrl(a.thumbnail_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover opacity-70" />
                                 </div>
                               ))}
                               {thumbs.length === 0 && <div className="w-10 h-10 rounded-lg bg-white/[0.04] flex items-center justify-center"><BookOpen size={14} strokeWidth={1.5} className="text-gray-700" /></div>}
@@ -1599,7 +1604,7 @@ const ContentGenerator = () => {
                       return (
                         <button key={a.id} type="button" onClick={() => toggleKBSelect(a.id)}
                           className={`relative rounded-xl overflow-hidden border-2 transition-all aspect-square group ${isSel ? 'border-primary shadow-glow-sm scale-[1.02]' : 'border-transparent hover:border-white/[0.08]'}`}>
-                          {a.thumbnail_url ? <img src={resolveThumbnailUrl(a.thumbnail_url)} alt={a.title} className={`w-full h-full object-cover transition-all ${isSel ? 'opacity-100' : 'opacity-40 group-hover:opacity-70'}`} />
+                          {a.thumbnail_url ? <img src={resolveThumbnailUrl(a.thumbnail_url)} alt={a.title} loading="lazy" decoding="async" className={`w-full h-full object-cover transition-all ${isSel ? 'opacity-100' : 'opacity-40 group-hover:opacity-70'}`} />
                             : <div className="w-full h-full bg-white/[0.03] flex items-center justify-center"><FileVideo size={20} strokeWidth={1.5} className="text-gray-700" /></div>}
                           <div className={`absolute top-2 right-2 w-6 h-6 rounded-lg flex items-center justify-center transition-all ${isSel ? 'bg-primary text-white' : 'bg-black/50 text-white/30 opacity-0 group-hover:opacity-100'}`}><Check size={14} strokeWidth={2.5} /></div>
                           <div className="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80 to-transparent"><p className="text-[10px] text-white truncate">{a.title}</p></div>
@@ -1690,7 +1695,7 @@ const ContentGenerator = () => {
                           <div key={t.id} onClick={() => { setSelectedToneId(t.id); setConfigOpen(false); }}
                             className={`p-4 rounded-2xl border transition-all flex items-center gap-4 group cursor-pointer ${isActive ? 'bg-primary/5 border-primary/20' : 'bg-[#111113] border-white/[0.06] hover:border-white/[0.1]'}`}>
                             <div className="w-10 h-10 rounded-lg overflow-hidden bg-white/[0.04] shrink-0 flex items-center justify-center">
-                              {t.thumbnail_url ? <img src={resolveThumbnailUrl(t.thumbnail_url)} alt="" className="w-full h-full object-cover opacity-70" /> : <Mic size={14} strokeWidth={1.5} className="text-gray-700" />}
+                              {t.thumbnail_url ? <img src={resolveThumbnailUrl(t.thumbnail_url)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover opacity-70" /> : <Mic size={14} strokeWidth={1.5} className="text-gray-700" />}
                             </div>
                             <div className="flex-1 min-w-0">
                               <h4 className="text-sm font-bold text-white truncate">{t.name}</h4>

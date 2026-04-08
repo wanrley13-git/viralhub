@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { getAccessToken } from '../supabaseClient';
 
@@ -23,20 +23,26 @@ export const ProjectsProvider = ({ children }) => {
     }
   }, []);
 
-  const addProject = (project) => {
+  const addProject = useCallback((project) => {
     setProjects(prev => [project, ...prev]);
-  };
+  }, []);
 
-  const removeProject = (id) => {
+  const removeProject = useCallback((id) => {
     setProjects(prev => prev.filter(p => p.id !== id));
-  };
+  }, []);
 
-  const updateProject = (id, updates) => {
+  const updateProject = useCallback((id, updates) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
-  };
+  }, []);
+
+  // Memoise so consumers re-render only when the fields they read change.
+  const value = useMemo(
+    () => ({ projects, loaded, fetchProjects, addProject, removeProject, updateProject }),
+    [projects, loaded, fetchProjects, addProject, removeProject, updateProject]
+  );
 
   return (
-    <ProjectsContext.Provider value={{ projects, loaded, fetchProjects, addProject, removeProject, updateProject }}>
+    <ProjectsContext.Provider value={value}>
       {children}
     </ProjectsContext.Provider>
   );

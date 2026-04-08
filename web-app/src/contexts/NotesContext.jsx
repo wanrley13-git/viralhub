@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback, useEffect } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
 
 const NotesContext = createContext();
 
@@ -239,36 +239,45 @@ export const NotesProvider = ({ children }) => {
     return data.notes.find((n) => n.title.toLowerCase().trim() === lower) || null;
   }, [data.notes]);
 
+  // Memoise the value object. Without this, a new object is created on
+  // every render of NotesProvider and every consumer component
+  // (every visible note card, the sidebar, every folder row) re-renders.
+  const value = useMemo(() => ({
+    folders: data.folders,
+    notes: data.notes,
+    activeNote,
+    activeNoteId,
+    setActiveNoteId,
+    selectedFolderId,
+    setSelectedFolderId,
+    renamingFolderId,
+    setRenamingFolderId,
+    searchTerm,
+    setSearchTerm,
+    createFolder,
+    renameFolder,
+    setFolderIcon,
+    deleteFolder,
+    moveFolder,
+    createNote,
+    updateNote,
+    deleteNote,
+    moveNote,
+    reorderNote,
+    getChildFolders,
+    getFolderNotes,
+    searchNotes,
+    findNoteByTitle,
+  }), [
+    data.folders, data.notes, activeNote, activeNoteId, selectedFolderId,
+    renamingFolderId, searchTerm,
+    createFolder, renameFolder, setFolderIcon, deleteFolder, moveFolder,
+    createNote, updateNote, deleteNote, moveNote, reorderNote,
+    getChildFolders, getFolderNotes, searchNotes, findNoteByTitle,
+  ]);
+
   return (
-    <NotesContext.Provider
-      value={{
-        folders: data.folders,
-        notes: data.notes,
-        activeNote,
-        activeNoteId,
-        setActiveNoteId,
-        selectedFolderId,
-        setSelectedFolderId,
-        renamingFolderId,
-        setRenamingFolderId,
-        searchTerm,
-        setSearchTerm,
-        createFolder,
-        renameFolder,
-        setFolderIcon,
-        deleteFolder,
-        moveFolder,
-        createNote,
-        updateNote,
-        deleteNote,
-        moveNote,
-        reorderNote,
-        getChildFolders,
-        getFolderNotes,
-        searchNotes,
-        findNoteByTitle,
-      }}
-    >
+    <NotesContext.Provider value={value}>
       {children}
     </NotesContext.Provider>
   );

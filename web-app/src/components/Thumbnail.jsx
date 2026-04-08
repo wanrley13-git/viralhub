@@ -32,6 +32,8 @@ export default function Thumbnail({ url, alt = '', className = '', iconSize = 24
     <img
       src={src}
       alt={alt}
+      loading="lazy"
+      decoding="async"
       className={className}
       onError={() => setFailed(true)}
     />

@@ -151,7 +151,7 @@ const ProfileSection = ({ toast }) => {
         <div className="relative group">
           <div className="w-[100px] h-[100px] rounded-[28px] overflow-hidden border-2 border-border-subtle group-hover:border-primary/30 transition-all duration-300 shadow-card">
             {avatarPreview ? (
-              <img src={avatarPreview} alt="Avatar" className="w-full h-full object-cover" />
+              <img src={avatarPreview} alt="Avatar" loading="lazy" decoding="async" className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
                 <span className="text-2xl font-black text-primary/70 tracking-tight">{getInitials()}</span>

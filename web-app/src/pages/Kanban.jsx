@@ -559,7 +559,7 @@ const BoardView = ({ projectId, collapsed }) => {
                   className="w-full max-w-md rounded-2xl overflow-hidden border border-border-subtle mb-6 cursor-zoom-in"
                   onClick={() => setLightboxSrc(resolveThumbnailUrl(previewTask.thumbnail_url))}
                 >
-                  <img src={resolveThumbnailUrl(previewTask.thumbnail_url)} alt="" className="w-full object-cover" />
+                  <img src={resolveThumbnailUrl(previewTask.thumbnail_url)} alt="" loading="lazy" decoding="async" className="w-full object-cover" />
                 </div>
               )}
               {previewTask.content_md ? (

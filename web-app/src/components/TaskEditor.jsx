@@ -201,7 +201,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
     if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
     autoSaveTimerRef.current = setTimeout(() => {
       doSave();
-    }, 800);
+    }, 300);
   }, []);
 
   // Clean up timer on unmount
@@ -414,7 +414,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
       const url = resolveThumbnailUrl(res.data.url);
       editorRef.current?.focus();
       document.execCommand('insertHTML', false,
-        `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
+        `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" loading="lazy" decoding="async" class="uploaded-img" /></p><p><br></p>`
       );
       syncContent();
     } catch (err) {
@@ -850,7 +850,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
             const url = resolveThumbnailUrl(res.data.url);
             editorRef.current?.focus();
             document.execCommand('insertHTML', false,
-              `<p><img src="${url}" alt="Imagem colada" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
+              `<p><img src="${url}" alt="Imagem colada" style="max-width:100%;border-radius:12px;cursor:pointer;" loading="lazy" decoding="async" class="uploaded-img" /></p><p><br></p>`
             );
             syncContent();
           } catch (err) {
@@ -891,7 +891,7 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
         const url = resolveThumbnailUrl(res.data.url);
         editorRef.current?.focus();
         document.execCommand('insertHTML', false,
-          `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" class="uploaded-img" /></p><p><br></p>`
+          `<p><img src="${url}" alt="${file.name}" style="max-width:100%;border-radius:12px;cursor:pointer;" loading="lazy" decoding="async" class="uploaded-img" /></p><p><br></p>`
         );
         syncContent();
       } catch (err) {

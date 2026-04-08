@@ -53,9 +53,19 @@ const Sidebar = () => {
     setKanbanOpen(isKanbanActive);
   }, [location.pathname]);
 
+  // Fetch projects once on mount, and again only when entering a kanban
+  // route (where fresh data actually matters). Previously this was running
+  // on every route change which caused a fetch and a full sidebar
+  // re-render on every click.
   useEffect(() => {
     fetchProjects();
-  }, [location.pathname]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    if (isKanbanActive) fetchProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isKanbanActive]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
