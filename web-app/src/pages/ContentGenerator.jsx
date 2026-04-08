@@ -3,6 +3,7 @@ import {
   Lightbulb, FileCheck, Minus, Plus, ChevronDown, Video, X, ImagePlus,
   BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
+  LayoutGrid, Grid3x3,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -99,6 +100,9 @@ const ContentGenerator = () => {
   const [toneLogs, setToneLogs] = useState([]);
   const [toneTaskId, setToneTaskId] = useState(null);
   const [toneViewingId, setToneViewingId] = useState(null);
+
+  // Grid size (3-6 cols)
+  const [gridCols, setGridCols] = useState(4);
 
   // Generation state
   const [generating, setGenerating] = useState(false);
@@ -421,7 +425,7 @@ const ContentGenerator = () => {
 
   return (
     <div className="flex flex-col h-screen transition-all duration-300" style={{ marginLeft: collapsed ? 72 : 260 }}>
-      {/* ═══ TABS ═══ */}
+      {/* ═══ TABS + CONTROLS ═══ */}
       <div className="shrink-0 px-8 pt-6">
         <div className="flex items-center gap-6">
           {TABS.map(tab => (
@@ -430,6 +434,37 @@ const ContentGenerator = () => {
               {activeTab === tab.id && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-full" transition={{ type: 'spring', stiffness: 400, damping: 30 }} />}
             </button>
           ))}
+
+          <div className="flex-1" />
+
+          {/* Develop button */}
+          <AnimatePresence>
+            {selectedIdeas.length > 0 && (
+              <motion.button
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                className="btn-primary flex items-center gap-2 px-4 py-1.5 rounded-xl text-[12px] font-bold mr-4"
+              >
+                <FileCheck size={13} strokeWidth={2} />
+                Desenvolver {selectedIdeas.length} selecionado{selectedIdeas.length > 1 ? 's' : ''}
+              </motion.button>
+            )}
+          </AnimatePresence>
+
+          {/* Grid size slider */}
+          <div className="flex items-center gap-2 pb-2">
+            <LayoutGrid size={14} strokeWidth={1.5} className="text-gray-600" />
+            <input
+              type="range"
+              min={3}
+              max={6}
+              value={gridCols}
+              onChange={(e) => setGridCols(Number(e.target.value))}
+              className="w-20 h-1 appearance-none bg-white/[0.08] rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gray-400 [&::-webkit-slider-thumb]:hover:bg-white [&::-webkit-slider-thumb]:transition-colors"
+            />
+            <Grid3x3 size={14} strokeWidth={1.5} className="text-gray-600" />
+          </div>
         </div>
         <div className="h-px bg-white/[0.04] -mx-8" />
       </div>
@@ -441,15 +476,15 @@ const ContentGenerator = () => {
 
             {/* Loading skeleton */}
             {activeTab === 'ideas' && generating && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="gap-3 transition-all duration-300" style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
                 {Array.from({ length: quantity }).map((_, i) => (
-                  <div key={i} className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 animate-pulse flex flex-col gap-2" style={{ animationDelay: `${i * 40}ms` }}>
-                    <div className="h-2.5 bg-white/[0.04] rounded w-16" />
-                    <div className="h-3.5 bg-white/[0.06] rounded w-full" />
-                    <div className="h-3.5 bg-white/[0.05] rounded w-3/4" />
-                    <div className="mt-auto pt-2 space-y-1.5">
-                      <div className="h-2.5 bg-white/[0.03] rounded w-full" />
-                      <div className="h-2.5 bg-white/[0.03] rounded w-5/6" />
+                  <div key={i} className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5 animate-pulse flex flex-col gap-2.5" style={{ animationDelay: `${i * 40}ms` }}>
+                    <div className="h-3 bg-white/[0.04] rounded w-16" />
+                    <div className="h-4 bg-white/[0.06] rounded w-full" />
+                    <div className="h-4 bg-white/[0.05] rounded w-3/4" />
+                    <div className="mt-2 pt-2 space-y-2">
+                      <div className="h-3 bg-white/[0.03] rounded w-full" />
+                      <div className="h-3 bg-white/[0.03] rounded w-5/6" />
                     </div>
                   </div>
                 ))}
@@ -458,7 +493,7 @@ const ContentGenerator = () => {
 
             {/* Ideas cards */}
             {activeTab === 'ideas' && !generating && ideas.length > 0 && (
-              <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="gap-3 transition-all duration-300" style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
                 {ideas.map((idea, i) => {
                   const isSelected = selectedIdeas.includes(idea.id);
                   return (
@@ -468,21 +503,21 @@ const ContentGenerator = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.25, delay: i * 0.03 }}
                       onClick={() => toggleIdeaSelect(idea.id)}
-                      className={`relative p-4 rounded-2xl border cursor-pointer transition-colors duration-300 group flex flex-col ${
+                      className={`relative p-5 rounded-2xl border cursor-pointer transition-all duration-300 group flex flex-col ${
                         isSelected
                           ? 'bg-primary/5 border-primary/30'
                           : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
                       }`}
                     >
-                      <div className={`absolute top-2.5 right-2.5 w-4.5 h-4.5 rounded flex items-center justify-center transition-all ${
+                      <div className={`absolute top-3 right-3 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
                         isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
                       }`}>
-                        <Check size={11} strokeWidth={3} />
+                        <Check size={12} strokeWidth={3} />
                       </div>
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-1.5">Ideia {String(i + 1).padStart(2, '0')}</p>
-                      <p className="text-[13px] lg:text-[14px] font-bold text-white leading-snug uppercase tracking-wide pr-5 line-clamp-3">{idea.title}</p>
+                      <p className="text-[11px] font-bold uppercase tracking-widest text-white/25 mb-2">Ideia {String(i + 1).padStart(2, '0')}</p>
+                      <p className="text-[15px] font-bold text-white leading-snug uppercase tracking-wide pr-6 line-clamp-3">{idea.title}</p>
                       {idea.summary && (
-                        <p className="text-[11px] lg:text-[12px] text-white/40 leading-relaxed mt-2.5 line-clamp-3">{idea.summary}</p>
+                        <p className="text-[13px] text-white/40 leading-relaxed mt-3 line-clamp-4">{idea.summary}</p>
                       )}
                     </motion.div>
                   );
@@ -519,23 +554,6 @@ const ContentGenerator = () => {
           </motion.div>
         </AnimatePresence>
 
-        {/* Floating action bar for selected ideas */}
-        <AnimatePresence>
-          {selectedIdeas.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="fixed bottom-32 left-1/2 -translate-x-1/2 z-40"
-              style={{ marginLeft: collapsed ? 36 : 130 }}
-            >
-              <button className="btn-primary flex items-center gap-2.5 px-6 py-3 rounded-2xl text-[13px] font-bold shadow-[0_8px_32px_rgba(55,178,77,0.3)]">
-                <FileCheck size={15} strokeWidth={2} />
-                Desenvolver {selectedIdeas.length} selecionado{selectedIdeas.length > 1 ? 's' : ''}
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
       </div>
 
       {/* ═══ ERROR TOAST ═══ */}
