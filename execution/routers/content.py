@@ -69,20 +69,21 @@ def _serialize(idea: ContentIdea) -> IdeaOut:
 
 
 def _find_directive_file(filename: str) -> Optional[str]:
-    """Locate a file inside the project's directives/ folder with multiple
-    candidate paths. Uvicorn can start with CWD = execution/ which makes
-    __file__ relative and breaks naive dirname chains, so we try several
-    absolute locations."""
+    """Locate a file inside the directives/ folder. Prefers
+    execution/directives/ (co-located with the backend, always deployed)
+    and falls back to the project-root mirror for local dev."""
     this_file = os.path.abspath(__file__)
     routers_dir = os.path.dirname(this_file)
     execution_dir = os.path.dirname(routers_dir)
     project_root = os.path.dirname(execution_dir)
 
     candidates = [
+        os.path.join(execution_dir, "directives", filename),
         os.path.join(project_root, "directives", filename),
         os.path.join("/app", "directives", filename),
-        os.path.join(os.getcwd(), "..", "directives", filename),
+        os.path.join("/app", "execution", "directives", filename),
         os.path.join(os.getcwd(), "directives", filename),
+        os.path.join(os.getcwd(), "..", "directives", filename),
     ]
     for p in candidates:
         abs_p = os.path.abspath(p)

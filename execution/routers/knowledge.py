@@ -21,23 +21,31 @@ router = APIRouter(prefix="/knowledge", tags=["knowledge"])
 
 
 def _find_directive_file(filename: str) -> Optional[str]:
-    """Locate a file inside the project's directives/ folder using several
-    candidate paths. Railway/Uvicorn can start with the CWD set to execution/
-    which makes __file__ relative and breaks naive dirname chains, so we try
-    multiple absolute locations and return the first one that exists."""
-    # Always start from the absolute path of this module
+    """Locate a file inside the directives/ folder.
+
+    The directives are kept in TWO locations inside the repo:
+      - execution/directives/ (colocated with the backend — always deployed)
+      - directives/           (project root, mirror for visibility)
+    This helper prefers execution/directives/ because that's the only path
+    guaranteed to exist regardless of Railway's "Root Directory" setting.
+    It still checks fallbacks so local dev works with just the root copy.
+    """
     this_file = os.path.abspath(__file__)
     routers_dir = os.path.dirname(this_file)          # .../execution/routers
     execution_dir = os.path.dirname(routers_dir)      # .../execution
     project_root = os.path.dirname(execution_dir)     # .../project-root
 
     candidates = [
+        # 1. Co-located with the backend — works on Railway no matter what
+        os.path.join(execution_dir, "directives", filename),
+        # 2. Project root mirror (local dev)
         os.path.join(project_root, "directives", filename),
-        # Railway's default app dir when using Nixpacks
+        # 3. Railway/Docker default app dir
         os.path.join("/app", "directives", filename),
-        # CWD fallbacks — if uvicorn started with cd execution/
-        os.path.join(os.getcwd(), "..", "directives", filename),
+        os.path.join("/app", "execution", "directives", filename),
+        # 4. CWD-relative fallbacks
         os.path.join(os.getcwd(), "directives", filename),
+        os.path.join(os.getcwd(), "..", "directives", filename),
     ]
     for p in candidates:
         abs_p = os.path.abspath(p)
@@ -78,6 +86,47 @@ def kb_to_dict(kb):
         "is_stale": kb.is_stale,
         "created_at": kb.created_at.isoformat() if kb.created_at else None,
     }
+
+
+# ── Debug ────────────────────────────────────────────
+
+@router.get("/_debug/directives")
+async def debug_directives(current_user: User = Depends(get_current_user)):
+    """Introspect where the backend is looking for directive files.
+    Returns the first matching path for each known directive + all
+    candidates so we can diagnose deploy issues."""
+    files = [
+        "prompt-compilador-base-viral.md",
+        "viral-content-agent.md",
+        "prompt-agente-viral-v2.md",
+    ]
+    result = {
+        "cwd": os.getcwd(),
+        "__file__": os.path.abspath(__file__),
+        "directives": {},
+    }
+    this_file = os.path.abspath(__file__)
+    routers_dir = os.path.dirname(this_file)
+    execution_dir = os.path.dirname(routers_dir)
+    project_root = os.path.dirname(execution_dir)
+
+    for name in files:
+        candidates = [
+            os.path.join(execution_dir, "directives", name),
+            os.path.join(project_root, "directives", name),
+            os.path.join("/app", "directives", name),
+            os.path.join("/app", "execution", "directives", name),
+            os.path.join(os.getcwd(), "directives", name),
+            os.path.join(os.getcwd(), "..", "directives", name),
+        ]
+        candidate_status = [
+            {"path": os.path.abspath(c), "exists": os.path.exists(os.path.abspath(c))}
+            for c in candidates
+        ]
+        found = next((c["path"] for c in candidate_status if c["exists"]), None)
+        result["directives"][name] = {"found": found, "candidates": candidate_status}
+
+    return result
 
 
 # ── CRUD ─────────────────────────────────────────────

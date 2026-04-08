@@ -56,15 +56,19 @@ TMP_DIR = os.path.join(os.path.dirname(__file__), '..', '.tmp')
 os.makedirs(TMP_DIR, exist_ok=True)
 
 def _resolve_prompt_file() -> str:
-    """Resolve the prompt-agente-viral-v2.md file with multiple fallbacks."""
+    """Resolve prompt-agente-viral-v2.md. Prefers execution/directives/
+    (co-located with the backend, always deployed)."""
     this_file = os.path.abspath(__file__)
     execution_dir = os.path.dirname(this_file)
     project_root = os.path.dirname(execution_dir)
+    filename = 'prompt-agente-viral-v2.md'
     candidates = [
-        os.path.join(project_root, 'directives', 'prompt-agente-viral-v2.md'),
-        os.path.join('/app', 'directives', 'prompt-agente-viral-v2.md'),
-        os.path.join(os.getcwd(), '..', 'directives', 'prompt-agente-viral-v2.md'),
-        os.path.join(os.getcwd(), 'directives', 'prompt-agente-viral-v2.md'),
+        os.path.join(execution_dir, 'directives', filename),
+        os.path.join(project_root, 'directives', filename),
+        os.path.join('/app', 'directives', filename),
+        os.path.join('/app', 'execution', 'directives', filename),
+        os.path.join(os.getcwd(), 'directives', filename),
+        os.path.join(os.getcwd(), '..', 'directives', filename),
     ]
     for p in candidates:
         abs_p = os.path.abspath(p)
