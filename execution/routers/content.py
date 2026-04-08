@@ -132,22 +132,42 @@ async def toggle_save_post(
 
 @router.delete("/ideas")
 async def clear_ideas(
+    scope: str = Query("active", regex="^(active|history)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """Soft-clear: marks all user ideas as dismissed (hidden from Ideias tab).
-    Saved ideas remain accessible in Salvos tab, history keeps them all."""
+    """Clear ideas with two modes:
+    - scope=active (default): soft-dismiss current ideas view. Saved ideas stay
+      bookmarked, history keeps them all.
+    - scope=history: hard-delete ALL ideas that are not favorited. Favorites
+      are preserved. Clears history + ideias view in one shot.
+    """
+    if scope == "active":
+        result = await db.execute(
+            select(ContentIdea).where(
+                ContentIdea.user_id == current_user.id,
+                or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None)),
+            )
+        )
+        ideas = result.scalars().all()
+        for idea in ideas:
+            idea.is_dismissed = 1
+        await db.commit()
+        return {"ok": True, "dismissed": len(ideas)}
+
+    # scope == "history": hard-delete non-favorited
     result = await db.execute(
         select(ContentIdea).where(
             ContentIdea.user_id == current_user.id,
-            or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None)),
+            or_(ContentIdea.is_saved == 0, ContentIdea.is_saved.is_(None)),
         )
     )
     ideas = result.scalars().all()
+    count = len(ideas)
     for idea in ideas:
-        idea.is_dismissed = 1
+        await db.delete(idea)
     await db.commit()
-    return {"ok": True, "dismissed": len(ideas)}
+    return {"ok": True, "deleted": count}
 
 
 @router.delete("/ideas/{idea_id}")

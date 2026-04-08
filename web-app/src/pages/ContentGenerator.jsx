@@ -285,17 +285,13 @@ const ContentGenerator = () => {
         }
       }
       const updated = res.data;
-      // Update in all local states
+      // Update the is_saved flag across all local lists — never remove rows.
+      // Cards only disappear from Favoritos when the user leaves and returns
+      // (which triggers a refetch filtered by is_saved=1).
       const updater = (list) => list.map(i => i.id === ideaId ? { ...i, is_saved: updated.is_saved } : i);
       setIdeas(updater);
       setHistoryIdeas(updater);
-      // For saved list: if unsaved, remove; otherwise no change needed
-      if (!updated.is_saved) {
-        setSavedIdeas(prev => prev.filter(i => i.id !== ideaId));
-      } else {
-        // If it's not already there, refetch
-        setSavedIdeas(prev => prev.find(i => i.id === ideaId) ? updater(prev) : prev);
-      }
+      setSavedIdeas(updater);
     } catch (err) {
       setErrorToast('Erro ao salvar ideia.');
       setTimeout(() => setErrorToast(null), 4000);
@@ -489,11 +485,26 @@ const ContentGenerator = () => {
   };
 
   const handleClearAll = async () => {
+    // Favoritos tab is disabled — guard anyway
+    if (activeTab === 'saved') return;
+
+    // Developed tab: nothing to clear yet (no backend data) — just close popup
+    if (activeTab === 'developed') {
+      setClearConfirmOpen(false);
+      return;
+    }
+
+    const scope = activeTab === 'history' ? 'history' : 'active';
     try {
       const token = await getAccessToken();
-      await axios.delete(`${API_URL}/content/ideas`, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.delete(`${API_URL}/content/ideas?scope=${scope}`, { headers: { Authorization: `Bearer ${token}` } });
       setIdeas([]);
       setSelectedIdeas([]);
+      if (scope === 'history') {
+        // Hard delete wiped non-saved from DB; clear history view too.
+        // Favoritos list is untouched on backend, don't clear it locally either.
+        setHistoryIdeas([]);
+      }
       setClearConfirmOpen(false);
     } catch (err) {
       setErrorToast('Erro ao limpar ideias.');
@@ -661,48 +672,63 @@ const ContentGenerator = () => {
             );
           })}
 
-          {/* Clear button + confirmation popup */}
-          {ideas.length > 0 && activeTab === 'ideas' && (
-            <div className="relative">
-              <button
-                onClick={() => setClearConfirmOpen(!clearConfirmOpen)}
-                className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.06] text-gray-400 hover:text-red-400 hover:bg-red-400/[0.08] hover:border-red-400/20 transition-colors"
-                title="Limpar ideias"
-              >
-                <Trash2 size={14} strokeWidth={1.5} fill="currentColor" />
-              </button>
-              <AnimatePresence>
-                {clearConfirmOpen && (
-                  <>
-                    <div className="fixed inset-0 z-30" onClick={() => setClearConfirmOpen(false)} />
-                    <motion.div
-                      initial={{ opacity: 0, y: -4, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: -4, scale: 0.96 }}
-                      transition={{ duration: 0.15 }}
-                      className="absolute top-full right-0 mt-2 bg-[#16161a] border border-white/[0.08] rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-3 z-40 w-52"
-                    >
-                      <p className="text-[12px] text-gray-300 font-medium mb-2.5">Limpar todas as ideias?</p>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={handleClearAll}
-                          className="flex-1 py-1.5 rounded-lg bg-red-500/15 border border-red-500/25 text-red-400 text-[11px] font-bold hover:bg-red-500/25 transition-colors"
-                        >
-                          Sim
-                        </button>
-                        <button
-                          onClick={() => setClearConfirmOpen(false)}
-                          className="flex-1 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-gray-400 text-[11px] font-bold hover:bg-white/[0.08] transition-colors"
-                        >
-                          Não
-                        </button>
-                      </div>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
-          )}
+          {/* Clear button + confirmation popup — always visible, disabled on Favoritos */}
+          <div className="relative">
+            <button
+              onClick={() => { if (activeTab !== 'saved') setClearConfirmOpen(!clearConfirmOpen); }}
+              disabled={activeTab === 'saved'}
+              className={`p-2 rounded-lg bg-white/[0.03] border border-white/[0.06] transition-colors ${
+                activeTab === 'saved'
+                  ? 'opacity-30 cursor-not-allowed text-gray-500'
+                  : 'text-gray-400 hover:text-red-400 hover:bg-red-400/[0.08] hover:border-red-400/20'
+              }`}
+              title={
+                activeTab === 'saved'
+                  ? 'Favoritos não podem ser limpos aqui'
+                  : activeTab === 'history'
+                    ? 'Limpar histórico (preserva favoritos)'
+                    : 'Limpar'
+              }
+            >
+              <Trash2 size={14} strokeWidth={1.5} fill="currentColor" />
+            </button>
+            <AnimatePresence>
+              {clearConfirmOpen && activeTab !== 'saved' && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setClearConfirmOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute top-full right-0 mt-2 bg-[#16161a] border border-white/[0.08] rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-3 z-40 w-60"
+                  >
+                    <p className="text-[12px] text-gray-300 font-medium mb-2.5">
+                      {activeTab === 'history'
+                        ? 'Limpar todo o histórico? Favoritos são preservados.'
+                        : activeTab === 'developed'
+                          ? 'Limpar conteúdos desenvolvidos?'
+                          : 'Limpar todas as ideias?'}
+                    </p>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleClearAll}
+                        className="flex-1 py-1.5 rounded-lg bg-red-500/15 border border-red-500/25 text-red-400 text-[11px] font-bold hover:bg-red-500/25 transition-colors"
+                      >
+                        Sim
+                      </button>
+                      <button
+                        onClick={() => setClearConfirmOpen(false)}
+                        className="flex-1 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-gray-400 text-[11px] font-bold hover:bg-white/[0.08] transition-colors"
+                      >
+                        Não
+                      </button>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
 
           {/* Grid size slider */}
           <div className="flex items-center gap-2 pl-1">
