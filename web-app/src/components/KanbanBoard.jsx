@@ -162,10 +162,10 @@ const KanbanBoard = ({
                               ...gradientStyle,
                             }}
                             className={clsx(
-                              "p-5 rounded-2xl border flex flex-col gap-3 transition-shadow relative group cursor-grab active:cursor-grabbing bg-surface",
+                              "p-5 rounded-2xl border flex flex-col gap-3 relative group cursor-grab active:cursor-grabbing bg-surface",
                               dragSnapshot.isDragging
-                                ? 'shadow-glow-md rotate-1 z-50 border-primary/30'
-                                : 'border-border-subtle hover:border-border-hover shadow-card hover:shadow-card-hover'
+                                ? 'rotate-1 z-50 border-primary/30'
+                                : 'border-border-subtle hover:border-border-hover'
                             )}
                             onClick={() => onPreviewTask(task)}
                           >
