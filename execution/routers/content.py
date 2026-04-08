@@ -1,6 +1,7 @@
 import os
 import json
 import uuid
+import asyncio
 import logging
 import datetime
 from typing import List, Optional
@@ -341,8 +342,15 @@ async def develop_content(
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 
     try:
-        response = model.generate_content(user_message)
-        content_md = (response.text or "").strip()
+        # Run the blocking Gemini call in a worker thread so we don't freeze
+        # the FastAPI event loop. Pass a 180s per-request timeout to the
+        # transport layer so hung connections fail fast.
+        response = await asyncio.to_thread(
+            model.generate_content,
+            user_message,
+            request_options={"timeout": 180},
+        )
+        content_md = (getattr(response, "text", None) or "").strip()
 
         if not content_md:
             raise ValueError("Resposta vazia do modelo.")
@@ -448,8 +456,12 @@ REGRAS:
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 
     try:
-        response = model.generate_content(user_message)
-        raw = response.text.strip()
+        response = await asyncio.to_thread(
+            model.generate_content,
+            user_message,
+            request_options={"timeout": 180},
+        )
+        raw = (getattr(response, "text", None) or "").strip()
 
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]

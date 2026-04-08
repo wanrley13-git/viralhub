@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import os
@@ -282,8 +283,10 @@ async def compile_knowledge_base(kb_id: int, current_user: User = Depends(get_cu
 
     try:
         model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=compiler_prompt)
-        response = model.generate_content(
-            f"Compile as seguintes {len(analyses)} análises em uma base de conhecimento unificada:\n\n{raw_content}"
+        response = await asyncio.to_thread(
+            model.generate_content,
+            f"Compile as seguintes {len(analyses)} análises em uma base de conhecimento unificada:\n\n{raw_content}",
+            request_options={"timeout": 180},
         )
         compiled = getattr(response, "text", None)
 

@@ -206,7 +206,8 @@ const ContentGenerator = () => {
   const [historyIdeas, setHistoryIdeas] = useState([]); // Histórico tab
   const [savedIdeas, setSavedIdeas] = useState([]);     // Salvos tab
   const [developedIdeas, setDevelopedIdeas] = useState([]); // Desenvolvidos tab
-  const [expandedDeveloped, setExpandedDeveloped] = useState({}); // { [id]: true }
+  const [expandedDeveloped, setExpandedDeveloped] = useState({}); // legacy, kept to avoid refactor
+  const [developedViewing, setDevelopedViewing] = useState(null); // idea being shown in modal
   const [loadingTab, setLoadingTab] = useState(false);
   const [selectedIdeas, setSelectedIdeas] = useState([]);
   const [errorToast, setErrorToast] = useState(null);
@@ -583,12 +584,12 @@ const ContentGenerator = () => {
 
     if (toDevelop.length === 0) return;
 
-    // Add placeholders to Desenvolvidos state (status='developing')
+    // Add placeholders to Desenvolvidos state (status='developing', not failed)
     setDevelopedIdeas(prev => {
       const existing = new Set(prev.map(i => i.id));
       const placeholders = toDevelop
         .filter(i => !existing.has(i.id))
-        .map(i => ({ ...i, status: 'developing', developed_content: null }));
+        .map(i => ({ ...i, status: 'developing', developed_content: null, _failed: false, _error: null }));
       return [...placeholders, ...prev];
     });
 
@@ -599,33 +600,83 @@ const ContentGenerator = () => {
     // Switch to Desenvolvidos
     setActiveTab('developed');
 
-    // Fire parallel develop requests
     const token = await getAccessToken();
     const headers = { Authorization: `Bearer ${token}` };
 
-    await Promise.all(toDevelop.map(async (idea) => {
+    // SEQUENTIAL processing — don't overload Gemini. A failure on one card
+    // doesn't abort the rest.
+    for (const idea of toDevelop) {
       try {
-        const res = await axios.post(`${API_URL}/content/develop`, {
-          idea_id: idea.id,
-          title: idea.title,
-          summary: idea.summary || '',
-          tone_id: selectedToneId || null,
-          base_id: selectedBaseId || null,
-        }, { headers });
+        const res = await axios.post(
+          `${API_URL}/content/develop`,
+          {
+            idea_id: idea.id,
+            title: idea.title,
+            summary: idea.summary || '',
+            tone_id: selectedToneId || null,
+            base_id: selectedBaseId || null,
+          },
+          { headers, timeout: 180000 } // 3 minutes per card
+        );
 
-        // Replace placeholder with developed content
-        setDevelopedIdeas(prev => prev.map(i => i.id === idea.id ? res.data : i));
+        // Replace placeholder with developed content — other cards keep
+        // their own loading state untouched
+        setDevelopedIdeas(prev => prev.map(i =>
+          i.id === idea.id
+            ? { ...res.data, _failed: false, _error: null }
+            : i
+        ));
       } catch (err) {
         console.error('Erro desenvolvendo ideia', idea.id, err);
-        // Mark placeholder as failed by reverting
+        const msg = err.response?.data?.detail
+          || (err.code === 'ECONNABORTED' ? 'Tempo esgotado (a IA demorou mais de 3 minutos).' : null)
+          || err.message
+          || 'Erro desconhecido ao desenvolver.';
+
+        // Mark only this card as failed — keep going for the remaining ones
         setDevelopedIdeas(prev => prev.map(i => i.id === idea.id
-          ? { ...i, status: 'idea', developed_content: null, _failed: true }
+          ? { ...i, status: 'failed', developed_content: null, _failed: true, _error: msg }
           : i
         ));
-        setErrorToast(`Erro ao desenvolver "${idea.title}"`);
-        setTimeout(() => setErrorToast(null), 5000);
+        setErrorToast(`Falha em "${idea.title}": ${msg}`);
+        setTimeout(() => setErrorToast(null), 6000);
+        // continue to next idea
       }
-    }));
+    }
+  };
+
+  // Retry a single failed card
+  const retryDevelop = async (ideaId) => {
+    const target = developedIdeas.find(i => i.id === ideaId);
+    if (!target) return;
+    setDevelopedIdeas(prev => prev.map(i =>
+      i.id === ideaId ? { ...i, status: 'developing', _failed: false, _error: null } : i
+    ));
+    try {
+      const token = await getAccessToken();
+      const res = await axios.post(
+        `${API_URL}/content/develop`,
+        {
+          idea_id: target.id,
+          title: target.title,
+          summary: target.summary || '',
+          tone_id: selectedToneId || null,
+          base_id: selectedBaseId || null,
+        },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 180000 }
+      );
+      setDevelopedIdeas(prev => prev.map(i =>
+        i.id === ideaId ? { ...res.data, _failed: false, _error: null } : i
+      ));
+    } catch (err) {
+      const msg = err.response?.data?.detail
+        || (err.code === 'ECONNABORTED' ? 'Tempo esgotado.' : null)
+        || err.message
+        || 'Erro ao desenvolver.';
+      setDevelopedIdeas(prev => prev.map(i =>
+        i.id === ideaId ? { ...i, status: 'failed', _failed: true, _error: msg } : i
+      ));
+    }
   };
 
   const toggleExpandDeveloped = (id) => {
@@ -1041,90 +1092,86 @@ const ContentGenerator = () => {
               </div>
             )}
 
-            {/* DESENVOLVIDOS tab cards */}
+            {/* DESENVOLVIDOS tab cards — grid layout matching Ideias */}
             {activeTab === 'developed' && !loadingTab && developedIdeas.length > 0 && (
-              <div className="max-w-4xl mx-auto space-y-3">
+              <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
                 {developedIdeas.map((idea, i) => {
                   const isDeveloping = idea.status === 'developing';
-                  const isExpanded = !!expandedDeveloped[idea.id];
+                  const hasFailed = idea._failed;
+                  // Preview: first non-empty lines of the markdown content
+                  const preview = idea.developed_content
+                    ? idea.developed_content.replace(/^#+\s*/gm, '').replace(/\*+/g, '').split('\n').filter(l => l.trim()).slice(0, 3).join(' ')
+                    : idea.summary || '';
+
                   return (
                     <motion.div
                       key={idea.id}
+                      layout
                       initial={{ opacity: 0, y: 16 }}
                       animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.25, delay: Math.min(i * 0.03, 0.3) }}
-                      className="bg-white/[0.02] border border-white/[0.08] rounded-2xl overflow-hidden"
+                      transition={{ duration: 0.35, delay: Math.min(i * 0.03, 0.3), ease: 'easeOut' }}
+                      onClick={() => !isDeveloping && !hasFailed && setDevelopedViewing(idea)}
+                      className={`relative ${cs.pad} rounded-2xl border transition-all duration-300 flex flex-col ${
+                        isDeveloping
+                          ? 'bg-white/[0.02] border-white/[0.08] cursor-default'
+                          : hasFailed
+                            ? 'bg-red-500/[0.04] border-red-500/20 cursor-default'
+                            : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40 cursor-pointer'
+                      }`}
                     >
-                      {/* Header — clickable to expand */}
-                      <button
-                        onClick={() => !isDeveloping && toggleExpandDeveloped(idea.id)}
-                        disabled={isDeveloping}
-                        className="w-full flex items-start justify-between gap-4 p-5 text-left transition-colors hover:bg-white/[0.02] disabled:cursor-default"
-                      >
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-1.5">
-                            {isDeveloping ? 'Desenvolvendo' : 'Conteúdo pronto'}
+                      {isDeveloping ? (
+                        <>
+                          <p className="font-bold uppercase tracking-widest text-blue-400/70 mb-2" style={{ fontSize: cs.label }}>
+                            Desenvolvendo
                           </p>
-                          <p className="text-[16px] font-bold text-white leading-snug uppercase tracking-wide">
+                          <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-2 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
                             {idea.title}
                           </p>
-                          {idea.summary && !isDeveloping && (
-                            <p className="text-[13px] text-white/40 leading-relaxed mt-1.5 line-clamp-2">
-                              {idea.summary}
-                            </p>
-                          )}
-                        </div>
-                        {!isDeveloping && (
-                          <div className="shrink-0 text-gray-500">
-                            {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                          <div className="mt-3 space-y-1.5 animate-pulse flex-1">
+                            <div className="h-2.5 bg-white/[0.06] rounded w-full" />
+                            <div className="h-2.5 bg-white/[0.05] rounded w-4/5" />
+                            <div className="h-2.5 bg-white/[0.05] rounded w-5/6" />
+                            <div className="h-2.5 bg-white/[0.04] rounded w-3/4" />
                           </div>
-                        )}
-                      </button>
-
-                      {/* Loading skeleton while developing */}
-                      {isDeveloping && (
-                        <div className="px-5 pb-5 border-t border-white/[0.04] pt-4">
-                          <div className="space-y-2 animate-pulse">
-                            <div className="h-3 bg-white/[0.06] rounded w-5/6" />
-                            <div className="h-3 bg-white/[0.05] rounded w-full" />
-                            <div className="h-3 bg-white/[0.05] rounded w-4/5" />
-                            <div className="h-3 bg-white/[0.04] rounded w-3/4" />
-                            <div className="h-3 bg-white/[0.04] rounded w-5/6" />
-                          </div>
-                          <div className="flex items-center gap-2 mt-4 text-[12px] text-blue-400/80 font-medium">
-                            <Loader2 size={12} className="animate-spin" />
+                          <div className="flex items-center gap-1.5 mt-3 text-blue-400/80 font-medium" style={{ fontSize: cs.summary }}>
+                            <Loader2 size={11} className="animate-spin" />
                             Criando conteúdo...
                           </div>
-                        </div>
-                      )}
-
-                      {/* Expanded content */}
-                      <AnimatePresence initial={false}>
-                        {!isDeveloping && isExpanded && idea.developed_content && (
-                          <motion.div
-                            initial={{ height: 0, opacity: 0 }}
-                            animate={{ height: 'auto', opacity: 1 }}
-                            exit={{ height: 0, opacity: 0 }}
-                            transition={{ duration: 0.25, ease: 'easeOut' }}
-                            className="overflow-hidden"
+                        </>
+                      ) : hasFailed ? (
+                        <>
+                          <p className="font-bold uppercase tracking-widest text-red-400/80 mb-2" style={{ fontSize: cs.label }}>
+                            Falhou
+                          </p>
+                          <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-2 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
+                            {idea.title}
+                          </p>
+                          <p className={`text-red-400/60 leading-relaxed mt-2 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>
+                            {idea._error || 'Erro ao desenvolver'}
+                          </p>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); retryDevelop(idea.id); }}
+                            className="mt-3 self-start flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/15 border border-red-500/30 text-red-400 text-[11px] font-bold hover:bg-red-500/25 transition-colors"
                           >
-                            <div className="px-5 pb-5 border-t border-white/[0.04] pt-4">
-                              <MarkdownRenderer className="max-w-none">
-                                {idea.developed_content}
-                              </MarkdownRenderer>
-                              <div className="flex justify-end mt-5 pt-4 border-t border-white/[0.04]">
-                                <button
-                                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600/15 border border-blue-600/25 text-blue-400 text-[12px] font-bold hover:bg-blue-600/25 transition-colors"
-                                  title="Enviar (em breve)"
-                                >
-                                  <Send size={13} strokeWidth={2} />
-                                  Enviar
-                                </button>
-                              </div>
-                            </div>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                            <Loader2 size={11} strokeWidth={2} />
+                            Tentar novamente
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <p className="font-bold uppercase tracking-widest text-primary/70 mb-2" style={{ fontSize: cs.label }}>
+                            Conteúdo Pronto
+                          </p>
+                          <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-2 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
+                            {idea.title}
+                          </p>
+                          {preview && (
+                            <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>
+                              {preview}
+                            </p>
+                          )}
+                        </>
+                      )}
                     </motion.div>
                   );
                 })}
@@ -1148,6 +1195,81 @@ const ContentGenerator = () => {
         </AnimatePresence>
 
       </div>
+
+      {/* ═══ DEVELOPED CONTENT MODAL ═══ */}
+      <AnimatePresence>
+        {developedViewing && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-md bg-black/60"
+            onClick={() => setDevelopedViewing(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="glass-raised w-full max-w-3xl max-h-[88vh] rounded-3xl flex flex-col overflow-hidden shadow-modal"
+              onClick={e => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="pt-6 px-7 pb-5 border-b border-white/[0.06] flex items-start justify-between gap-4 shrink-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 mb-2">Conteúdo Pronto</p>
+                  <h3 className="text-xl font-extrabold text-white leading-tight uppercase tracking-wide">
+                    {developedViewing.title}
+                  </h3>
+                  {developedViewing.summary && (
+                    <p className="text-[13px] text-white/40 leading-relaxed mt-2 line-clamp-2">
+                      {developedViewing.summary}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={() => setDevelopedViewing(null)}
+                  className="p-2 bg-white/[0.05] hover:bg-white/[0.08] rounded-xl transition-colors text-gray-400 hover:text-white shrink-0"
+                  title="Fechar"
+                >
+                  <X size={16} strokeWidth={2.5} />
+                </button>
+              </div>
+
+              {/* Body — full markdown */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar px-7 py-6">
+                {developedViewing.developed_content ? (
+                  <MarkdownRenderer className="max-w-none">
+                    {developedViewing.developed_content}
+                  </MarkdownRenderer>
+                ) : (
+                  <p className="text-gray-500 text-sm italic text-center py-12">
+                    Conteúdo ainda não disponível.
+                  </p>
+                )}
+              </div>
+
+              {/* Footer — actions */}
+              <div className="px-7 py-4 border-t border-white/[0.06] flex items-center justify-end gap-3 shrink-0 bg-black/20">
+                <button
+                  onClick={() => setDevelopedViewing(null)}
+                  className="px-4 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-gray-400 text-[12px] font-bold hover:bg-white/[0.06] transition-colors"
+                >
+                  Fechar
+                </button>
+                <button
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold transition-colors"
+                  title="Enviar (em breve)"
+                >
+                  <Send size={13} strokeWidth={2.5} />
+                  Enviar
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══ ERROR TOAST ═══ */}
       <AnimatePresence>
