@@ -67,35 +67,75 @@ async def download_video(link: str, progress_callback=None) -> str:
     """Faz download de vídeo de links (YouTube, TikTok, Instagram) usando yt_dlp"""
     if progress_callback:
         await progress_callback(f"Iniciando download: {link}", 5)
-        
+
     filename = f"{uuid.uuid4()}.mp4"
     out_tmpl = os.path.join(TMP_DIR, filename)
-    
+
+    # Platform detection to pass platform-specific tweaks
+    link_lower = link.lower()
+    is_instagram = "instagram.com" in link_lower
+    is_tiktok = "tiktok.com" in link_lower
+    is_youtube = "youtube.com" in link_lower or "youtu.be" in link_lower
+
     ydl_opts = {
-        'format': 'best',
+        'format': 'best[ext=mp4]/best',
         'outtmpl': out_tmpl,
         'noplaylist': True,
         'quiet': True,
+        'no_warnings': True,
         'no_check_certificate': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'referer': 'https://www.instagram.com/',
+        'retries': 3,
+        'fragment_retries': 3,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
     }
-    
+
+    if is_instagram:
+        ydl_opts['referer'] = 'https://www.instagram.com/'
+        # Instagram frequently requires a realistic browser fingerprint
+        ydl_opts['http_headers'] = {
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1',
+            'Accept': '*/*',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
+    elif is_tiktok:
+        ydl_opts['referer'] = 'https://www.tiktok.com/'
+    elif is_youtube:
+        # Workarounds for YouTube age / consent walls
+        ydl_opts['extractor_args'] = {'youtube': {'player_client': ['web', 'android']}}
+
     try:
         # Loop executor para rodar yt-dlp síncrono de forma não-bloqueante
         def run_ydl():
             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                 ydl.download([link])
-        
+
         await asyncio.to_thread(run_ydl)
-        
+
         if progress_callback:
             await progress_callback(f"Download concluído: {link}", 15)
         return out_tmpl
     except Exception as e:
-        print(f"Erro ao baixar {link}: {e}")
+        # Extract a human-friendly message from the yt-dlp exception
+        raw = str(e)
+        # Strip ANSI color codes yt-dlp sometimes injects
+        import re as _re
+        raw = _re.sub(r'\x1b\[[0-9;]*m', '', raw)
+        # Trim to something readable (~200 chars)
+        short = raw.strip().split('\n')[0][:200] if raw.strip() else 'erro desconhecido'
+
+        platform = 'Instagram' if is_instagram else 'TikTok' if is_tiktok else 'YouTube' if is_youtube else 'link'
+        hint = ''
+        lower = raw.lower()
+        if 'login' in lower or 'rate' in lower or 'unavailable' in lower or 'restricted' in lower or 'private' in lower:
+            hint = f' (o {platform} pode estar exigindo login, ou o post é privado/restrito)'
+        elif 'unsupported url' in lower:
+            hint = ' (URL não suportada pelo yt-dlp)'
+        elif '404' in raw or 'not found' in lower:
+            hint = ' (vídeo não encontrado ou removido)'
+
+        print(f"Erro ao baixar {link}: {raw}")
         if progress_callback:
-            await progress_callback(f"Erro no download: {str(e)}", 15)
+            await progress_callback(f"Falha no download de {link}: {short}{hint}", 15)
         return None
 
 async def extract_zip(zip_path: str, progress_callback=None) -> list[str]:

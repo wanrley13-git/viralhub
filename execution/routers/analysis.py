@@ -81,7 +81,14 @@ async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: b
 
         if not local_files:
             tasks_progress[task_id]["status"] = "error"
-            tasks_progress[task_id]["logs"].append("Erro: Nenhum vídeo pôde ser processado.")
+            # Extract the most recent failure reason from the logs so the
+            # frontend surfaces the actual yt-dlp error instead of a generic message.
+            recent_failures = [
+                msg for msg in tasks_progress[task_id]["logs"]
+                if msg.startswith("Falha no download")
+            ]
+            detail = recent_failures[-1] if recent_failures else "Nenhum vídeo pôde ser processado."
+            tasks_progress[task_id]["logs"].append(f"Erro: {detail}")
             return
 
         total_files = len(local_files)
