@@ -457,7 +457,7 @@ const ContentGenerator = () => {
             <LayoutGrid size={14} strokeWidth={1.5} className="text-gray-600" />
             <input
               type="range"
-              min={3}
+              min={4}
               max={6}
               value={gridCols}
               onChange={(e) => setGridCols(Number(e.target.value))}
@@ -476,9 +476,9 @@ const ContentGenerator = () => {
 
             {/* Loading skeleton */}
             {activeTab === 'ideas' && generating && (
-              <div className={`grid gap-3 ${gridCols === 3 ? 'grid-cols-3' : gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
+              <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
                 {Array.from({ length: quantity }).map((_, i) => (
-                  <div key={i} className="max-w-[320px] bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5 animate-pulse flex flex-col gap-2.5" style={{ animationDelay: `${i * 40}ms` }}>
+                  <div key={i} className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5 animate-pulse flex flex-col gap-2.5" style={{ animationDelay: `${i * 40}ms` }}>
                     <div className="h-3 bg-white/[0.04] rounded w-16" />
                     <div className="h-4 bg-white/[0.06] rounded w-full" />
                     <div className="h-4 bg-white/[0.05] rounded w-3/4" />
@@ -493,7 +493,7 @@ const ContentGenerator = () => {
 
             {/* Ideas cards */}
             {activeTab === 'ideas' && !generating && ideas.length > 0 && (
-              <div className={`grid gap-3 ${gridCols === 3 ? 'grid-cols-3' : gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
+              <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
                 {ideas.map((idea, i) => {
                   const isSelected = selectedIdeas.includes(idea.id);
                   return (
@@ -503,7 +503,7 @@ const ContentGenerator = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.25, delay: i * 0.03 }}
                       onClick={() => toggleIdeaSelect(idea.id)}
-                      className={`relative max-w-[320px] p-5 rounded-2xl border cursor-pointer transition-all duration-300 group flex flex-col ${
+                      className={`relative p-5 rounded-2xl border cursor-pointer transition-all duration-300 group flex flex-col ${
                         isSelected
                           ? 'bg-primary/5 border-primary/30'
                           : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
