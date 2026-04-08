@@ -476,7 +476,7 @@ const ContentGenerator = () => {
 
             {/* Loading skeleton */}
             {activeTab === 'ideas' && generating && (
-              <div className="gap-3 transition-all duration-300" style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
+              <div className="gap-3 transition-all duration-300" style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, 1fr)` }}>
                 {Array.from({ length: quantity }).map((_, i) => (
                   <div key={i} className="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-5 animate-pulse flex flex-col gap-2.5" style={{ animationDelay: `${i * 40}ms` }}>
                     <div className="h-3 bg-white/[0.04] rounded w-16" />
@@ -493,7 +493,7 @@ const ContentGenerator = () => {
 
             {/* Ideas cards */}
             {activeTab === 'ideas' && !generating && ideas.length > 0 && (
-              <div className="gap-3 transition-all duration-300" style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, minmax(0, 1fr))` }}>
+              <div className="gap-3 transition-all duration-300" style={{ display: 'grid', gridTemplateColumns: `repeat(${gridCols}, 1fr)` }}>
                 {ideas.map((idea, i) => {
                   const isSelected = selectedIdeas.includes(idea.id);
                   return (
