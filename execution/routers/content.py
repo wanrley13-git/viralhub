@@ -64,6 +64,21 @@ async def list_ideas(
     ]
 
 
+@router.delete("/ideas")
+async def clear_all_ideas(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(ContentIdea).where(ContentIdea.user_id == current_user.id)
+    )
+    ideas = result.scalars().all()
+    for idea in ideas:
+        await db.delete(idea)
+    await db.commit()
+    return {"ok": True, "deleted": len(ideas)}
+
+
 @router.delete("/ideas/{idea_id}")
 async def delete_idea(
     idea_id: int,

@@ -120,6 +120,9 @@ const ContentGenerator = () => {
   const [ideas, setIdeas] = useState([]);
   const [selectedIdeas, setSelectedIdeas] = useState([]);
   const [errorToast, setErrorToast] = useState(null);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+  const [quantityEditing, setQuantityEditing] = useState(false);
+  const [quantityInput, setQuantityInput] = useState('');
 
   const textareaRef = useRef(null);
   const mentionRef = useRef(null);
@@ -346,6 +349,31 @@ const ContentGenerator = () => {
     setSelectedIdeas(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   };
 
+  const handleClearAll = async () => {
+    try {
+      const token = await getAccessToken();
+      await axios.delete(`${API_URL}/content/ideas`, { headers: { Authorization: `Bearer ${token}` } });
+      setIdeas([]);
+      setSelectedIdeas([]);
+      setClearConfirmOpen(false);
+    } catch (err) {
+      setErrorToast('Erro ao limpar ideias.');
+      setTimeout(() => setErrorToast(null), 5000);
+    }
+  };
+
+  // ─── Editable quantity ───
+  const openQuantityEdit = () => {
+    setQuantityInput(String(quantity));
+    setQuantityEditing(true);
+  };
+
+  const commitQuantityEdit = () => {
+    const n = parseInt(quantityInput, 10);
+    if (!isNaN(n)) setQuantity(Math.min(MAX_QTY, Math.max(MIN_QTY, n)));
+    setQuantityEditing(false);
+  };
+
   // ─── Textarea / segments logic ───
   useEffect(() => {
     const el = textareaRef.current;
@@ -461,18 +489,6 @@ const ContentGenerator = () => {
             </button>
           ))}
 
-          {/* Clear button (clears view only, not DB) */}
-          {ideas.length > 0 && activeTab === 'ideas' && (
-            <button
-              onClick={() => { setIdeas([]); setSelectedIdeas([]); }}
-              className="flex items-center gap-1.5 pb-2.5 text-[12px] font-medium text-gray-600 hover:text-gray-300 transition-colors"
-              title="Limpar ideias da tela (não apaga do banco)"
-            >
-              <Trash2 size={12} strokeWidth={1.8} />
-              Limpar
-            </button>
-          )}
-
           <div className="flex-1" />
 
           {/* Grid size slider */}
@@ -488,6 +504,49 @@ const ContentGenerator = () => {
             />
             <Grid3x3 size={14} strokeWidth={1.5} className="text-gray-600" />
           </div>
+
+          {/* Clear button + confirmation popup */}
+          {ideas.length > 0 && activeTab === 'ideas' && (
+            <div className="relative pb-2">
+              <button
+                onClick={() => setClearConfirmOpen(!clearConfirmOpen)}
+                className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-400/[0.08] transition-colors"
+                title="Limpar ideias"
+              >
+                <Trash2 size={14} strokeWidth={1.8} />
+              </button>
+              <AnimatePresence>
+                {clearConfirmOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setClearConfirmOpen(false)} />
+                    <motion.div
+                      initial={{ opacity: 0, y: -4, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -4, scale: 0.96 }}
+                      transition={{ duration: 0.15 }}
+                      className="absolute top-full right-0 mt-2 bg-[#16161a] border border-white/[0.08] rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] p-3 z-40 w-52"
+                    >
+                      <p className="text-[12px] text-gray-300 font-medium mb-2.5">Limpar todas as ideias?</p>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={handleClearAll}
+                          className="flex-1 py-1.5 rounded-lg bg-red-500/15 border border-red-500/25 text-red-400 text-[11px] font-bold hover:bg-red-500/25 transition-colors"
+                        >
+                          Sim
+                        </button>
+                        <button
+                          onClick={() => setClearConfirmOpen(false)}
+                          className="flex-1 py-1.5 rounded-lg bg-white/[0.04] border border-white/[0.08] text-gray-400 text-[11px] font-bold hover:bg-white/[0.08] transition-colors"
+                        >
+                          Não
+                        </button>
+                      </div>
+                    </motion.div>
+                  </>
+                )}
+              </AnimatePresence>
+            </div>
+          )}
         </div>
         <div className="h-px bg-white/[0.04] -mx-8" />
       </div>
@@ -605,8 +664,8 @@ const ContentGenerator = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="shrink-0 flex justify-center px-6 pb-3"
           >
-            <button className="px-8 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200">
-              Desenvolver {selectedIdeas.length} selecionado{selectedIdeas.length > 1 ? 's' : ''}
+            <button className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200">
+              Criar conteúdo · {selectedIdeas.length}
             </button>
           </motion.div>
         )}
@@ -696,7 +755,30 @@ const ContentGenerator = () => {
                 disabled={quantity <= MIN_QTY}
                 className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 transition-colors rounded-l-xl"
               ><Minus size={14} strokeWidth={2} /></button>
-              <span className="px-3 py-2 text-[13px] font-bold text-white tabular-nums min-w-[32px] text-center select-none">{quantity}</span>
+              {quantityEditing ? (
+                <input
+                  type="number"
+                  min={MIN_QTY}
+                  max={MAX_QTY}
+                  value={quantityInput}
+                  autoFocus
+                  onChange={(e) => setQuantityInput(e.target.value)}
+                  onBlur={commitQuantityEdit}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') { e.preventDefault(); commitQuantityEdit(); }
+                    if (e.key === 'Escape') { e.preventDefault(); setQuantityEditing(false); }
+                  }}
+                  className="px-2 py-2 text-[13px] font-bold text-white tabular-nums w-[40px] text-center bg-transparent outline-none [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              ) : (
+                <button
+                  onClick={openQuantityEdit}
+                  className="px-3 py-2 text-[13px] font-bold text-white tabular-nums min-w-[32px] text-center select-none hover:bg-white/[0.04] transition-colors"
+                  title="Clique para editar"
+                >
+                  {quantity}
+                </button>
+              )}
               <button
                 onMouseDown={() => startHold(1)}
                 onMouseUp={stopHold}
