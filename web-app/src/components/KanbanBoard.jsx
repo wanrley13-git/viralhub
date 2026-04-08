@@ -60,7 +60,10 @@ const KanbanBoard = ({
     <div className="flex gap-5 h-full p-6 overflow-x-auto custom-scrollbar bg-background items-start">
       <DragDropContext onDragEnd={onDragEnd}>
         {columns.map((column) => (
-          <div key={column.id} className="w-[310px] flex flex-col h-full shrink-0">
+          <div
+            key={column.id}
+            className="w-[310px] flex flex-col h-full shrink-0 bg-[#0E0E0F] rounded-xl p-3"
+          >
             {/* Column Header */}
             <div className="flex items-center justify-between mb-4 p-3.5 bg-surface rounded-2xl border border-border-subtle relative">
               <div className="flex items-center gap-3 flex-1 min-w-0">
