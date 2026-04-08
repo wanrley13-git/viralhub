@@ -65,7 +65,7 @@ const KanbanBoard = ({
             className="w-[310px] flex flex-col shrink-0 bg-[#0E0E0F] rounded-xl p-3 min-h-[calc(100vh-140px)]"
           >
             {/* Column Header */}
-            <div className="flex items-center justify-between mb-4 p-3.5 bg-surface rounded-2xl border border-border-subtle relative">
+            <div className="flex items-center justify-between mb-4 p-3.5 bg-[#0E0E0F] rounded-2xl border border-border-subtle relative">
               <div className="flex items-center gap-3 flex-1 min-w-0">
                 <div className={clsx("w-2 h-2 rounded-full shrink-0", column.accent)} />
 
