@@ -621,20 +621,19 @@ const ContentGenerator = () => {
       {/* ═══ TABS + CONTROLS ═══ */}
       <div className="shrink-0 px-8 pt-6">
         <div className="flex items-center gap-2">
-          {TABS.map(tab => {
+          {/* Main tabs — Ideias / Desenvolvidos */}
+          {TABS.filter(t => t.pill).map(tab => {
             const isActive = activeTab === tab.id;
-            const Icon = tab.icon;
-            const activeStyle = tab.pill && isActive
-              ? 'bg-white/[0.08] border border-white/[0.1] text-white'
-              : 'border border-transparent';
-            const textColor = isActive ? 'text-white' : 'text-white/40 hover:text-white/60';
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${activeStyle} ${textColor}`}
+                className={`px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+                  isActive
+                    ? 'bg-white/[0.03] border border-white/[0.06] text-white'
+                    : 'border border-transparent text-white/40 hover:text-white/60'
+                }`}
               >
-                <Icon size={14} strokeWidth={1.8} className="shrink-0" />
                 {tab.label}
               </button>
             );
@@ -642,26 +641,32 @@ const ContentGenerator = () => {
 
           <div className="flex-1" />
 
-          {/* Grid size slider */}
-          <div className="flex items-center gap-2">
-            <LayoutGrid size={14} strokeWidth={1.5} className="text-gray-600" />
-            <input
-              type="range"
-              min={4}
-              max={6}
-              value={gridCols}
-              onChange={(e) => setGridCols(Number(e.target.value))}
-              className="w-20 h-1 appearance-none bg-white/[0.08] rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gray-400 [&::-webkit-slider-thumb]:hover:bg-white [&::-webkit-slider-thumb]:transition-colors"
-            />
-            <Grid3x3 size={14} strokeWidth={1.5} className="text-gray-600" />
-          </div>
+          {/* Histórico / Favoritos as icon buttons */}
+          {TABS.filter(t => !t.pill).map(tab => {
+            const isActive = activeTab === tab.id;
+            const Icon = tab.icon;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                title={tab.label}
+                className={`p-2 rounded-lg border transition-colors ${
+                  isActive
+                    ? 'bg-white/[0.03] border-white/[0.06] text-white'
+                    : 'border-transparent text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]'
+                }`}
+              >
+                <Icon size={14} strokeWidth={1.8} />
+              </button>
+            );
+          })}
 
           {/* Clear button + confirmation popup */}
           {ideas.length > 0 && activeTab === 'ideas' && (
             <div className="relative">
               <button
                 onClick={() => setClearConfirmOpen(!clearConfirmOpen)}
-                className="p-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-gray-400 hover:text-red-400 hover:bg-red-400/[0.1] hover:border-red-400/20 transition-colors"
+                className="p-2 rounded-lg bg-white/[0.03] border border-white/[0.06] text-gray-400 hover:text-red-400 hover:bg-red-400/[0.08] hover:border-red-400/20 transition-colors"
                 title="Limpar ideias"
               >
                 <Trash2 size={14} strokeWidth={1.5} fill="currentColor" />
@@ -698,6 +703,20 @@ const ContentGenerator = () => {
               </AnimatePresence>
             </div>
           )}
+
+          {/* Grid size slider */}
+          <div className="flex items-center gap-2 pl-1">
+            <LayoutGrid size={14} strokeWidth={1.5} className="text-gray-600" />
+            <input
+              type="range"
+              min={4}
+              max={6}
+              value={gridCols}
+              onChange={(e) => setGridCols(Number(e.target.value))}
+              className="w-20 h-1 appearance-none bg-white/[0.08] rounded-full cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gray-400 [&::-webkit-slider-thumb]:hover:bg-white [&::-webkit-slider-thumb]:transition-colors"
+            />
+            <Grid3x3 size={14} strokeWidth={1.5} className="text-gray-600" />
+          </div>
         </div>
         <div className="h-px bg-white/[0.04] -mx-8 mt-4" />
       </div>
