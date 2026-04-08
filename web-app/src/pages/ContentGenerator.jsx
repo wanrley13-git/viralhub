@@ -168,6 +168,8 @@ const ContentGenerator = () => {
   const [kbSearchTerm, setKbSearchTerm] = useState('');
   const [kbCompiling, setKbCompiling] = useState(false);
   const [kbSaved, setKbSaved] = useState(false);
+  const [kbCompileError, setKbCompileError] = useState(null);
+  const [kbRecompilingIds, setKbRecompilingIds] = useState({}); // { [kbId]: true }
   const [kbViewingBase, setKbViewingBase] = useState(null);
 
   // Tone create
@@ -358,6 +360,7 @@ const ContentGenerator = () => {
     setKbOriginalIds(base?.selected_ids || []);
     setKbSearchTerm('');
     setKbSaved(false);
+    setKbCompileError(null);
     setConfigTab('create');
   };
 
@@ -369,6 +372,7 @@ const ContentGenerator = () => {
     });
   };
 
+  // Returns the saved kbId so callers can avoid the setState race condition.
   const handleKBSave = async () => {
     const token = await getAccessToken();
     const finalName = kbEditName.trim() || 'Nova Base';
@@ -385,21 +389,76 @@ const ContentGenerator = () => {
       await fetchKnowledgeBases();
       setKbSaved(true);
       setTimeout(() => setKbSaved(false), 2000);
-    } catch (err) { console.error('Erro ao salvar KB:', err); }
+      return kbId;
+    } catch (err) {
+      console.error('Erro ao salvar KB:', err);
+      setKbCompileError(err.response?.data?.detail || err.message || 'Erro ao salvar base.');
+      return null;
+    }
   };
 
   const handleKBCompile = async () => {
-    await handleKBSave();
-    if (!kbEditId || kbSelectedIds.length === 0) return;
+    if (kbSelectedIds.length === 0) return;
+    setKbCompileError(null);
+
+    // Save first and read the kbId directly from the return value — never
+    // from React state. This avoids the setState-race bug that made new
+    // bases silently stay "Pendente" forever.
+    const kbId = await handleKBSave();
+    if (!kbId) return;
+
     setKbCompiling(true);
     try {
       const token = await getAccessToken();
-      await axios.post(`${API_URL}/knowledge/${kbEditId}/compile`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      await axios.post(
+        `${API_URL}/knowledge/${kbId}/compile`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 120000, // 2 minutes — Gemini compile can be slow
+        }
+      );
       await fetchKnowledgeBases();
-      setSelectedBaseId(kbEditId);
+      setSelectedBaseId(kbId);
       setConfigTab('bases');
-    } catch (err) { console.error('Erro ao compilar:', err); }
-    finally { setKbCompiling(false); }
+    } catch (err) {
+      console.error('Erro ao compilar:', err);
+      const msg = err.response?.data?.detail
+        || (err.code === 'ECONNABORTED' ? 'Tempo esgotado ao compilar (a IA demorou mais de 2 minutos). Tente novamente.' : null)
+        || err.message
+        || 'Erro desconhecido ao compilar.';
+      setKbCompileError(msg);
+    } finally { setKbCompiling(false); }
+  };
+
+  // Recompile a base directly from the list (no edit flow)
+  const handleKBRecompile = async (kbId) => {
+    setKbRecompilingIds(prev => ({ ...prev, [kbId]: true }));
+    try {
+      const token = await getAccessToken();
+      await axios.post(
+        `${API_URL}/knowledge/${kbId}/compile`,
+        {},
+        {
+          headers: { Authorization: `Bearer ${token}` },
+          timeout: 120000,
+        }
+      );
+      await fetchKnowledgeBases();
+    } catch (err) {
+      const msg = err.response?.data?.detail
+        || (err.code === 'ECONNABORTED' ? 'Tempo esgotado ao compilar.' : null)
+        || err.message
+        || 'Erro ao recompilar base.';
+      setErrorToast(`Falha ao compilar base: ${msg}`);
+      setTimeout(() => setErrorToast(null), 6000);
+    } finally {
+      setKbRecompilingIds(prev => {
+        const next = { ...prev };
+        delete next[kbId];
+        return next;
+      });
+    }
   };
 
   const handleKBDelete = async (kbId) => {
@@ -1333,12 +1392,35 @@ const ContentGenerator = () => {
                               <h4 className="text-sm font-bold text-white truncate">{kb.name}</h4>
                               <div className="flex items-center gap-2 text-[11px] font-mono text-gray-600 mt-0.5">
                                 <span>{ids.length} vídeo{ids.length !== 1 ? 's' : ''}</span>
-                                {kb.compiled_md ? <span className="text-primary flex items-center gap-1"><Check size={9} strokeWidth={1.5} /> Compilada</span> : <span className="text-amber-500/70">Pendente</span>}
+                                {kbRecompilingIds[kb.id]
+                                  ? <span className="text-primary flex items-center gap-1"><Loader2 size={9} className="animate-spin" /> Compilando...</span>
+                                  : (kb.compiled_md
+                                    ? <span className="text-primary flex items-center gap-1"><Check size={9} strokeWidth={1.5} /> Compilada</span>
+                                    : <span className="text-amber-500/70">Pendente</span>)}
                                 {isActive && <span className="text-primary">· Ativa</span>}
                               </div>
                             </div>
                             <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                              {!kb.compiled_md && ids.length > 0 && !kbRecompilingIds[kb.id] && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleKBRecompile(kb.id); }}
+                                  className="p-2.5 rounded-xl text-amber-400/70 hover:text-amber-400 hover:bg-amber-400/[0.08]"
+                                  title="Compilar agora"
+                                >
+                                  <StarFilled size={14} />
+                                </button>
+                              )}
                               {kb.compiled_md && <button onClick={e => { e.stopPropagation(); setKbViewingBase(kb); setConfigTab('view'); }} className="p-2.5 rounded-xl text-gray-500 hover:text-white hover:bg-white/[0.06]" title="Ver"><Eye size={16} strokeWidth={2.5} /></button>}
+                              {kb.compiled_md && (
+                                <button
+                                  onClick={e => { e.stopPropagation(); handleKBRecompile(kb.id); }}
+                                  disabled={!!kbRecompilingIds[kb.id]}
+                                  className="p-2.5 rounded-xl text-gray-500 hover:text-primary hover:bg-primary/10 disabled:opacity-50"
+                                  title="Recompilar"
+                                >
+                                  {kbRecompilingIds[kb.id] ? <Loader2 size={16} className="animate-spin" /> : <StarFilled size={14} />}
+                                </button>
+                              )}
                               <button onClick={e => { e.stopPropagation(); openKBCreate(kb); }} className="p-2.5 rounded-xl text-gray-500 hover:text-white hover:bg-white/[0.06]" title="Editar"><Pencil size={16} strokeWidth={2.5} /></button>
                               {kb.compiled_md && <button onClick={e => { e.stopPropagation(); handleKBExport(kb); }} className="p-2.5 rounded-xl text-gray-500 hover:text-primary hover:bg-primary/10" title="Exportar"><Download size={16} strokeWidth={2.5} /></button>}
                               <button onClick={e => { e.stopPropagation(); handleKBDelete(kb.id); }} className="p-2.5 rounded-xl text-gray-500 hover:text-red-400 hover:bg-red-400/[0.08]" title="Excluir"><Trash2 size={16} strokeWidth={2.5} /></button>
@@ -1365,7 +1447,22 @@ const ContentGenerator = () => {
                   {kbCompiling && (
                     <div className="p-4 bg-primary/5 border border-primary/15 rounded-2xl flex items-center gap-3 animate-fade-in">
                       <Loader2 size={18} strokeWidth={1.5} className="animate-spin text-primary" />
-                      <div><p className="text-white text-sm font-semibold">Compilando base...</p><p className="text-gray-500 text-sm mt-0.5">Analisando {kbSelectedIds.length} vídeos.</p></div>
+                      <div>
+                        <p className="text-white text-sm font-semibold">Compilando base...</p>
+                        <p className="text-gray-500 text-sm mt-0.5">Analisando {kbSelectedIds.length} vídeos com IA. Isso pode levar até 1 minuto.</p>
+                      </div>
+                    </div>
+                  )}
+                  {kbCompileError && !kbCompiling && (
+                    <div className="p-4 bg-red-500/8 border border-red-500/20 rounded-2xl flex items-start gap-3 animate-fade-in">
+                      <AlertCircle size={18} strokeWidth={1.8} className="text-red-400 shrink-0 mt-0.5" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-red-400 text-sm font-semibold">Falha ao compilar base</p>
+                        <p className="text-red-400/70 text-xs mt-0.5 break-words">{kbCompileError}</p>
+                      </div>
+                      <button onClick={() => setKbCompileError(null)} className="p-1 rounded-md text-red-400/60 hover:text-red-400 transition-colors">
+                        <X size={14} strokeWidth={2} />
+                      </button>
                     </div>
                   )}
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
