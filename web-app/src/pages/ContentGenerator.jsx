@@ -23,10 +23,10 @@ const StarFilled = ({ size = 14, className = '' }) => (
 );
 
 const TABS = [
-  { id: 'ideas', label: 'Ideias', color: '#37B24D' },
-  { id: 'developed', label: 'Desenvolvidos', color: '#37B24D' },
-  { id: 'history', label: 'Histórico', color: '#F59E0B' },
-  { id: 'saved', label: 'Favoritos', color: '#E2272F' },
+  { id: 'ideas',     label: 'Ideias',        bgActive: '#37B24D', dotColor: '#37B24D' },
+  { id: 'developed', label: 'Desenvolvidos', bgActive: '#37B24D', dotColor: '#37B24D' },
+  { id: 'history',   label: 'Histórico',     bgActive: '#D97706', dotColor: '#F59E0B' },
+  { id: 'saved',     label: 'Favoritos',     bgActive: '#DC2626', dotColor: '#E2272F' },
 ];
 
 const MIN_QTY = 1;
@@ -620,30 +620,33 @@ const ContentGenerator = () => {
     <div className="flex flex-col h-screen transition-all duration-300" style={{ marginLeft: collapsed ? 72 : 260 }}>
       {/* ═══ TABS + CONTROLS ═══ */}
       <div className="shrink-0 px-8 pt-6">
-        <div className="flex items-center gap-6">
-          {TABS.map(tab => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className="relative pb-2.5 text-[13px] font-semibold transition-colors duration-200"
-              style={{ color: activeTab === tab.id ? tab.color : '#52525b' }}
-            >
-              {tab.label}
-              {activeTab === tab.id && (
-                <motion.div
-                  layoutId="tab-underline"
-                  className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full"
-                  style={{ backgroundColor: tab.color }}
-                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+        <div className="flex items-center gap-2">
+          {TABS.map(tab => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200"
+                style={{
+                  backgroundColor: isActive ? tab.bgActive : 'transparent',
+                  color: isActive ? '#ffffff' : '#71717a',
+                  border: `1px solid ${isActive ? tab.bgActive : 'rgba(255,255,255,0.06)'}`,
+                }}
+              >
+                <span
+                  className="w-2 h-2 rounded-[3px]"
+                  style={{ backgroundColor: isActive ? 'rgba(255,255,255,0.9)' : tab.dotColor }}
                 />
-              )}
-            </button>
-          ))}
+                {tab.label}
+              </button>
+            );
+          })}
 
           <div className="flex-1" />
 
           {/* Grid size slider */}
-          <div className="flex items-center gap-2 pb-2">
+          <div className="flex items-center gap-2">
             <LayoutGrid size={14} strokeWidth={1.5} className="text-gray-600" />
             <input
               type="range"
@@ -658,13 +661,13 @@ const ContentGenerator = () => {
 
           {/* Clear button + confirmation popup */}
           {ideas.length > 0 && activeTab === 'ideas' && (
-            <div className="relative pb-2">
+            <div className="relative">
               <button
                 onClick={() => setClearConfirmOpen(!clearConfirmOpen)}
-                className="p-1.5 rounded-lg text-gray-600 hover:text-red-400 hover:bg-red-400/[0.08] transition-colors"
+                className="p-2 rounded-lg bg-white/[0.06] border border-white/[0.08] text-gray-400 hover:text-red-400 hover:bg-red-400/[0.1] hover:border-red-400/20 transition-colors"
                 title="Limpar ideias"
               >
-                <Trash2 size={14} strokeWidth={1.8} />
+                <Trash2 size={14} strokeWidth={1.5} fill="currentColor" />
               </button>
               <AnimatePresence>
                 {clearConfirmOpen && (
@@ -699,7 +702,7 @@ const ContentGenerator = () => {
             </div>
           )}
         </div>
-        <div className="h-px bg-white/[0.04] -mx-8" />
+        <div className="h-px bg-white/[0.04] -mx-8 mt-4" />
       </div>
 
       {/* ═══ CONTENT ═══ */}
