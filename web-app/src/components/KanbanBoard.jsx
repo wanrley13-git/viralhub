@@ -57,12 +57,12 @@ const KanbanBoard = ({
   };
 
   return (
-    <div className="flex gap-5 h-full p-6 overflow-x-auto custom-scrollbar bg-background items-start">
+    <div className="flex gap-5 h-full p-6 overflow-x-auto custom-scrollbar bg-background items-stretch">
       <DragDropContext onDragEnd={onDragEnd}>
         {columns.map((column) => (
           <div
             key={column.id}
-            className="w-[310px] flex flex-col h-full shrink-0 bg-[#0E0E0F] rounded-xl p-3"
+            className="w-[310px] flex flex-col shrink-0 bg-[#0E0E0F] rounded-xl p-3 min-h-[calc(100vh-140px)]"
           >
             {/* Column Header */}
             <div className="flex items-center justify-between mb-4 p-3.5 bg-surface rounded-2xl border border-border-subtle relative">
@@ -283,14 +283,12 @@ const KanbanBoard = ({
       </DragDropContext>
 
       {/* Add Column Button */}
-      <div className="shrink-0 pt-0">
-        <button
-          onClick={onAddColumn}
-          className="w-[310px] p-3.5 bg-surface/50 hover:bg-surface rounded-2xl border border-dashed border-border-subtle hover:border-border-hover transition-all flex items-center justify-center gap-2.5 text-gray-500 hover:text-white text-sm font-semibold"
-        >
-          <Plus size={15} strokeWidth={2.5} /> Nova Coluna
-        </button>
-      </div>
+      <button
+        onClick={onAddColumn}
+        className="w-[310px] shrink-0 min-h-[calc(100vh-140px)] bg-surface/30 hover:bg-surface/60 rounded-xl border border-dashed border-border-subtle hover:border-border-hover transition-all flex items-center justify-center gap-2.5 text-gray-500 hover:text-white text-sm font-semibold"
+      >
+        <Plus size={15} strokeWidth={2.5} /> Nova Coluna
+      </button>
 
       {/* Image Lightbox */}
       {lightboxSrc && (
