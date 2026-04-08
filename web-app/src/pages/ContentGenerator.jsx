@@ -127,7 +127,17 @@ const ContentGenerator = () => {
   const { collapsed } = useSidebar();
 
   // Page tabs
-  const [activeTab, setActiveTab] = useState('ideas');
+  const [activeTab, setActiveTab] = useState(() => {
+    try {
+      const saved = localStorage.getItem('viralhub_generator_tab');
+      if (saved && ['ideas', 'developed', 'history', 'saved'].includes(saved)) return saved;
+    } catch {}
+    return 'ideas';
+  });
+
+  useEffect(() => {
+    try { localStorage.setItem('viralhub_generator_tab', activeTab); } catch {}
+  }, [activeTab]);
 
   // Prompt bar segments
   const [segments, setSegments] = useState([{ type: 'text', value: '' }]);

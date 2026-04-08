@@ -27,7 +27,16 @@ from analyzer import (
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 
 # Armazenamento de tarefas temporárias em memória
+# Shape: { task_id: { progress, logs, status, report, user_id } }
 tasks_progress = {}
+
+def _user_has_active_task(user_id: int) -> Optional[str]:
+    """Return the first in-progress (queued/processing) task_id owned by user, else None."""
+    for task_id, task in tasks_progress.items():
+        if task.get("user_id") == user_id and task.get("status") not in ("completed", "error"):
+            return task_id
+    return None
+
 
 class AnalyzeLinksRequest(BaseModel):
     links: List[str]
@@ -107,27 +116,52 @@ async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: b
         tasks_progress[task_id]["status"] = "error"
         tasks_progress[task_id]["logs"].append(f"Erro fatal: {str(e)}")
 
+@router.get("/active")
+async def get_active_task(current_user: User = Depends(get_current_user)):
+    """Return the user's currently running analysis task (if any) so the
+    frontend can resume the progress listener after navigation."""
+    task_id = _user_has_active_task(current_user.id)
+    if not task_id:
+        return {"taskId": None}
+    task = tasks_progress.get(task_id, {})
+    return {
+        "taskId": task_id,
+        "progress": task.get("progress", 0),
+        "logs": task.get("logs", []),
+        "status": task.get("status", "queued"),
+    }
+
+
 @router.post("/links")
 async def analyze_links(
-    request: AnalyzeLinksRequest, 
+    request: AnalyzeLinksRequest,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user)
 ):
+    # Reject if user already has an analysis running
+    existing = _user_has_active_task(current_user.id)
+    if existing:
+        raise HTTPException(status_code=409, detail="Você já tem uma análise em andamento. Aguarde finalizar para iniciar outra.")
+
     task_id = str(uuid.uuid4())
-    tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None}
-    
+    tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None, "user_id": current_user.id}
+
     background_tasks.add_task(run_analysis_task, task_id, request.links, True, current_user.id, get_db)
     return {"taskId": task_id}
 
 @router.post("/files")
 async def analyze_files(
-    background_tasks: BackgroundTasks, 
+    background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     current_user: User = Depends(get_current_user)
 ):
+    existing = _user_has_active_task(current_user.id)
+    if existing:
+        raise HTTPException(status_code=409, detail="Você já tem uma análise em andamento. Aguarde finalizar para iniciar outra.")
+
     task_id = str(uuid.uuid4())
-    tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None}
-    
+    tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None, "user_id": current_user.id}
+
     local_paths = []
     for file in files:
         filepath = os.path.join(TMP_DIR, f"{uuid.uuid4()}_{file.filename}")
@@ -144,7 +178,7 @@ async def analyze_files(
                     final_files.extend(extracted)
                 else:
                     final_files.append(p)
-            
+
             await run_analysis_task(task_id, final_files, False, current_user.id, get_db)
         finally:
             cleanup_temp_files(local_paths)

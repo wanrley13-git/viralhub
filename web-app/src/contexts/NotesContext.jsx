@@ -1,8 +1,10 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect } from 'react';
 
 const NotesContext = createContext();
 
 const STORAGE_KEY = 'viralhub_notes';
+const ACTIVE_KEY = 'viralhub_notes_active_id';
+const FOLDER_KEY = 'viralhub_notes_folder_id';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -27,10 +29,29 @@ const saveData = (data) => {
 
 export const NotesProvider = ({ children }) => {
   const [data, setData] = useState(loadData);
-  const [activeNoteId, setActiveNoteId] = useState(null);
-  const [selectedFolderId, setSelectedFolderId] = useState(null);
+  const [activeNoteId, setActiveNoteId] = useState(() => {
+    try { return localStorage.getItem(ACTIVE_KEY) || null; } catch { return null; }
+  });
+  const [selectedFolderId, setSelectedFolderId] = useState(() => {
+    try { return localStorage.getItem(FOLDER_KEY) || null; } catch { return null; }
+  });
   const [renamingFolderId, setRenamingFolderId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Persist last-open note/folder across sessions
+  useEffect(() => {
+    try {
+      if (activeNoteId) localStorage.setItem(ACTIVE_KEY, activeNoteId);
+      else localStorage.removeItem(ACTIVE_KEY);
+    } catch {}
+  }, [activeNoteId]);
+
+  useEffect(() => {
+    try {
+      if (selectedFolderId) localStorage.setItem(FOLDER_KEY, selectedFolderId);
+      else localStorage.removeItem(FOLDER_KEY);
+    } catch {}
+  }, [selectedFolderId]);
 
   const persist = useCallback((updater) => {
     setData((prev) => {

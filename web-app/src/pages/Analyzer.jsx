@@ -41,6 +41,28 @@ const Analyzer = () => {
 
   useEffect(() => {
     fetchHistory();
+    // Resume progress listener if there's an active analysis for this user
+    (async () => {
+      try {
+        const token = await getAccessToken();
+        const res = await axios.get(`${API_URL}/analyze/active`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        if (res.data?.taskId) {
+          setTaskId(res.data.taskId);
+          setProgress(res.data.progress || 0);
+          setLogs(res.data.logs || []);
+          setLoading(true);
+          if (res.data.logs && res.data.logs.length > 0) {
+            setStatusMessage(res.data.logs[res.data.logs.length - 1]);
+          } else {
+            setStatusMessage('Retomando análise em andamento...');
+          }
+        }
+      } catch (err) {
+        // Silent — endpoint might not exist yet or no active task
+      }
+    })();
   }, []);
 
   // Close modals on ESC
@@ -362,11 +384,20 @@ const Analyzer = () => {
 
               <button
                 onClick={handleAnalyze}
-                disabled={loading || (activeTab === 'upload' ? files.length === 0 : links.trim() === '')}
+                disabled={loading || taskId || (activeTab === 'upload' ? files.length === 0 : links.trim() === '')}
                 className="w-full mt-8 py-4 btn-white rounded-2xl flex justify-center items-center gap-2.5 text-sm disabled:opacity-40 disabled:pointer-events-none group"
               >
-                <Sparkles size={16} strokeWidth={2.5} className="group-hover:text-primary transition-colors" />
-                Iniciar Automação e Gerar
+                {loading || taskId ? (
+                  <>
+                    <Loader2 size={16} strokeWidth={2.5} className="animate-spin" />
+                    Processando...
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={16} strokeWidth={2.5} className="group-hover:text-primary transition-colors" />
+                    Iniciar Automação e Gerar
+                  </>
+                )}
               </button>
             </>
           )}

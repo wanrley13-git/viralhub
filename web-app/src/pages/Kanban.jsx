@@ -242,8 +242,21 @@ const BoardView = ({ projectId, collapsed }) => {
   const [previewTask, setPreviewTask] = useState(null);
   const [columns, setColumns] = useState(DEFAULT_COLUMNS);
   const [lightboxSrc, setLightboxSrc] = useState(null);
-  const [viewMode, setViewMode] = useState('kanban');
+  const [viewMode, setViewMode] = useState(() => {
+    try { return localStorage.getItem('viralhub_kanban_view') || 'kanban'; } catch { return 'kanban'; }
+  });
   const navigate = useNavigate();
+
+  // Persist view mode + last-open project
+  useEffect(() => {
+    try { localStorage.setItem('viralhub_kanban_view', viewMode); } catch {}
+  }, [viewMode]);
+
+  useEffect(() => {
+    try {
+      if (projectId) localStorage.setItem('viralhub_kanban_project', String(projectId));
+    } catch {}
+  }, [projectId]);
 
   useEffect(() => {
     fetchProject();
@@ -571,6 +584,20 @@ const BoardView = ({ projectId, collapsed }) => {
 const Kanban = () => {
   const { projectId } = useParams();
   const { collapsed } = useSidebar();
+  const { projects, loaded } = useProjects();
+  const navigate = useNavigate();
+
+  // If landing on /kanban (no projectId), try to restore the last-open project
+  useEffect(() => {
+    if (projectId || !loaded) return;
+    try {
+      const lastId = localStorage.getItem('viralhub_kanban_project');
+      if (lastId && projects.some(p => String(p.id) === String(lastId))) {
+        navigate(`/kanban/${lastId}`, { replace: true });
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, loaded, projects.length]);
 
   if (projectId) {
     return <BoardView projectId={projectId} collapsed={collapsed} />;
