@@ -705,20 +705,44 @@ const ContentGenerator = () => {
   };
 
   // ─── Send developed content to Kanban / Calendar ───
+  // Pre-selection priority:
+  //   1. Last used project/column from localStorage (if still exists)
+  //   2. First project + first column as fallback
   const openSendDest = (idea, mode) => {
     setSendDest({ idea, mode });
-    // Pre-select first project if available
-    const firstProject = projects[0];
-    setSendProjectId(firstProject?.id || null);
-    // Pre-select first column of first project for kanban mode
-    if (firstProject) {
-      try {
-        const cols = JSON.parse(firstProject.columns_json || '[]');
-        setSendColumnId(cols[0]?.id || 'todo');
-      } catch { setSendColumnId('todo'); }
+
+    // Read last-used values (scoped per mode)
+    let lastProjectId = null;
+    let lastColumnId = null;
+    try {
+      const key = mode === 'kanban' ? 'viralhub_send_kanban' : 'viralhub_send_calendar';
+      const raw = localStorage.getItem(key);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        lastProjectId = parsed.projectId ?? null;
+        lastColumnId = parsed.columnId ?? null;
+      }
+    } catch {}
+
+    // Project: prefer last used if it still exists, else first project
+    const stillExists = lastProjectId != null && projects.some(p => p.id === lastProjectId);
+    const projectId = stillExists ? lastProjectId : (projects[0]?.id ?? null);
+    setSendProjectId(projectId);
+
+    // Column: prefer last used if it still belongs to the selected project
+    if (projectId) {
+      const project = projects.find(p => p.id === projectId);
+      let cols = [];
+      try { cols = JSON.parse(project?.columns_json || '[]'); } catch {}
+      if (!Array.isArray(cols) || cols.length === 0) cols = [{ id: 'todo' }];
+      const validColumn = lastColumnId && cols.some(c => c.id === lastColumnId)
+        ? lastColumnId
+        : cols[0].id || 'todo';
+      setSendColumnId(validColumn);
     } else {
       setSendColumnId('todo');
     }
+
     // Default date = today (YYYY-MM-DD)
     setSendDate(new Date().toISOString().slice(0, 10));
   };
@@ -765,6 +789,14 @@ const ContentGenerator = () => {
       await axios.post(`${API_URL}/tasks/`, payload, {
         headers: { Authorization: `Bearer ${token}` },
       });
+      // Persist last-used project/column so the next send pre-selects them.
+      try {
+        const key = mode === 'kanban' ? 'viralhub_send_kanban' : 'viralhub_send_calendar';
+        const toSave = mode === 'kanban'
+          ? { projectId: parseInt(sendProjectId, 10), columnId: sendColumnId }
+          : { projectId: parseInt(sendProjectId, 10) };
+        localStorage.setItem(key, JSON.stringify(toSave));
+      } catch {}
       setSuccessToast(mode === 'kanban' ? 'Enviado para o Kanban' : 'Enviado para o Calendário');
       setTimeout(() => setSuccessToast(null), 3000);
       closeSendDest();
