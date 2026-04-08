@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Lightbulb, FileCheck, Minus, Plus, ChevronDown, Video, X, ImagePlus,
+  Lightbulb, FileCheck, FileText, Minus, Plus, ChevronDown, Video, X, ImagePlus,
   BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
   LayoutGrid, Grid3x3, Clock, Heart,
@@ -23,10 +23,10 @@ const StarFilled = ({ size = 14, className = '' }) => (
 );
 
 const TABS = [
-  { id: 'ideas',     label: 'Ideias',        bgActive: '#37B24D', dotColor: '#37B24D' },
-  { id: 'developed', label: 'Desenvolvidos', bgActive: '#37B24D', dotColor: '#37B24D' },
-  { id: 'history',   label: 'Histórico',     bgActive: '#D97706', dotColor: '#F59E0B' },
-  { id: 'saved',     label: 'Favoritos',     bgActive: '#DC2626', dotColor: '#E2272F' },
+  { id: 'ideas',     label: 'Ideias',        icon: Lightbulb, pill: true  },
+  { id: 'developed', label: 'Desenvolvidos', icon: FileText,  pill: true  },
+  { id: 'history',   label: 'Histórico',     icon: Clock,     pill: false },
+  { id: 'saved',     label: 'Favoritos',     icon: Heart,     pill: false },
 ];
 
 const MIN_QTY = 1;
@@ -623,23 +623,18 @@ const ContentGenerator = () => {
         <div className="flex items-center gap-2">
           {TABS.map(tab => {
             const isActive = activeTab === tab.id;
+            const Icon = tab.icon;
+            const activeStyle = tab.pill && isActive
+              ? 'bg-white/[0.08] border border-white/[0.1] text-white'
+              : 'border border-transparent';
+            const textColor = isActive ? 'text-white' : 'text-white/40 hover:text-white/60';
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
-                  isActive
-                    ? 'bg-white/[0.08] border border-white/[0.1] text-white'
-                    : 'border border-transparent text-white/40 hover:text-white/60'
-                }`}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${activeStyle} ${textColor}`}
               >
-                <span
-                  className="w-2 h-2 rounded-sm shrink-0"
-                  style={{
-                    backgroundColor: tab.dotColor,
-                    opacity: isActive ? 1 : 0.45,
-                  }}
-                />
+                <Icon size={14} strokeWidth={1.8} className="shrink-0" />
                 {tab.label}
               </button>
             );
