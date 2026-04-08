@@ -627,16 +627,18 @@ const ContentGenerator = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className="flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200"
-                style={{
-                  backgroundColor: isActive ? tab.bgActive : 'transparent',
-                  color: isActive ? '#ffffff' : '#71717a',
-                  border: `1px solid ${isActive ? tab.bgActive : 'rgba(255,255,255,0.06)'}`,
-                }}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-[13px] font-semibold transition-all duration-200 ${
+                  isActive
+                    ? 'bg-white/[0.08] border border-white/[0.1] text-white'
+                    : 'border border-transparent text-white/40 hover:text-white/60'
+                }`}
               >
                 <span
-                  className="w-2 h-2 rounded-[3px]"
-                  style={{ backgroundColor: isActive ? 'rgba(255,255,255,0.9)' : tab.dotColor }}
+                  className="w-2 h-2 rounded-sm shrink-0"
+                  style={{
+                    backgroundColor: tab.dotColor,
+                    opacity: isActive ? 1 : 0.45,
+                  }}
                 />
                 {tab.label}
               </button>
