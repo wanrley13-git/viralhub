@@ -123,7 +123,7 @@ const Analyzer = () => {
       let res;
       if (activeTab === 'upload') {
         if (files.length === 0) throw new Error("Anexe pelo menos um vídeo ou arquivo ZIP.");
-        if (files.length > 10) throw new Error("O limite atual é de 10 arquivos por análise.");
+        if (files.length > 20) throw new Error("O limite atual é de 20 arquivos por análise.");
 
         const formData = new FormData();
         files.forEach(file => formData.append('files', file));
@@ -134,7 +134,7 @@ const Analyzer = () => {
       } else {
         const linkList = links.split('\n').map(l => l.trim()).filter(l => l);
         if (linkList.length === 0) throw new Error("Insira pelo menos um link.");
-        if (linkList.length > 10) throw new Error("O limite atual é de 10 links por análise.");
+        if (linkList.length > 20) throw new Error("O limite atual é de 20 links por análise.");
         res = await axios.post(`${API_URL}/analyze/links`, { links: linkList }, config);
       }
       if (res.data.taskId) setTaskId(res.data.taskId);
@@ -335,7 +335,7 @@ const Analyzer = () => {
                       ) : (
                         <>
                           <p className="text-white font-semibold text-sm">Arraste e solte vídeos ou ZIP com vídeos aqui</p>
-                          <p className="text-sm text-gray-600 font-mono tracking-wide">.mp4, .mov, .zip — Máx: 5 por operação</p>
+                          <p className="text-sm text-gray-600 font-mono tracking-wide">.mp4, .mov, .zip — Máx: 20 por operação</p>
                         </>
                       )}
                     </div>
@@ -349,7 +349,7 @@ const Analyzer = () => {
                       rows="3"
                       placeholder={"https://youtube.com/shorts/...\nhttps://..."}
                     />
-                    <p className="text-sm text-gray-600 font-mono tracking-wide text-center">Copie e cole o link de até 5 vídeos do Instagram, Shorts ou TikTok</p>
+                    <p className="text-sm text-gray-600 font-mono tracking-wide text-center">Copie e cole o link de até 20 vídeos do Instagram, Shorts ou TikTok</p>
                   </div>
                 )}
               </div>
