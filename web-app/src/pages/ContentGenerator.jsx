@@ -65,16 +65,19 @@ const formatDateHeader = (iso) => {
 };
 
 // ─── Idea card component (reused across tabs) ───
-const IdeaCard = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, showDate = false }) => (
+const IdeaCard = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, showDate = false, bgColor = null }) => (
   <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.5) }}
     onClick={() => onToggleSelect(idea.id)}
+    style={bgColor && !isSelected ? { backgroundColor: bgColor } : undefined}
     className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-all duration-300 group flex flex-col ${
       isSelected
         ? 'bg-primary/5 border-primary/30'
-        : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
+        : bgColor
+          ? 'border-white/[0.08] hover:border-primary/40'
+          : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
     }`}
   >
     {/* Top-right corner: heart + selection checkbox side by side */}
@@ -1039,6 +1042,7 @@ const ContentGenerator = () => {
                             cs={cs}
                             onToggleSelect={toggleIdeaSelect}
                             onToggleSave={toggleSaveIdea}
+                            bgColor="#121E1E"
                           />
                         ))}
                       </div>
@@ -1074,6 +1078,7 @@ const ContentGenerator = () => {
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
                     showDate
+                    bgColor="#12121F"
                   />
                 ))}
               </div>
@@ -1111,12 +1116,13 @@ const ContentGenerator = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.35, delay: Math.min(i * 0.03, 0.3), ease: 'easeOut' }}
                       onClick={() => !isDeveloping && !hasFailed && setDevelopedViewing(idea)}
+                      style={!hasFailed ? { backgroundColor: '#121E13' } : undefined}
                       className={`relative ${cs.pad} rounded-2xl border transition-all duration-300 flex flex-col ${
                         isDeveloping
-                          ? 'bg-white/[0.02] border-white/[0.08] cursor-default'
+                          ? 'border-white/[0.08] cursor-default'
                           : hasFailed
                             ? 'bg-red-500/[0.04] border-red-500/20 cursor-default'
-                            : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40 cursor-pointer'
+                            : 'border-white/[0.08] hover:border-primary/40 cursor-pointer'
                       }`}
                     >
                       {isDeveloping ? (
