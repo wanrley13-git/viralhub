@@ -110,6 +110,18 @@ const getCurrentBlock = (editor) => {
   }
   return node;
 };
+// Walk up from the selection to find the nearest <li>. Needed because
+// getCurrentBlock returns the parent UL/OL for list selections.
+const getCurrentListItem = (editor) => {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return null;
+  let node = sel.anchorNode;
+  while (node && node !== editor) {
+    if (node.nodeName === 'LI') return node;
+    node = node.parentNode;
+  }
+  return null;
+};
 
 const placeCursorAtEnd = (el) => {
   const range = document.createRange();
@@ -721,20 +733,99 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
         }
         return;
       }
+
+      // Empty list item → exit list to paragraph
+      const enterLi = getCurrentListItem(editorRef.current);
+      if (enterLi) {
+        const text = (enterLi.textContent || '').replace(/\u200B/g, '').trim();
+        if (!text) {
+          e.preventDefault();
+          const list = enterLi.parentNode;
+          const p = document.createElement('p');
+          p.innerHTML = '<br>';
+          list.after(p);
+          enterLi.remove();
+          if (!list.children.length) list.remove();
+          placeCursorAtStart(p);
+          syncContent();
+          return;
+        }
+      }
     }
+
     if (e.key === 'Backspace') {
       const sel = window.getSelection();
       if (sel.rangeCount && sel.isCollapsed) {
+        const range = sel.getRangeAt(0);
         const block = getCurrentBlock(editorRef.current);
-        if (block && /^(H[1-3]|BLOCKQUOTE)$/.test(block.nodeName)) {
-          const range = sel.getRangeAt(0);
+        if (!block) return;
+
+        // Heading/blockquote at start → convert to paragraph
+        if (/^(H[1-3]|BLOCKQUOTE)$/.test(block.nodeName) && range.startOffset === 0) {
+          const textNode = sel.anchorNode;
+          const isAtStart = textNode === block || (textNode === block.firstChild && range.startOffset === 0);
+          if (isAtStart) {
+            e.preventDefault();
+            document.execCommand('formatBlock', false, 'p');
+            syncContent();
+            return;
+          }
+        }
+
+        // Empty checklist item → unwrap to paragraph (regardless of cursor position)
+        const checkItem = block.closest?.('.checklist-item') || (block.classList?.contains('checklist-item') ? block : null);
+        if (checkItem) {
+          const span = checkItem.querySelector('span');
+          const cText = (span?.textContent || '').replace(/\u200B/g, '').trim();
+          if (cText === '') {
+            e.preventDefault();
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            checkItem.before(p);
+            checkItem.remove();
+            placeCursorAtStart(p);
+            syncContent();
+            return;
+          }
+          if (span && sel.anchorNode === span && range.startOffset === 0) {
+            e.preventDefault();
+            const p = document.createElement('p');
+            p.innerHTML = span.innerHTML || '<br>';
+            checkItem.before(p); checkItem.remove();
+            placeCursorAtStart(p); syncContent();
+            return;
+          }
+        }
+
+        // Empty list item (bullet / numbered) → unwrap to paragraph.
+        // Place the new paragraph AFTER the list so the user can continue
+        // writing below the remaining items (if any).
+        const bsLi = getCurrentListItem(editorRef.current);
+        if (bsLi) {
+          const liText = (bsLi.textContent || '').replace(/\u200B/g, '').trim();
+          if (liText === '') {
+            e.preventDefault();
+            const list = bsLi.parentNode;
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            list.after(p);
+            bsLi.remove();
+            if (!list.children.length) list.remove();
+            placeCursorAtStart(p);
+            syncContent();
+            return;
+          }
           if (range.startOffset === 0) {
             const textNode = sel.anchorNode;
-            const isAtStart = textNode === block || (textNode === block.firstChild && range.startOffset === 0);
+            const isAtStart = textNode === bsLi || textNode === bsLi.firstChild;
             if (isAtStart) {
               e.preventDefault();
-              document.execCommand('formatBlock', false, 'p');
-              syncContent();
+              const list = bsLi.parentNode;
+              const p = document.createElement('p');
+              p.innerHTML = bsLi.innerHTML || '<br>';
+              list.after(p); bsLi.remove();
+              if (!list.children.length) list.remove();
+              placeCursorAtStart(p); syncContent();
               return;
             }
           }

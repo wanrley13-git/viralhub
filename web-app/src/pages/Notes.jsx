@@ -100,6 +100,20 @@ const getCurrentBlock = (editor) => {
   while (node && node.parentNode !== editor) node = node.parentNode;
   return node;
 };
+// Walk up from the selection to find the nearest <li>. getCurrentBlock
+// only returns top-level editor children (so for lists it returns UL/OL,
+// not the actual LI where the caret is). Use this helper whenever you
+// need to act on the specific list item.
+const getCurrentListItem = (editor) => {
+  const sel = window.getSelection();
+  if (!sel.rangeCount) return null;
+  let node = sel.anchorNode;
+  while (node && node !== editor) {
+    if (node.nodeName === 'LI') return node;
+    node = node.parentNode;
+  }
+  return null;
+};
 const placeCursorAtEnd = (el) => {
   const r = document.createRange(), s = window.getSelection();
   r.selectNodeContents(el); r.collapse(false); s.removeAllRanges(); s.addRange(r);
@@ -1192,18 +1206,20 @@ const NoteEditor = ({ note }) => {
         return;
       }
 
-      // Empty list item → exit list
-      if (block.nodeName === 'LI') {
-        const text = block.textContent?.replace(/\u200B/g, '').trim() || '';
+      // Empty list item → exit list to paragraph
+      const enterLi = getCurrentListItem(editorRef.current);
+      if (enterLi) {
+        const text = (enterLi.textContent || '').replace(/\u200B/g, '').trim();
         if (!text) {
           e.preventDefault();
-          const list = block.parentNode;
+          const list = enterLi.parentNode;
           const p = document.createElement('p'); p.innerHTML = '<br>';
-          list.after(p); block.remove();
+          list.after(p); enterLi.remove();
           if (!list.children.length) list.remove();
           placeCursorAtStart(p); syncContent();
           return;
         }
+        // Non-empty LI: let the browser default create a new LI
       }
     }
 
@@ -1221,26 +1237,23 @@ const NoteEditor = ({ note }) => {
           if (isAtStart) { e.preventDefault(); document.execCommand('formatBlock', false, 'p'); syncContent(); return; }
         }
 
-        // List item at start → convert to paragraph (don't merge with above)
-        if (block.nodeName === 'LI' && range.startOffset === 0) {
-          const textNode = sel.anchorNode;
-          const isAtStart = textNode === block || textNode === block.firstChild;
-          if (isAtStart) {
-            e.preventDefault();
-            const list = block.parentNode;
-            const p = document.createElement('p');
-            p.innerHTML = block.innerHTML || '<br>';
-            list.before(p); block.remove();
-            if (!list.children.length) list.remove();
-            placeCursorAtStart(p); syncContent();
-            return;
-          }
-        }
-
-        // Checklist item at start → convert to paragraph
+        // Empty checklist item → unwrap to paragraph (fires regardless of
+        // where the cursor sits inside the span, including a stray <br>).
         const checkItem = block.closest?.('.checklist-item') || (block.classList?.contains('checklist-item') ? block : null);
         if (checkItem) {
           const span = checkItem.querySelector('span');
+          const cText = (span?.textContent || '').replace(/\u200B/g, '').trim();
+          if (cText === '') {
+            e.preventDefault();
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            checkItem.before(p);
+            checkItem.remove();
+            placeCursorAtStart(p);
+            syncContent();
+            return;
+          }
+          // Non-empty checklist item at true start → merge its content into a paragraph
           if (span && sel.anchorNode === span && range.startOffset === 0) {
             e.preventDefault();
             const p = document.createElement('p');
@@ -1248,6 +1261,44 @@ const NoteEditor = ({ note }) => {
             checkItem.before(p); checkItem.remove();
             placeCursorAtStart(p); syncContent();
             return;
+          }
+        }
+
+        // Empty list item (bullet / numbered) → unwrap to paragraph.
+        // getCurrentBlock returns the UL/OL for list selections, so we need
+        // getCurrentListItem to find the actual LI under the caret. We
+        // always insert the resulting <p> AFTER the list so the user can
+        // continue writing below the remaining items (if any).
+        const bsLi = getCurrentListItem(editorRef.current);
+        if (bsLi) {
+          const liText = (bsLi.textContent || '').replace(/\u200B/g, '').trim();
+          if (liText === '') {
+            e.preventDefault();
+            const list = bsLi.parentNode;
+            const p = document.createElement('p');
+            p.innerHTML = '<br>';
+            list.after(p);
+            bsLi.remove();
+            if (!list.children.length) list.remove();
+            placeCursorAtStart(p);
+            syncContent();
+            return;
+          }
+          // Non-empty LI with caret at the start → merge its content into
+          // a paragraph placed AFTER the list.
+          if (range.startOffset === 0) {
+            const textNode = sel.anchorNode;
+            const isAtStart = textNode === bsLi || textNode === bsLi.firstChild;
+            if (isAtStart) {
+              e.preventDefault();
+              const list = bsLi.parentNode;
+              const p = document.createElement('p');
+              p.innerHTML = bsLi.innerHTML || '<br>';
+              list.after(p); bsLi.remove();
+              if (!list.children.length) list.remove();
+              placeCursorAtStart(p); syncContent();
+              return;
+            }
           }
         }
       }
