@@ -219,8 +219,7 @@ const ContentGenerator = () => {
   const [expandedDeveloped, setExpandedDeveloped] = useState({}); // legacy, kept to avoid refactor
   const [developedViewing, setDevelopedViewing] = useState(null); // idea being shown in modal
 
-  // "Enviar" flow state — popup anchored to a card and destination modal
-  const [sendPopupFor, setSendPopupFor] = useState(null);   // idea id that opened the popup
+  // "Enviar" flow state — destination modal opens from the big viewing modal
   const [sendDest, setSendDest] = useState(null);           // { idea, mode: 'kanban' | 'calendar' }
   const [sendProjectId, setSendProjectId] = useState(null);
   const [sendColumnId, setSendColumnId] = useState(null);
@@ -708,7 +707,6 @@ const ContentGenerator = () => {
   // ─── Send developed content to Kanban / Calendar ───
   const openSendDest = (idea, mode) => {
     setSendDest({ idea, mode });
-    setSendPopupFor(null);
     // Pre-select first project if available
     const firstProject = projects[0];
     setSendProjectId(firstProject?.id || null);
@@ -1267,52 +1265,6 @@ const ContentGenerator = () => {
                               {preview}
                             </p>
                           )}
-                          {/* Send button + destination popup */}
-                          <div className="absolute bottom-3 right-3" onClick={(e) => e.stopPropagation()}>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSendPopupFor(sendPopupFor === idea.id ? null : idea.id);
-                              }}
-                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06] text-white/50 hover:text-white hover:bg-white/[0.08] transition-colors text-[11px] font-semibold"
-                              title="Enviar"
-                            >
-                              <Send size={11} strokeWidth={2} />
-                              Enviar
-                            </button>
-                            <AnimatePresence>
-                              {sendPopupFor === idea.id && (
-                                <>
-                                  <div
-                                    className="fixed inset-0 z-30"
-                                    onClick={(e) => { e.stopPropagation(); setSendPopupFor(null); }}
-                                  />
-                                  <motion.div
-                                    initial={{ opacity: 0, y: 6, scale: 0.96 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: 6, scale: 0.96 }}
-                                    transition={{ duration: 0.15 }}
-                                    className="absolute bottom-full right-0 mb-2 z-40 w-40 bg-[#16161a] border border-white/[0.08] rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden"
-                                  >
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); openSendDest(idea, 'kanban'); }}
-                                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] font-medium text-gray-300 hover:bg-white/[0.04] hover:text-white transition-colors"
-                                    >
-                                      <Layout size={13} strokeWidth={1.8} className="text-primary" />
-                                      Kanban
-                                    </button>
-                                    <button
-                                      onClick={(e) => { e.stopPropagation(); openSendDest(idea, 'calendar'); }}
-                                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] font-medium text-gray-300 hover:bg-white/[0.04] hover:text-white transition-colors"
-                                    >
-                                      <CalendarDays size={13} strokeWidth={1.8} className="text-primary" />
-                                      Calendário
-                                    </button>
-                                  </motion.div>
-                                </>
-                              )}
-                            </AnimatePresence>
-                          </div>
                         </>
                       )}
                     </motion.div>
@@ -1582,11 +1534,11 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="shrink-0 flex justify-center px-6 pb-3"
+            className="shrink-0 flex justify-center px-6 pt-10 pb-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"
           >
             <button
               onClick={handleDevelop}
-              className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200"
+              className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200 pointer-events-auto"
             >
               Criar conteúdo · {selectedIdeas.length}
             </button>
