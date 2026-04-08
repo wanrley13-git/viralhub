@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import axios from 'axios';
 import ImageLightbox from './ImageLightbox';
+import MarkdownRenderer, { toggleTaskInSource } from './MarkdownRenderer';
 
 const TAGS = ['Reels', 'Carrossel', 'Post', 'Vídeo Longo', 'Nota', 'Ideia'];
 
@@ -55,10 +56,29 @@ turndown.addRule('styledImg', {
     return `<img src="${src}" alt="${alt}" style="${style}" />`;
   },
 });
+// Serialize .checklist-item divs as GFM task list items so the checked
+// state round-trips correctly through markdown.
+turndown.addRule('checklistItem', {
+  filter: (node) => node.classList && node.classList.contains('checklist-item'),
+  replacement: (content, node) => {
+    const input = node.querySelector('input[type="checkbox"]');
+    const checked = input && input.checked ? 'x' : ' ';
+    const span = node.querySelector('span');
+    const text = (span?.textContent || '').replace(/\u200B/g, '').trim();
+    return `- [${checked}] ${text}\n`;
+  },
+});
 
 const mdToHtml = (md) => {
   if (!md) return '';
-  return marked.parse(md, { breaks: true, gfm: true });
+  // Expand GFM task list markers into our editor's checklist markup BEFORE
+  // handing off to marked so the checked attribute survives the round trip
+  // and the DOM shape matches what insertChecklist creates.
+  const pre = md.replace(/^(\s*)- \[([ xX])\] (.*)$/gm, (m, indent, state, rest) => {
+    const checked = state.toLowerCase() === 'x' ? ' checked' : '';
+    return `${indent}<div class="checklist-item"><input type="checkbox"${checked} /> <span>${rest || '\u200B'}</span></div>`;
+  });
+  return marked.parse(pre, { breaks: true, gfm: true });
 };
 
 const htmlToMd = (html) => {
@@ -363,7 +383,11 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
 
   const insertChecklist = () => {
     editorRef.current?.focus();
-    document.execCommand('insertHTML', false, '<div class="checklist-item"><input type="checkbox" /> <span>Tarefa</span></div>');
+    document.execCommand('insertHTML', false, '<div class="checklist-item"><input type="checkbox" /> <span>\u200B</span></div>');
+    requestAnimationFrame(() => {
+      const span = editorRef.current?.querySelector('.checklist-item:last-of-type span');
+      if (span) placeCursorAtStart(span);
+    });
     syncContent();
   };
 
@@ -633,9 +657,14 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
 
   const handleEditorClick = (e) => {
     const link = e.target.closest('a');
-    if (link && link.href && (e.ctrlKey || e.metaKey)) {
+    if (link && link.href) {
       e.preventDefault();
       window.open(link.href, '_blank', 'noopener');
+      return;
+    }
+    // Persist checkbox toggles inside .checklist-item immediately.
+    if (e.target.tagName === 'INPUT' && e.target.type === 'checkbox') {
+      requestAnimationFrame(() => syncContent());
     }
   };
 
@@ -652,13 +681,44 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
     }
     if (e.key === 'Enter' && !e.shiftKey) {
       const block = getCurrentBlock(editorRef.current);
-      if (block && /^H[1-3]$/.test(block.nodeName)) {
+      if (!block) return;
+
+      // Heading → new paragraph
+      if (/^H[1-3]$/.test(block.nodeName)) {
         e.preventDefault();
         const p = document.createElement('p');
         p.innerHTML = '<br>';
         block.after(p);
         placeCursorAtStart(p);
         syncContent();
+        return;
+      }
+
+      // Checklist item → new item (or exit when empty)
+      const checkItem = block.closest?.('.checklist-item') || (block.classList?.contains('checklist-item') ? block : null);
+      if (checkItem) {
+        const span = checkItem.querySelector('span');
+        const text = (span?.textContent || '').replace(/\u200B/g, '').trim();
+        if (!text) {
+          // Empty → exit to paragraph
+          e.preventDefault();
+          const p = document.createElement('p');
+          p.innerHTML = '<br>';
+          checkItem.after(p);
+          checkItem.remove();
+          placeCursorAtStart(p);
+          syncContent();
+        } else {
+          // Has text → new checklist item below
+          e.preventDefault();
+          const newItem = document.createElement('div');
+          newItem.className = 'checklist-item';
+          newItem.innerHTML = '<input type="checkbox" /> <span>\u200B</span>';
+          checkItem.after(newItem);
+          const newSpan = newItem.querySelector('span');
+          placeCursorAtStart(newSpan);
+          syncContent();
+        }
         return;
       }
     }
@@ -1025,7 +1085,16 @@ const TaskEditor = ({ task, onSave, onClose, initialStatus, initialDate }) => {
           ) : (
             <div className="flex-1 overflow-y-auto custom-scrollbar px-10 py-6">
               {contentRef.current?.trim() ? (
-                <div className="markdown-body markdown-body-lg max-w-none" onClick={(e) => { const a = e.target.closest('a'); if (a?.href) { e.preventDefault(); window.open(a.href, '_blank', 'noopener'); } }} dangerouslySetInnerHTML={{ __html: mdToHtml(contentRef.current) }} />
+                <MarkdownRenderer
+                  className="markdown-body-lg max-w-none"
+                  onTaskToggle={(idx, checked) => {
+                    const next = toggleTaskInSource(contentRef.current || '', idx);
+                    contentRef.current = next;
+                    triggerAutoSave();
+                  }}
+                >
+                  {contentRef.current || ''}
+                </MarkdownRenderer>
               ) : (
                 <div className="flex items-center justify-center h-full">
                   <p className="text-gray-600 text-sm font-serif italic">Nenhum conteúdo ainda...</p>

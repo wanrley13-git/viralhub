@@ -16,6 +16,7 @@ import axios from 'axios';
 import { useSidebar } from '../contexts/SidebarContext';
 import { useNotes } from '../contexts/NotesContext';
 import ImageLightbox from '../components/ImageLightbox';
+import MarkdownRenderer, { toggleTaskInSource } from '../components/MarkdownRenderer';
 import { resolveThumbnailUrl } from '../components/Thumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL;
@@ -53,11 +54,30 @@ turndown.addRule('styledImg', {
     return `<img src="${src}" alt="${alt}" style="${style}" />`;
   },
 });
+// Serialize .checklist-item divs as GFM task list items so the checked
+// state round-trips correctly through markdown.
+turndown.addRule('checklistItem', {
+  filter: (node) => node.classList && node.classList.contains('checklist-item'),
+  replacement: (content, node) => {
+    const input = node.querySelector('input[type="checkbox"]');
+    const checked = input && input.checked ? 'x' : ' ';
+    const span = node.querySelector('span');
+    const text = (span?.textContent || '').replace(/\u200B/g, '').trim();
+    return `- [${checked}] ${text}\n`;
+  },
+});
 const mdToHtml = (md) => {
   if (!md) return '';
   // Convert [[note name]] to clickable spans before markdown parse
-  const withLinks = md.replace(/\[\[([^\]]+)\]\]/g, '<a data-note-link="true" class="note-link">$1</a>');
-  return marked.parse(withLinks, { breaks: true, gfm: true });
+  let pre = md.replace(/\[\[([^\]]+)\]\]/g, '<a data-note-link="true" class="note-link">$1</a>');
+  // Expand GFM task list markers into our editor's checklist markup
+  // BEFORE handing off to marked, so that the checked attribute survives
+  // the round trip and the DOM shape matches what insertChecklist creates.
+  pre = pre.replace(/^(\s*)- \[([ xX])\] (.*)$/gm, (m, indent, state, rest) => {
+    const checked = state.toLowerCase() === 'x' ? ' checked' : '';
+    return `${indent}<div class="checklist-item"><input type="checkbox"${checked} /> <span>${rest || '\u200B'}</span></div>`;
+  });
+  return marked.parse(pre, { breaks: true, gfm: true });
 };
 const htmlToMd = (html) => (!html ? '' : turndown.turndown(html));
 const cleanEditorHtml = (editor) => {
@@ -757,7 +777,16 @@ const NoteEditor = ({ note }) => {
   const insertTable = () => { editorRef.current?.focus(); document.execCommand('insertHTML', false, '<table><thead><tr><th>Coluna 1</th><th>Coluna 2</th><th>Coluna 3</th></tr></thead><tbody><tr><td>valor</td><td>valor</td><td>valor</td></tr></tbody></table><p><br></p>'); syncContent(); };
   const insertHR = () => { editorRef.current?.focus(); document.execCommand('insertHTML', false, '<hr/><p><br></p>'); syncContent(); };
   const insertLink = () => { const url = prompt('URL do link:'); if (url) execCmd('createLink', url); };
-  const insertChecklist = () => { editorRef.current?.focus(); document.execCommand('insertHTML', false, '<div class="checklist-item"><input type="checkbox" /> <span>Tarefa</span></div>'); syncContent(); };
+  const insertChecklist = () => {
+    editorRef.current?.focus();
+    document.execCommand('insertHTML', false, '<div class="checklist-item"><input type="checkbox" /> <span>\u200B</span></div>');
+    // Move cursor into the new span so typing lands there
+    requestAnimationFrame(() => {
+      const span = editorRef.current?.querySelector('.checklist-item:last-of-type span');
+      if (span) placeCursorAtStart(span);
+    });
+    syncContent();
+  };
 
   const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
@@ -1098,9 +1127,17 @@ const NoteEditor = ({ note }) => {
 
   const handleEditorClick = (e) => {
     const link = e.target.closest('a');
-    if (link && link.href && (e.ctrlKey || e.metaKey)) {
+    // Note-links ([[...]]) are handled elsewhere — skip them here.
+    if (link && link.href && !link.getAttribute('data-note-link')) {
       e.preventDefault();
       window.open(link.href, '_blank', 'noopener');
+      return;
+    }
+    // Toggle checkbox inside .checklist-item when the user clicks it.
+    if (e.target.tagName === 'INPUT' && e.target.type === 'checkbox') {
+      // Native change event will fire — sync content so the checked
+      // state is persisted to markdown.
+      requestAnimationFrame(() => syncContent());
     }
   };
 
@@ -1382,12 +1419,20 @@ const NoteEditor = ({ note }) => {
           </div>
         ) : (
           <div className="h-full overflow-y-auto custom-scrollbar">
-            {previewHtml?.trim() ? (
-              <div
-                className="notion-editor w-full min-h-full px-10 py-4 text-[1.171875rem] leading-[1.85]"
-                onClick={handlePreviewClick}
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
+            {(contentRef.current || '').trim() ? (
+              <div className="w-full min-h-full px-10 py-4">
+                <MarkdownRenderer
+                  className="markdown-body-lg"
+                  onTaskToggle={(idx, checked) => {
+                    const next = toggleTaskInSource(contentRef.current || '', idx);
+                    contentRef.current = next;
+                    editorHtmlRef.current = mdToHtml(next);
+                    updateNote(note.id, { content: next });
+                  }}
+                >
+                  {contentRef.current || ''}
+                </MarkdownRenderer>
+              </div>
             ) : (
               <div className="flex items-center justify-center h-full">
                 <p className="text-gray-600 text-sm font-serif italic">Nenhum conteúdo ainda...</p>

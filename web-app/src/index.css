@@ -470,6 +470,45 @@ body::before {
   border-radius: 0.25rem;
   flex-shrink: 0;
 }
+.markdown-body input[type="checkbox"]:not(:disabled) {
+  cursor: pointer;
+}
+.markdown-body input[type="checkbox"]:disabled {
+  opacity: 0.85;
+}
+
+/* Checklist items rendered via pre-processed markdown (- [ ] / - [x]).
+   Mirrors the .notion-editor .checklist-item styling so edit mode and
+   preview look identical. */
+.markdown-body .checklist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  margin: 0;
+}
+.markdown-body .checklist-item + .checklist-item {
+  margin-top: 0;
+}
+.markdown-body .checklist-item input[type="checkbox"] {
+  appearance: none;
+  width: 1rem;
+  height: 1rem;
+  margin-top: 0;
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  border-radius: 0.25rem;
+  background: transparent;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.markdown-body .checklist-item input[type="checkbox"]:checked {
+  background: #37B24D;
+  border-color: #37B24D;
+}
+.markdown-body .checklist-item span {
+  color: #d1d5db;
+  line-height: 1.75;
+}
 
 /* Larger text variant for cards and notes (1.25x) */
 .markdown-body-lg {
