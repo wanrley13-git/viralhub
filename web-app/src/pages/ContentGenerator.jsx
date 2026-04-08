@@ -3,7 +3,7 @@ import {
   Lightbulb, FileCheck, Minus, Plus, ChevronDown, Video, X, ImagePlus,
   BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
-  LayoutGrid, Grid3x3, Clock, Bookmark, BookmarkCheck,
+  LayoutGrid, Grid3x3, Clock, Heart,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -26,7 +26,7 @@ const TABS = [
   { id: 'ideas', label: 'Ideias', color: '#37B24D' },
   { id: 'developed', label: 'Desenvolvidos', color: '#37B24D' },
   { id: 'history', label: 'Histórico', color: '#F59E0B' },
-  { id: 'saved', label: 'Salvos', color: '#06B6D4' },
+  { id: 'saved', label: 'Favoritos', color: '#E2272F' },
 ];
 
 const MIN_QTY = 1;
@@ -104,15 +104,24 @@ const IdeaCard = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, s
           {formatDateHeader(idea.created_at)}
         </span>
       ) : <span />}
-      <button
+      <motion.button
         onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
-        className={`p-1 rounded-md transition-colors ${
-          idea.is_saved ? 'text-cyan-400 hover:text-cyan-300' : 'text-white/20 hover:text-white/60'
+        whileTap={{ scale: 1.2 }}
+        transition={{ duration: 0.1 }}
+        className={`flex items-center justify-center transition-colors ${
+          idea.is_saved
+            ? 'p-1.5 rounded-full bg-[#2E0B15] border border-[#38161F]'
+            : ''
         }`}
-        title={idea.is_saved ? 'Remover dos salvos' : 'Salvar'}
+        title={idea.is_saved ? 'Remover dos favoritos' : 'Favoritar'}
       >
-        {idea.is_saved ? <BookmarkCheck size={14} strokeWidth={2} /> : <Bookmark size={14} strokeWidth={2} />}
-      </button>
+        <Heart
+          size={14}
+          strokeWidth={2}
+          fill={idea.is_saved ? '#E2272F' : 'none'}
+          stroke={idea.is_saved ? '#E2272F' : '#ffffff'}
+        />
+      </motion.button>
     </div>
   </motion.div>
 );
@@ -829,15 +838,15 @@ const ContentGenerator = () => {
               </div>
             )}
 
-            {/* SALVOS empty state */}
+            {/* FAVORITOS empty state */}
             {activeTab === 'saved' && !loadingTab && savedIdeas.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
-                <div className="w-20 h-20 rounded-3xl bg-cyan-500/[0.05] border border-cyan-500/15 flex items-center justify-center">
-                  <Bookmark size={32} strokeWidth={1.2} className="text-cyan-500/60" />
+                <div className="w-20 h-20 rounded-3xl bg-[#2E0B15] border border-[#38161F] flex items-center justify-center">
+                  <Heart size={32} strokeWidth={1.5} fill="#E2272F" stroke="#E2272F" />
                 </div>
                 <div>
-                  <p className="text-[15px] font-semibold text-gray-400">Nenhuma ideia salva</p>
-                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Clique no ícone de marcador nas ideias para salvá-las aqui</p>
+                  <p className="text-[15px] font-semibold text-gray-400">Nenhuma ideia favoritada</p>
+                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Clique no ícone de coração nas ideias para favoritá-las</p>
                 </div>
               </div>
             )}
