@@ -265,7 +265,19 @@ const ContentGenerator = () => {
   const toggleSaveIdea = async (ideaId) => {
     try {
       const token = await getAccessToken();
-      const res = await axios.patch(`${API_URL}/content/ideas/${ideaId}/save`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      const headers = { Authorization: `Bearer ${token}` };
+      const url = `${API_URL}/content/ideas/${ideaId}/save`;
+      let res;
+      try {
+        res = await axios.patch(url, {}, { headers });
+      } catch (patchErr) {
+        // Fallback to POST if PATCH is blocked by proxy/infra
+        if (patchErr.response?.status === 404 || patchErr.response?.status === 405) {
+          res = await axios.post(url, {}, { headers });
+        } else {
+          throw patchErr;
+        }
+      }
       const updated = res.data;
       // Update in all local states
       const updater = (list) => list.map(i => i.id === ideaId ? { ...i, is_saved: updated.is_saved } : i);

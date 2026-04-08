@@ -83,22 +83,51 @@ async def list_ideas(
     return [_serialize(i) for i in ideas]
 
 
+async def _toggle_save_impl(
+    idea_id: int,
+    db: AsyncSession,
+    current_user: User,
+):
+    logger.info(f"toggle_save called: idea_id={idea_id} user_id={current_user.id}")
+    try:
+        result = await db.execute(
+            select(ContentIdea).where(
+                ContentIdea.id == idea_id,
+                ContentIdea.user_id == current_user.id,
+            )
+        )
+        idea = result.scalars().first()
+        if not idea:
+            logger.warning(f"Ideia {idea_id} não encontrada para user {current_user.id}")
+            raise HTTPException(status_code=404, detail="Ideia não encontrada.")
+        idea.is_saved = 0 if idea.is_saved else 1
+        await db.commit()
+        await db.refresh(idea)
+        return _serialize(idea)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro em toggle_save: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao alternar save: {str(e)}")
+
+
 @router.patch("/ideas/{idea_id}/save", response_model=IdeaOut)
-async def toggle_save(
+async def toggle_save_patch(
     idea_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    result = await db.execute(
-        select(ContentIdea).where(ContentIdea.id == idea_id, ContentIdea.user_id == current_user.id)
-    )
-    idea = result.scalars().first()
-    if not idea:
-        raise HTTPException(status_code=404, detail="Ideia não encontrada.")
-    idea.is_saved = 0 if idea.is_saved else 1
-    await db.commit()
-    await db.refresh(idea)
-    return _serialize(idea)
+    return await _toggle_save_impl(idea_id, db, current_user)
+
+
+# POST alias for clients/proxies that don't support PATCH
+@router.post("/ideas/{idea_id}/save", response_model=IdeaOut)
+async def toggle_save_post(
+    idea_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return await _toggle_save_impl(idea_id, db, current_user)
 
 
 @router.delete("/ideas")
