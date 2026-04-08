@@ -55,12 +55,30 @@ api_key = configure_genai()
 TMP_DIR = os.path.join(os.path.dirname(__file__), '..', '.tmp')
 os.makedirs(TMP_DIR, exist_ok=True)
 
-PROMPT_FILE = os.path.join(os.path.dirname(__file__), '..', 'directives', 'prompt-agente-viral-v2.md')
+def _resolve_prompt_file() -> str:
+    """Resolve the prompt-agente-viral-v2.md file with multiple fallbacks."""
+    this_file = os.path.abspath(__file__)
+    execution_dir = os.path.dirname(this_file)
+    project_root = os.path.dirname(execution_dir)
+    candidates = [
+        os.path.join(project_root, 'directives', 'prompt-agente-viral-v2.md'),
+        os.path.join('/app', 'directives', 'prompt-agente-viral-v2.md'),
+        os.path.join(os.getcwd(), '..', 'directives', 'prompt-agente-viral-v2.md'),
+        os.path.join(os.getcwd(), 'directives', 'prompt-agente-viral-v2.md'),
+    ]
+    for p in candidates:
+        abs_p = os.path.abspath(p)
+        if os.path.exists(abs_p):
+            return abs_p
+    return os.path.abspath(candidates[0])  # fallback for logging
+
+PROMPT_FILE = _resolve_prompt_file()
 
 def get_system_instruction():
     if os.path.exists(PROMPT_FILE):
         with open(PROMPT_FILE, 'r', encoding='utf-8') as f:
             return f.read()
+    print(f"WARN: prompt file não encontrado em {PROMPT_FILE}")
     return "Você é o ViralAnalyst. Analise os vídeos enviados."
 
 async def download_video(link: str, progress_callback=None) -> str:

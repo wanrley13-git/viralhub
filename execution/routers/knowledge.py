@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import traceback
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
@@ -17,6 +18,38 @@ from analyzer import configure_genai
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+
+
+def _find_directive_file(filename: str) -> Optional[str]:
+    """Locate a file inside the project's directives/ folder using several
+    candidate paths. Railway/Uvicorn can start with the CWD set to execution/
+    which makes __file__ relative and breaks naive dirname chains, so we try
+    multiple absolute locations and return the first one that exists."""
+    # Always start from the absolute path of this module
+    this_file = os.path.abspath(__file__)
+    routers_dir = os.path.dirname(this_file)          # .../execution/routers
+    execution_dir = os.path.dirname(routers_dir)      # .../execution
+    project_root = os.path.dirname(execution_dir)     # .../project-root
+
+    candidates = [
+        os.path.join(project_root, "directives", filename),
+        # Railway's default app dir when using Nixpacks
+        os.path.join("/app", "directives", filename),
+        # CWD fallbacks — if uvicorn started with cd execution/
+        os.path.join(os.getcwd(), "..", "directives", filename),
+        os.path.join(os.getcwd(), "directives", filename),
+    ]
+    for p in candidates:
+        abs_p = os.path.abspath(p)
+        if os.path.exists(abs_p):
+            logger.info(f"directive resolved: {filename} -> {abs_p}")
+            return abs_p
+
+    logger.error(
+        f"directive not found for {filename}. Candidates tried:\n"
+        + "\n".join(os.path.abspath(c) for c in candidates)
+    )
+    return None
 
 
 # ── Schemas ──────────────────────────────────────────
@@ -179,15 +212,19 @@ async def compile_knowledge_base(kb_id: int, current_user: User = Depends(get_cu
     for a in analyses:
         raw_content += f"\n{'='*60}\nANÁLISE: {a.title} (ID: {a.id})\n{'='*60}\n{a.report_md or ''}\n"
 
-    # Load compiler agent prompt from directives file
-    import os
-    directives_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "directives", "prompt-compilador-base-viral.md")
+    # Load compiler agent prompt from directives file (robust path resolution)
+    directives_path = _find_directive_file("prompt-compilador-base-viral.md")
+    if not directives_path:
+        raise HTTPException(
+            status_code=500,
+            detail="Arquivo de diretiva do compilador não encontrado no servidor. Verifique o deploy."
+        )
     try:
         with open(directives_path, "r", encoding="utf-8") as f:
             compiler_prompt = f.read()
-    except FileNotFoundError:
-        logger.error(f"Diretiva do compilador não encontrada em {directives_path}")
-        raise HTTPException(status_code=500, detail="Arquivo de diretiva do compilador não encontrado no servidor")
+    except Exception as e:
+        logger.error(f"Erro ao ler diretiva {directives_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Erro ao ler arquivo de diretiva: {str(e)[:150]}")
 
     api_key = configure_genai()
     if not api_key:

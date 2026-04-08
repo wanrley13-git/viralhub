@@ -68,19 +68,51 @@ def _serialize(idea: ContentIdea) -> IdeaOut:
     )
 
 
+def _find_directive_file(filename: str) -> Optional[str]:
+    """Locate a file inside the project's directives/ folder with multiple
+    candidate paths. Uvicorn can start with CWD = execution/ which makes
+    __file__ relative and breaks naive dirname chains, so we try several
+    absolute locations."""
+    this_file = os.path.abspath(__file__)
+    routers_dir = os.path.dirname(this_file)
+    execution_dir = os.path.dirname(routers_dir)
+    project_root = os.path.dirname(execution_dir)
+
+    candidates = [
+        os.path.join(project_root, "directives", filename),
+        os.path.join("/app", "directives", filename),
+        os.path.join(os.getcwd(), "..", "directives", filename),
+        os.path.join(os.getcwd(), "directives", filename),
+    ]
+    for p in candidates:
+        abs_p = os.path.abspath(p)
+        if os.path.exists(abs_p):
+            logger.info(f"directive resolved: {filename} -> {abs_p}")
+            return abs_p
+
+    logger.error(
+        f"directive not found for {filename}. Tried:\n"
+        + "\n".join(os.path.abspath(c) for c in candidates)
+    )
+    return None
+
+
 # Cache the agent directive file so it's read once per process
 _AGENT_DIRECTIVE_CACHE = None
 def _load_agent_directive() -> str:
     global _AGENT_DIRECTIVE_CACHE
     if _AGENT_DIRECTIVE_CACHE is not None:
         return _AGENT_DIRECTIVE_CACHE
-    path = os.path.join(os.path.dirname(__file__), "..", "..", "directives", "viral-content-agent.md")
+    path = _find_directive_file("viral-content-agent.md")
+    if not path:
+        _AGENT_DIRECTIVE_CACHE = ""
+        return _AGENT_DIRECTIVE_CACHE
     try:
         with open(path, "r", encoding="utf-8") as f:
             _AGENT_DIRECTIVE_CACHE = f.read()
-    except FileNotFoundError:
+    except Exception as e:
+        logger.error(f"Erro ao ler diretiva {path}: {e}")
         _AGENT_DIRECTIVE_CACHE = ""
-        logger.error(f"Diretiva do agente não encontrada em {path}")
     return _AGENT_DIRECTIVE_CACHE
 
 
