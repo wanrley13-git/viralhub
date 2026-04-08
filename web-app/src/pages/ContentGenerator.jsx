@@ -3,12 +3,13 @@ import {
   Lightbulb, FileCheck, FileText, Minus, Plus, ChevronDown, ChevronUp, Video, X, ImagePlus,
   BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
-  LayoutGrid, Grid3x3, Clock, Heart, Send,
+  LayoutGrid, Grid3x3, Clock, Heart, Send, Layout, CalendarDays,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import { useSidebar } from '../contexts/SidebarContext';
+import { useProjects } from '../contexts/ProjectsContext';
 import { getAccessToken } from '../supabaseClient';
 import { resolveThumbnailUrl } from '../components/Thumbnail';
 import MarkdownRenderer from '../components/MarkdownRenderer';
@@ -133,6 +134,7 @@ const IdeaCard = memo(IdeaCardBase);
 
 const ContentGenerator = () => {
   const { collapsed } = useSidebar();
+  const { projects, fetchProjects } = useProjects();
 
   // Page tabs
   const [activeTab, setActiveTab] = useState(() => {
@@ -216,6 +218,15 @@ const ContentGenerator = () => {
   const [developedIdeas, setDevelopedIdeas] = useState([]); // Desenvolvidos tab
   const [expandedDeveloped, setExpandedDeveloped] = useState({}); // legacy, kept to avoid refactor
   const [developedViewing, setDevelopedViewing] = useState(null); // idea being shown in modal
+
+  // "Enviar" flow state — popup anchored to a card and destination modal
+  const [sendPopupFor, setSendPopupFor] = useState(null);   // idea id that opened the popup
+  const [sendDest, setSendDest] = useState(null);           // { idea, mode: 'kanban' | 'calendar' }
+  const [sendProjectId, setSendProjectId] = useState(null);
+  const [sendColumnId, setSendColumnId] = useState(null);
+  const [sendDate, setSendDate] = useState('');
+  const [sending, setSending] = useState(false);
+  const [successToast, setSuccessToast] = useState(null);
   const [loadingTab, setLoadingTab] = useState(false);
   const [selectedIdeas, setSelectedIdeas] = useState([]);
   const [errorToast, setErrorToast] = useState(null);
@@ -251,7 +262,9 @@ const ContentGenerator = () => {
     fetchAnalyses();
     fetchKnowledgeBases();
     fetchTones();
+    fetchProjects();
     // fetchIdeas is triggered by the tab-based useEffect
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const fetchIdeas = async () => {
@@ -690,6 +703,79 @@ const ContentGenerator = () => {
 
   const toggleExpandDeveloped = (id) => {
     setExpandedDeveloped(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // ─── Send developed content to Kanban / Calendar ───
+  const openSendDest = (idea, mode) => {
+    setSendDest({ idea, mode });
+    setSendPopupFor(null);
+    // Pre-select first project if available
+    const firstProject = projects[0];
+    setSendProjectId(firstProject?.id || null);
+    // Pre-select first column of first project for kanban mode
+    if (firstProject) {
+      try {
+        const cols = JSON.parse(firstProject.columns_json || '[]');
+        setSendColumnId(cols[0]?.id || 'todo');
+      } catch { setSendColumnId('todo'); }
+    } else {
+      setSendColumnId('todo');
+    }
+    // Default date = today (YYYY-MM-DD)
+    setSendDate(new Date().toISOString().slice(0, 10));
+  };
+
+  const closeSendDest = () => {
+    setSendDest(null);
+    setSending(false);
+  };
+
+  // Parse a project's columns_json once, safely
+  const getProjectColumns = (projectId) => {
+    const project = projects.find(p => p.id === projectId);
+    if (!project) return [];
+    try {
+      const cols = JSON.parse(project.columns_json || '[]');
+      return Array.isArray(cols) && cols.length > 0
+        ? cols
+        : [{ id: 'todo', title: 'Nova tarefa' }];
+    } catch {
+      return [{ id: 'todo', title: 'Nova tarefa' }];
+    }
+  };
+
+  const confirmSend = async () => {
+    if (!sendDest || !sendProjectId) return;
+    const { idea, mode } = sendDest;
+    setSending(true);
+    try {
+      const token = await getAccessToken();
+      const payload = {
+        title: idea.title,
+        content_md: idea.developed_content || idea.summary || '',
+        tag: 'Ideia',
+        project_id: parseInt(sendProjectId, 10),
+      };
+      if (mode === 'kanban') {
+        payload.status = sendColumnId || 'todo';
+      } else {
+        // Calendar: default column + scheduled_date
+        const cols = getProjectColumns(parseInt(sendProjectId, 10));
+        payload.status = cols[0]?.id || 'todo';
+        payload.scheduled_date = sendDate;
+      }
+      await axios.post(`${API_URL}/tasks/`, payload, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setSuccessToast(mode === 'kanban' ? 'Enviado para o Kanban' : 'Enviado para o Calendário');
+      setTimeout(() => setSuccessToast(null), 3000);
+      closeSendDest();
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || 'Erro ao enviar.';
+      setErrorToast(`Falha ao enviar: ${msg}`);
+      setTimeout(() => setErrorToast(null), 5000);
+      setSending(false);
+    }
   };
 
   const handleClearAll = async () => {
@@ -1181,6 +1267,52 @@ const ContentGenerator = () => {
                               {preview}
                             </p>
                           )}
+                          {/* Send button + destination popup */}
+                          <div className="absolute bottom-3 right-3" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setSendPopupFor(sendPopupFor === idea.id ? null : idea.id);
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/[0.04] border border-white/[0.06] text-white/50 hover:text-white hover:bg-white/[0.08] transition-colors text-[11px] font-semibold"
+                              title="Enviar"
+                            >
+                              <Send size={11} strokeWidth={2} />
+                              Enviar
+                            </button>
+                            <AnimatePresence>
+                              {sendPopupFor === idea.id && (
+                                <>
+                                  <div
+                                    className="fixed inset-0 z-30"
+                                    onClick={(e) => { e.stopPropagation(); setSendPopupFor(null); }}
+                                  />
+                                  <motion.div
+                                    initial={{ opacity: 0, y: 6, scale: 0.96 }}
+                                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                                    exit={{ opacity: 0, y: 6, scale: 0.96 }}
+                                    transition={{ duration: 0.15 }}
+                                    className="absolute bottom-full right-0 mb-2 z-40 w-40 bg-[#16161a] border border-white/[0.08] rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden"
+                                  >
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); openSendDest(idea, 'kanban'); }}
+                                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] font-medium text-gray-300 hover:bg-white/[0.04] hover:text-white transition-colors"
+                                    >
+                                      <Layout size={13} strokeWidth={1.8} className="text-primary" />
+                                      Kanban
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); openSendDest(idea, 'calendar'); }}
+                                      className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-[12px] font-medium text-gray-300 hover:bg-white/[0.04] hover:text-white transition-colors"
+                                    >
+                                      <CalendarDays size={13} strokeWidth={1.8} className="text-primary" />
+                                      Calendário
+                                    </button>
+                                  </motion.div>
+                                </>
+                              )}
+                            </AnimatePresence>
+                          </div>
                         </>
                       )}
                     </motion.div>
@@ -1270,14 +1402,158 @@ const ContentGenerator = () => {
                   Fechar
                 </button>
                 <button
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold transition-colors"
-                  title="Enviar (em breve)"
+                  onClick={() => openSendDest(developedViewing, 'kanban')}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-[12px] font-bold hover:bg-white/[0.08] transition-colors"
                 >
-                  <Send size={13} strokeWidth={2.5} />
-                  Enviar
+                  <Layout size={13} strokeWidth={2} />
+                  Enviar para Kanban
+                </button>
+                <button
+                  onClick={() => openSendDest(developedViewing, 'calendar')}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold transition-colors"
+                >
+                  <CalendarDays size={13} strokeWidth={2} />
+                  Enviar para Calendário
                 </button>
               </div>
             </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ SEND DESTINATION MODAL (Kanban / Calendar) ═══ */}
+      <AnimatePresence>
+        {sendDest && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-6 backdrop-blur-md bg-black/60"
+            onClick={closeSendDest}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="bg-[#16161a] border border-white/[0.08] rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_64px_rgba(0,0,0,0.6)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="px-6 pt-5 pb-4 border-b border-white/[0.06] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  {sendDest.mode === 'kanban'
+                    ? <Layout size={16} strokeWidth={1.8} className="text-primary" />
+                    : <CalendarDays size={16} strokeWidth={1.8} className="text-primary" />}
+                  <h3 className="text-[15px] font-extrabold text-white tracking-tight">
+                    {sendDest.mode === 'kanban' ? 'Enviar para o Kanban' : 'Enviar para o Calendário'}
+                  </h3>
+                </div>
+                <button
+                  onClick={closeSendDest}
+                  className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors"
+                >
+                  <X size={14} strokeWidth={2.5} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-5 space-y-4">
+                {/* Idea title preview */}
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 mb-1">Ideia</p>
+                  <p className="text-[13px] font-bold text-white line-clamp-2 uppercase tracking-wide">{sendDest.idea.title}</p>
+                </div>
+
+                {projects.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-500/20 text-amber-400 text-[12px] font-medium">
+                    Você ainda não tem projetos. Crie um projeto no Kanban antes de enviar conteúdos.
+                  </div>
+                ) : (
+                  <>
+                    {/* Project selector */}
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-widest text-white/50 mb-2">Projeto</label>
+                      <select
+                        value={sendProjectId || ''}
+                        onChange={(e) => {
+                          const pid = parseInt(e.target.value, 10);
+                          setSendProjectId(pid);
+                          const cols = getProjectColumns(pid);
+                          setSendColumnId(cols[0]?.id || 'todo');
+                        }}
+                        className="w-full bg-[#0e0e11] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-white outline-none focus:border-primary/40 transition-colors"
+                      >
+                        {projects.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {sendDest.mode === 'kanban' ? (
+                      /* Column selector */
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-widest text-white/50 mb-2">Coluna</label>
+                        <select
+                          value={sendColumnId || ''}
+                          onChange={(e) => setSendColumnId(e.target.value)}
+                          className="w-full bg-[#0e0e11] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-white outline-none focus:border-primary/40 transition-colors"
+                        >
+                          {getProjectColumns(sendProjectId).map(col => (
+                            <option key={col.id} value={col.id}>{col.title}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      /* Date picker for calendar */
+                      <div>
+                        <label className="block text-[11px] font-bold uppercase tracking-widest text-white/50 mb-2">Data</label>
+                        <input
+                          type="date"
+                          value={sendDate}
+                          onChange={(e) => setSendDate(e.target.value)}
+                          className="w-full bg-[#0e0e11] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-white outline-none focus:border-primary/40 transition-colors [color-scheme:dark]"
+                        />
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-white/[0.06] flex items-center justify-end gap-2.5 bg-black/20">
+                <button
+                  onClick={closeSendDest}
+                  className="px-4 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-gray-400 text-[12px] font-bold hover:bg-white/[0.06] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmSend}
+                  disabled={sending || projects.length === 0 || !sendProjectId || (sendDest.mode === 'calendar' && !sendDate)}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-[12px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {sending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} strokeWidth={2.5} />}
+                  {sending ? 'Enviando...' : 'Enviar'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ SUCCESS TOAST ═══ */}
+      <AnimatePresence>
+        {successToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            className="fixed top-6 right-6 z-[200] bg-primary/10 border border-primary/25 text-primary px-5 py-3 rounded-xl text-[13px] font-semibold flex items-center gap-2.5 shadow-[0_8px_32px_rgba(0,0,0,0.4)] backdrop-blur-xl"
+          >
+            <CheckCircle2 size={15} strokeWidth={2} />
+            {successToast}
           </motion.div>
         )}
       </AnimatePresence>
