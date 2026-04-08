@@ -102,7 +102,14 @@ const ContentGenerator = () => {
   const [toneViewingId, setToneViewingId] = useState(null);
 
   // Grid size (4-6 cols) — fewer cols = bigger cards + bigger text
-  const [gridCols, setGridCols] = useState(5);
+  const [gridCols, setGridCols] = useState(() => {
+    const saved = parseInt(localStorage.getItem('viralhub_gridCols'), 10);
+    return saved >= 4 && saved <= 6 ? saved : 5;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('viralhub_gridCols', String(gridCols));
+  }, [gridCols]);
 
   // Scale text sizes based on grid: 4 cols = large, 6 cols = compact
   const cardScale = { 4: { label: '13px', title: '19px', summary: '15px', pad: 'p-6', clampTitle: 'line-clamp-4', clampSum: 'line-clamp-5' }, 5: { label: '11px', title: '15px', summary: '13px', pad: 'p-5', clampTitle: 'line-clamp-3', clampSum: 'line-clamp-4' }, 6: { label: '10px', title: '13px', summary: '11px', pad: 'p-4', clampTitle: 'line-clamp-3', clampSum: 'line-clamp-3' } };
@@ -361,6 +368,21 @@ const ContentGenerator = () => {
 
   const stepQuantity = (dir) => setQuantity(p => Math.min(MAX_QTY, Math.max(MIN_QTY, p + dir)));
 
+  // Hold-to-repeat on stepper buttons
+  const holdTimerRef = useRef(null);
+  const holdIntervalRef = useRef(null);
+  const startHold = (dir) => {
+    stepQuantity(dir);
+    holdTimerRef.current = setTimeout(() => {
+      holdIntervalRef.current = setInterval(() => stepQuantity(dir), 100);
+    }, 500);
+  };
+  const stopHold = () => {
+    if (holdTimerRef.current) { clearTimeout(holdTimerRef.current); holdTimerRef.current = null; }
+    if (holdIntervalRef.current) { clearInterval(holdIntervalRef.current); holdIntervalRef.current = null; }
+  };
+  useEffect(() => () => stopHold(), []);
+
   const handleTextChange = useCallback((e) => {
     const val = e.target.value;
     setSegments(prev => { const u = [...prev]; u[u.length - 1] = { type: 'text', value: val }; return u; });
@@ -439,22 +461,19 @@ const ContentGenerator = () => {
             </button>
           ))}
 
-          <div className="flex-1" />
+          {/* Clear button (clears view only, not DB) */}
+          {ideas.length > 0 && activeTab === 'ideas' && (
+            <button
+              onClick={() => { setIdeas([]); setSelectedIdeas([]); }}
+              className="flex items-center gap-1.5 pb-2.5 text-[12px] font-medium text-gray-600 hover:text-gray-300 transition-colors"
+              title="Limpar ideias da tela (não apaga do banco)"
+            >
+              <Trash2 size={12} strokeWidth={1.8} />
+              Limpar
+            </button>
+          )}
 
-          {/* Develop button */}
-          <AnimatePresence>
-            {selectedIdeas.length > 0 && (
-              <motion.button
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                exit={{ opacity: 0, scale: 0.9 }}
-                className="btn-primary flex items-center gap-2 px-4 py-1.5 rounded-xl text-[12px] font-bold mr-4"
-              >
-                <FileCheck size={13} strokeWidth={2} />
-                Desenvolver {selectedIdeas.length} selecionado{selectedIdeas.length > 1 ? 's' : ''}
-              </motion.button>
-            )}
-          </AnimatePresence>
+          <div className="flex-1" />
 
           {/* Grid size slider */}
           <div className="flex items-center gap-2 pb-2">
@@ -576,6 +595,23 @@ const ContentGenerator = () => {
         )}
       </AnimatePresence>
 
+      {/* ═══ DEVELOP BUTTON (floating above prompt bar) ═══ */}
+      <AnimatePresence>
+        {selectedIdeas.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="shrink-0 flex justify-center px-6 pb-3"
+          >
+            <button className="px-8 py-3.5 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200">
+              Desenvolver {selectedIdeas.length} selecionado{selectedIdeas.length > 1 ? 's' : ''}
+            </button>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ═══ FLOATING PROMPT BAR ═══ */}
       <div className="shrink-0 flex justify-center px-6 pb-7">
         <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-8px_40px_rgba(0,0,0,0.35)]">
@@ -651,9 +687,25 @@ const ContentGenerator = () => {
             </button>
 
             <div className="flex items-center gap-0 rounded-xl bg-white/[0.04] border border-white/[0.05]">
-              <button onClick={() => stepQuantity(-1)} disabled={quantity <= MIN_QTY} className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 transition-colors rounded-l-xl"><Minus size={14} strokeWidth={2} /></button>
+              <button
+                onMouseDown={() => startHold(-1)}
+                onMouseUp={stopHold}
+                onMouseLeave={stopHold}
+                onTouchStart={() => startHold(-1)}
+                onTouchEnd={stopHold}
+                disabled={quantity <= MIN_QTY}
+                className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 transition-colors rounded-l-xl"
+              ><Minus size={14} strokeWidth={2} /></button>
               <span className="px-3 py-2 text-[13px] font-bold text-white tabular-nums min-w-[32px] text-center select-none">{quantity}</span>
-              <button onClick={() => stepQuantity(1)} disabled={quantity >= MAX_QTY} className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 transition-colors rounded-r-xl"><Plus size={14} strokeWidth={2} /></button>
+              <button
+                onMouseDown={() => startHold(1)}
+                onMouseUp={stopHold}
+                onMouseLeave={stopHold}
+                onTouchStart={() => startHold(1)}
+                onTouchEnd={stopHold}
+                disabled={quantity >= MAX_QTY}
+                className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 transition-colors rounded-r-xl"
+              ><Plus size={14} strokeWidth={2} /></button>
             </div>
             <div className="flex-1" />
             <button onClick={handleGenerate} disabled={!hasContent || generating} className="btn-primary flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none">
