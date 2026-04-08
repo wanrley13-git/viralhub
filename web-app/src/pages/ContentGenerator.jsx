@@ -3,7 +3,7 @@ import {
   Lightbulb, FileCheck, Minus, Plus, ChevronDown, Video, X, ImagePlus,
   BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
-  LayoutGrid, Grid3x3,
+  LayoutGrid, Grid3x3, Clock, Bookmark, BookmarkCheck,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -23,8 +23,10 @@ const StarFilled = ({ size = 14, className = '' }) => (
 );
 
 const TABS = [
-  { id: 'ideas', label: 'Ideias' },
-  { id: 'developed', label: 'Desenvolvidos' },
+  { id: 'ideas', label: 'Ideias', color: '#37B24D' },
+  { id: 'developed', label: 'Desenvolvidos', color: '#37B24D' },
+  { id: 'history', label: 'Histórico', color: '#F59E0B' },
+  { id: 'saved', label: 'Salvos', color: '#06B6D4' },
 ];
 
 const MIN_QTY = 1;
@@ -48,6 +50,71 @@ const ImageThumb = ({ file, onRemove }) => (
       <X size={12} strokeWidth={2.5} className="text-white" />
     </button>
   </div>
+);
+
+// ─── Format relative/absolute date for history ───
+const formatDateHeader = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const year = d.getFullYear();
+  const hour = String(d.getHours()).padStart(2, '0');
+  const min = String(d.getMinutes()).padStart(2, '0');
+  return `${day}/${month}/${year} às ${hour}:${min}`;
+};
+
+// ─── Idea card component (reused across tabs) ───
+const IdeaCard = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, showDate = false }) => (
+  <motion.div
+    initial={{ opacity: 0, y: 16 }}
+    animate={{ opacity: 1, y: 0 }}
+    transition={{ duration: 0.25, delay: Math.min(index * 0.03, 0.5) }}
+    onClick={() => onToggleSelect(idea.id)}
+    className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-all duration-300 group flex flex-col ${
+      isSelected
+        ? 'bg-primary/5 border-primary/30'
+        : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
+    }`}
+  >
+    {/* Selection checkbox */}
+    <div className={`absolute top-3 right-3 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+      isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
+    }`}>
+      <Check size={12} strokeWidth={3} />
+    </div>
+
+    <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
+      Ideia {String(index + 1).padStart(2, '0')}
+    </p>
+    <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-6 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
+      {idea.title}
+    </p>
+    {idea.summary && (
+      <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>
+        {idea.summary}
+      </p>
+    )}
+
+    {/* Footer: date + bookmark */}
+    <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/[0.04]">
+      {showDate && idea.created_at ? (
+        <span className="text-[10px] text-white/30 font-mono flex items-center gap-1">
+          <Clock size={10} strokeWidth={1.5} />
+          {formatDateHeader(idea.created_at)}
+        </span>
+      ) : <span />}
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
+        className={`p-1 rounded-md transition-colors ${
+          idea.is_saved ? 'text-cyan-400 hover:text-cyan-300' : 'text-white/20 hover:text-white/60'
+        }`}
+        title={idea.is_saved ? 'Remover dos salvos' : 'Salvar'}
+      >
+        {idea.is_saved ? <BookmarkCheck size={14} strokeWidth={2} /> : <Bookmark size={14} strokeWidth={2} />}
+      </button>
+    </div>
+  </motion.div>
 );
 
 const ContentGenerator = () => {
@@ -117,7 +184,10 @@ const ContentGenerator = () => {
 
   // Generation state
   const [generating, setGenerating] = useState(false);
-  const [ideas, setIdeas] = useState([]);
+  const [ideas, setIdeas] = useState([]);           // Ideias tab
+  const [historyIdeas, setHistoryIdeas] = useState([]); // Histórico tab
+  const [savedIdeas, setSavedIdeas] = useState([]);     // Salvos tab
+  const [loadingTab, setLoadingTab] = useState(false);
   const [selectedIdeas, setSelectedIdeas] = useState([]);
   const [errorToast, setErrorToast] = useState(null);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
@@ -152,15 +222,66 @@ const ContentGenerator = () => {
     fetchAnalyses();
     fetchKnowledgeBases();
     fetchTones();
-    fetchIdeas();
+    // fetchIdeas is triggered by the tab-based useEffect
   }, []);
 
   const fetchIdeas = async () => {
     try {
       const token = await getAccessToken();
-      const res = await axios.get(`${API_URL}/content/ideas`, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await axios.get(`${API_URL}/content/ideas?tab=ideas`, { headers: { Authorization: `Bearer ${token}` } });
       setIdeas(res.data);
     } catch (err) { console.error('Erro buscando ideias:', err); }
+  };
+
+  const fetchHistory = async () => {
+    setLoadingTab(true);
+    try {
+      const token = await getAccessToken();
+      const res = await axios.get(`${API_URL}/content/ideas?tab=history`, { headers: { Authorization: `Bearer ${token}` } });
+      setHistoryIdeas(res.data);
+    } catch (err) { console.error('Erro buscando histórico:', err); }
+    finally { setLoadingTab(false); }
+  };
+
+  const fetchSaved = async () => {
+    setLoadingTab(true);
+    try {
+      const token = await getAccessToken();
+      const res = await axios.get(`${API_URL}/content/ideas?tab=saved`, { headers: { Authorization: `Bearer ${token}` } });
+      setSavedIdeas(res.data);
+    } catch (err) { console.error('Erro buscando salvos:', err); }
+    finally { setLoadingTab(false); }
+  };
+
+  // Fetch data when tab changes
+  useEffect(() => {
+    setSelectedIdeas([]); // Clear selection on tab switch
+    if (activeTab === 'history') fetchHistory();
+    else if (activeTab === 'saved') fetchSaved();
+    else if (activeTab === 'ideas') fetchIdeas();
+  }, [activeTab]);
+
+  // Toggle bookmark/save on a specific idea
+  const toggleSaveIdea = async (ideaId) => {
+    try {
+      const token = await getAccessToken();
+      const res = await axios.patch(`${API_URL}/content/ideas/${ideaId}/save`, {}, { headers: { Authorization: `Bearer ${token}` } });
+      const updated = res.data;
+      // Update in all local states
+      const updater = (list) => list.map(i => i.id === ideaId ? { ...i, is_saved: updated.is_saved } : i);
+      setIdeas(updater);
+      setHistoryIdeas(updater);
+      // For saved list: if unsaved, remove; otherwise no change needed
+      if (!updated.is_saved) {
+        setSavedIdeas(prev => prev.filter(i => i.id !== ideaId));
+      } else {
+        // If it's not already there, refetch
+        setSavedIdeas(prev => prev.find(i => i.id === ideaId) ? updater(prev) : prev);
+      }
+    } catch (err) {
+      setErrorToast('Erro ao salvar ideia.');
+      setTimeout(() => setErrorToast(null), 4000);
+    }
   };
 
   const fetchAnalyses = async () => {
@@ -483,9 +604,21 @@ const ContentGenerator = () => {
       <div className="shrink-0 px-8 pt-6">
         <div className="flex items-center gap-6">
           {TABS.map(tab => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)} className={`relative pb-2.5 text-[13px] font-semibold transition-colors duration-200 ${activeTab === tab.id ? 'text-white' : 'text-gray-600 hover:text-gray-400'}`}>
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className="relative pb-2.5 text-[13px] font-semibold transition-colors duration-200"
+              style={{ color: activeTab === tab.id ? tab.color : '#52525b' }}
+            >
               {tab.label}
-              {activeTab === tab.id && <motion.div layoutId="tab-underline" className="absolute bottom-0 left-0 right-0 h-[2px] bg-primary rounded-full" transition={{ type: 'spring', stiffness: 400, damping: 30 }} />}
+              {activeTab === tab.id && (
+                <motion.div
+                  layoutId="tab-underline"
+                  className="absolute bottom-0 left-0 right-0 h-[2px] rounded-full"
+                  style={{ backgroundColor: tab.color }}
+                  transition={{ type: 'spring', stiffness: 400, damping: 30 }}
+                />
+              )}
             </button>
           ))}
 
@@ -556,7 +689,7 @@ const ContentGenerator = () => {
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="h-full">
 
-            {/* Loading skeleton */}
+            {/* Loading skeleton (Ideias only, while generating) */}
             {activeTab === 'ideas' && generating && (
               <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
                 {Array.from({ length: quantity }).map((_, i) => (
@@ -573,41 +706,31 @@ const ContentGenerator = () => {
               </div>
             )}
 
-            {/* Ideas cards */}
-            {activeTab === 'ideas' && !generating && ideas.length > 0 && (
-              <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
-                {ideas.map((idea, i) => {
-                  const isSelected = selectedIdeas.includes(idea.id);
-                  return (
-                    <motion.div
-                      key={idea.id}
-                      initial={{ opacity: 0, y: 16 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ duration: 0.25, delay: i * 0.03 }}
-                      onClick={() => toggleIdeaSelect(idea.id)}
-                      className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-all duration-300 group flex flex-col ${
-                        isSelected
-                          ? 'bg-primary/5 border-primary/30'
-                          : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
-                      }`}
-                    >
-                      <div className={`absolute top-3 right-3 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
-                        isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
-                      }`}>
-                        <Check size={12} strokeWidth={3} />
-                      </div>
-                      <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>Ideia {String(i + 1).padStart(2, '0')}</p>
-                      <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-6 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>{idea.title}</p>
-                      {idea.summary && (
-                        <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>{idea.summary}</p>
-                      )}
-                    </motion.div>
-                  );
-                })}
+            {/* Loading spinner for history/saved */}
+            {(activeTab === 'history' || activeTab === 'saved') && loadingTab && (
+              <div className="h-full flex items-center justify-center">
+                <Loader2 size={24} className="animate-spin text-gray-600" />
               </div>
             )}
 
-            {/* Empty state */}
+            {/* IDEIAS tab cards */}
+            {activeTab === 'ideas' && !generating && ideas.length > 0 && (
+              <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
+                {ideas.map((idea, i) => (
+                  <IdeaCard
+                    key={idea.id}
+                    idea={idea}
+                    index={i}
+                    isSelected={selectedIdeas.includes(idea.id)}
+                    cs={cs}
+                    onToggleSelect={toggleIdeaSelect}
+                    onToggleSave={toggleSaveIdea}
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* IDEIAS empty state */}
             {activeTab === 'ideas' && !generating && ideas.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
                 <div className="w-20 h-20 rounded-3xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
@@ -616,6 +739,93 @@ const ContentGenerator = () => {
                 <div>
                   <p className="text-[15px] font-semibold text-gray-400">Suas ideias aparecerão aqui</p>
                   <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Descreva o que deseja criar na barra abaixo e gere ideias com IA</p>
+                </div>
+              </div>
+            )}
+
+            {/* HISTÓRICO tab: grouped by batch */}
+            {activeTab === 'history' && !loadingTab && historyIdeas.length > 0 && (() => {
+              // Group consecutive ideas with same batch_id
+              const groups = [];
+              let currentGroup = null;
+              historyIdeas.forEach((idea) => {
+                const key = idea.batch_id || idea.created_at;
+                if (!currentGroup || currentGroup.key !== key) {
+                  currentGroup = { key, timestamp: idea.created_at, items: [] };
+                  groups.push(currentGroup);
+                }
+                currentGroup.items.push(idea);
+              });
+              return (
+                <div className="space-y-8">
+                  {groups.map((group, gi) => (
+                    <div key={group.key}>
+                      <div className="flex items-center gap-3 mb-4">
+                        <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-amber-400/70">
+                          <Clock size={12} strokeWidth={1.8} />
+                          Gerado em {formatDateHeader(group.timestamp)}
+                        </div>
+                        <div className="flex-1 h-px bg-white/[0.04]" />
+                      </div>
+                      <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
+                        {group.items.map((idea, i) => (
+                          <IdeaCard
+                            key={idea.id}
+                            idea={idea}
+                            index={i}
+                            isSelected={selectedIdeas.includes(idea.id)}
+                            cs={cs}
+                            onToggleSelect={toggleIdeaSelect}
+                            onToggleSave={toggleSaveIdea}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            {/* HISTÓRICO empty state */}
+            {activeTab === 'history' && !loadingTab && historyIdeas.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
+                <div className="w-20 h-20 rounded-3xl bg-amber-500/[0.05] border border-amber-500/15 flex items-center justify-center">
+                  <Clock size={32} strokeWidth={1.2} className="text-amber-500/60" />
+                </div>
+                <div>
+                  <p className="text-[15px] font-semibold text-gray-400">Histórico vazio</p>
+                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Suas ideias geradas aparecerão aqui em ordem cronológica</p>
+                </div>
+              </div>
+            )}
+
+            {/* SALVOS tab */}
+            {activeTab === 'saved' && !loadingTab && savedIdeas.length > 0 && (
+              <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
+                {savedIdeas.map((idea, i) => (
+                  <IdeaCard
+                    key={idea.id}
+                    idea={idea}
+                    index={i}
+                    isSelected={selectedIdeas.includes(idea.id)}
+                    cs={cs}
+                    onToggleSelect={toggleIdeaSelect}
+                    onToggleSave={toggleSaveIdea}
+                    showDate
+                  />
+                ))}
+              </div>
+            )}
+
+            {/* SALVOS empty state */}
+            {activeTab === 'saved' && !loadingTab && savedIdeas.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
+                <div className="w-20 h-20 rounded-3xl bg-cyan-500/[0.05] border border-cyan-500/15 flex items-center justify-center">
+                  <Bookmark size={32} strokeWidth={1.2} className="text-cyan-500/60" />
+                </div>
+                <div>
+                  <p className="text-[15px] font-semibold text-gray-400">Nenhuma ideia salva</p>
+                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Clique no ícone de marcador nas ideias para salvá-las aqui</p>
                 </div>
               </div>
             )}

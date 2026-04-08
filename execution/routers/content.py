@@ -1,13 +1,14 @@
 import os
 import json
+import uuid
 import logging
 import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
-from sqlalchemy import desc
+from sqlalchemy import desc, or_
 import google.generativeai as genai
 from dotenv import load_dotenv
 
@@ -35,48 +36,89 @@ class IdeaOut(BaseModel):
     title: str
     summary: Optional[str] = None
     status: str
+    is_saved: bool = False
+    is_dismissed: bool = False
+    batch_id: Optional[str] = None
     created_at: Optional[str] = None
 
     class Config:
         from_attributes = True
 
 
+def _serialize(idea: ContentIdea) -> IdeaOut:
+    return IdeaOut(
+        id=idea.id,
+        title=idea.title,
+        summary=idea.summary,
+        status=idea.status or "idea",
+        is_saved=bool(idea.is_saved),
+        is_dismissed=bool(idea.is_dismissed),
+        batch_id=idea.batch_id,
+        created_at=idea.created_at.isoformat() if idea.created_at else None,
+    )
+
+
 @router.get("/ideas", response_model=List[IdeaOut])
 async def list_ideas(
+    tab: str = Query("ideas", regex="^(ideas|history|saved)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = select(ContentIdea).where(ContentIdea.user_id == current_user.id)
+
+    if tab == "ideas":
+        # Active ideas (not dismissed)
+        query = query.where(or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None)))
+    elif tab == "saved":
+        query = query.where(ContentIdea.is_saved == 1)
+    # history: no extra filter (show all)
+
+    query = query.order_by(desc(ContentIdea.created_at))
+
+    if tab == "history":
+        query = query.limit(100)
+
+    result = await db.execute(query)
+    ideas = result.scalars().all()
+    return [_serialize(i) for i in ideas]
+
+
+@router.patch("/ideas/{idea_id}/save", response_model=IdeaOut)
+async def toggle_save(
+    idea_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(ContentIdea)
-        .where(ContentIdea.user_id == current_user.id)
-        .order_by(desc(ContentIdea.created_at))
+        select(ContentIdea).where(ContentIdea.id == idea_id, ContentIdea.user_id == current_user.id)
     )
-    ideas = result.scalars().all()
-    return [
-        IdeaOut(
-            id=i.id,
-            title=i.title,
-            summary=i.summary,
-            status=i.status,
-            created_at=i.created_at.isoformat() if i.created_at else None,
-        )
-        for i in ideas
-    ]
+    idea = result.scalars().first()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Ideia não encontrada.")
+    idea.is_saved = 0 if idea.is_saved else 1
+    await db.commit()
+    await db.refresh(idea)
+    return _serialize(idea)
 
 
 @router.delete("/ideas")
-async def clear_all_ideas(
+async def clear_ideas(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    """Soft-clear: marks all user ideas as dismissed (hidden from Ideias tab).
+    Saved ideas remain accessible in Salvos tab, history keeps them all."""
     result = await db.execute(
-        select(ContentIdea).where(ContentIdea.user_id == current_user.id)
+        select(ContentIdea).where(
+            ContentIdea.user_id == current_user.id,
+            or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None)),
+        )
     )
     ideas = result.scalars().all()
     for idea in ideas:
-        await db.delete(idea)
+        idea.is_dismissed = 1
     await db.commit()
-    return {"ok": True, "deleted": len(ideas)}
+    return {"ok": True, "dismissed": len(ideas)}
 
 
 @router.delete("/ideas/{idea_id}")
@@ -106,7 +148,7 @@ async def generate_content(
         raise HTTPException(status_code=400, detail="O prompt não pode estar vazio.")
 
     if request.quantity < 1 or request.quantity > 40:
-        raise HTTPException(status_code=400, detail="Quantidade deve ser entre 1 e 20.")
+        raise HTTPException(status_code=400, detail="Quantidade deve ser entre 1 e 40.")
 
     # ── Gather context ──
     tone_text = ""
@@ -173,7 +215,6 @@ REGRAS:
 
     user_message = f"Gere {request.quantity} ideias de conteúdo viral sobre: {request.prompt}"
 
-    # ── Call Gemini ──
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY não configurada.")
@@ -185,7 +226,6 @@ REGRAS:
         response = model.generate_content(user_message)
         raw = response.text.strip()
 
-        # Strip markdown fences
         if raw.startswith("```"):
             raw = raw.split("\n", 1)[1] if "\n" in raw else raw[3:]
         if raw.endswith("```"):
@@ -196,9 +236,10 @@ REGRAS:
         if not isinstance(parsed, list):
             raise ValueError("Resposta não é uma lista.")
 
-        # ── Save to DB ──
-        saved = []
+        # ── Save to DB with shared batch_id ──
+        batch_id = str(uuid.uuid4())
         now = datetime.datetime.utcnow()
+        saved = []
         for item in parsed[: request.quantity]:
             idea = ContentIdea(
                 user_id=current_user.id,
@@ -208,6 +249,9 @@ REGRAS:
                 tone_id=request.tone_id,
                 base_id=request.base_id,
                 status="idea",
+                is_saved=0,
+                is_dismissed=0,
+                batch_id=batch_id,
                 created_at=now,
             )
             db.add(idea)
@@ -217,16 +261,7 @@ REGRAS:
         for idea in saved:
             await db.refresh(idea)
 
-        return [
-            IdeaOut(
-                id=i.id,
-                title=i.title,
-                summary=i.summary,
-                status=i.status,
-                created_at=i.created_at.isoformat() if i.created_at else None,
-            )
-            for i in saved
-        ]
+        return [_serialize(i) for i in saved]
 
     except json.JSONDecodeError as e:
         logger.error(f"Erro ao parsear JSON do Gemini: {e}\nRaw: {raw}")

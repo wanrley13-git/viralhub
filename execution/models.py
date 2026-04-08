@@ -126,6 +126,9 @@ class ContentIdea(Base):
     tone_id = Column(Integer, nullable=True)
     base_id = Column(Integer, nullable=True)
     status = Column(String, default="idea")  # idea, developing, developed
+    is_saved = Column(Integer, default=0)       # 1 if bookmarked
+    is_dismissed = Column(Integer, default=0)   # 1 if cleared from Ideias view (still in history)
+    batch_id = Column(String, nullable=True)    # groups ideas generated together
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("Profile")
