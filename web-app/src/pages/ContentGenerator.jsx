@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Lightbulb, FileCheck, FileText, Minus, Plus, ChevronDown, Video, X, ImagePlus,
+  Lightbulb, FileCheck, FileText, Minus, Plus, ChevronDown, ChevronUp, Video, X, ImagePlus,
   BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
-  LayoutGrid, Grid3x3, Clock, Heart,
+  LayoutGrid, Grid3x3, Clock, Heart, Send,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -193,6 +193,8 @@ const ContentGenerator = () => {
   const [ideas, setIdeas] = useState([]);           // Ideias tab
   const [historyIdeas, setHistoryIdeas] = useState([]); // Histórico tab
   const [savedIdeas, setSavedIdeas] = useState([]);     // Salvos tab
+  const [developedIdeas, setDevelopedIdeas] = useState([]); // Desenvolvidos tab
+  const [expandedDeveloped, setExpandedDeveloped] = useState({}); // { [id]: true }
   const [loadingTab, setLoadingTab] = useState(false);
   const [selectedIdeas, setSelectedIdeas] = useState([]);
   const [errorToast, setErrorToast] = useState(null);
@@ -259,12 +261,28 @@ const ContentGenerator = () => {
     finally { setLoadingTab(false); }
   };
 
+  const fetchDeveloped = async () => {
+    setLoadingTab(true);
+    try {
+      const token = await getAccessToken();
+      const res = await axios.get(`${API_URL}/content/ideas?tab=developed`, { headers: { Authorization: `Bearer ${token}` } });
+      // Merge: keep any in-progress placeholders that aren't in the server response
+      setDevelopedIdeas(prev => {
+        const serverIds = new Set(res.data.map(i => i.id));
+        const localPending = prev.filter(i => !serverIds.has(i.id) && i.status === 'developing');
+        return [...localPending, ...res.data];
+      });
+    } catch (err) { console.error('Erro buscando desenvolvidos:', err); }
+    finally { setLoadingTab(false); }
+  };
+
   // Fetch data when tab changes
   useEffect(() => {
     setSelectedIdeas([]); // Clear selection on tab switch
     if (activeTab === 'history') fetchHistory();
     else if (activeTab === 'saved') fetchSaved();
     else if (activeTab === 'ideas') fetchIdeas();
+    else if (activeTab === 'developed') fetchDeveloped();
   }, [activeTab]);
 
   // Toggle bookmark/save on a specific idea
@@ -482,6 +500,67 @@ const ContentGenerator = () => {
 
   const toggleIdeaSelect = (id) => {
     setSelectedIdeas(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  // ─── Develop selected ideas into full content ───
+  const handleDevelop = async () => {
+    if (selectedIdeas.length === 0) return;
+
+    // Find the full idea objects from any current tab's state
+    const allKnown = [...ideas, ...historyIdeas, ...savedIdeas];
+    const toDevelop = selectedIdeas
+      .map(id => allKnown.find(i => i.id === id))
+      .filter(Boolean);
+
+    if (toDevelop.length === 0) return;
+
+    // Add placeholders to Desenvolvidos state (status='developing')
+    setDevelopedIdeas(prev => {
+      const existing = new Set(prev.map(i => i.id));
+      const placeholders = toDevelop
+        .filter(i => !existing.has(i.id))
+        .map(i => ({ ...i, status: 'developing', developed_content: null }));
+      return [...placeholders, ...prev];
+    });
+
+    // Remove from Ideias tab state (keep on history/saved — they're other views)
+    setIdeas(prev => prev.filter(i => !selectedIdeas.includes(i.id)));
+    setSelectedIdeas([]);
+
+    // Switch to Desenvolvidos
+    setActiveTab('developed');
+
+    // Fire parallel develop requests
+    const token = await getAccessToken();
+    const headers = { Authorization: `Bearer ${token}` };
+
+    await Promise.all(toDevelop.map(async (idea) => {
+      try {
+        const res = await axios.post(`${API_URL}/content/develop`, {
+          idea_id: idea.id,
+          title: idea.title,
+          summary: idea.summary || '',
+          tone_id: selectedToneId || null,
+          base_id: selectedBaseId || null,
+        }, { headers });
+
+        // Replace placeholder with developed content
+        setDevelopedIdeas(prev => prev.map(i => i.id === idea.id ? res.data : i));
+      } catch (err) {
+        console.error('Erro desenvolvendo ideia', idea.id, err);
+        // Mark placeholder as failed by reverting
+        setDevelopedIdeas(prev => prev.map(i => i.id === idea.id
+          ? { ...i, status: 'idea', developed_content: null, _failed: true }
+          : i
+        ));
+        setErrorToast(`Erro ao desenvolver "${idea.title}"`);
+        setTimeout(() => setErrorToast(null), 5000);
+      }
+    }));
+  };
+
+  const toggleExpandDeveloped = (id) => {
+    setExpandedDeveloped(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
   const handleClearAll = async () => {
@@ -893,15 +972,105 @@ const ContentGenerator = () => {
               </div>
             )}
 
-            {/* Desenvolvidos tab — empty for now */}
-            {activeTab === 'developed' && (
+            {/* DESENVOLVIDOS tab cards */}
+            {activeTab === 'developed' && !loadingTab && developedIdeas.length > 0 && (
+              <div className="max-w-4xl mx-auto space-y-3">
+                {developedIdeas.map((idea, i) => {
+                  const isDeveloping = idea.status === 'developing';
+                  const isExpanded = !!expandedDeveloped[idea.id];
+                  return (
+                    <motion.div
+                      key={idea.id}
+                      initial={{ opacity: 0, y: 16 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ duration: 0.25, delay: Math.min(i * 0.03, 0.3) }}
+                      className="bg-white/[0.02] border border-white/[0.08] rounded-2xl overflow-hidden"
+                    >
+                      {/* Header — clickable to expand */}
+                      <button
+                        onClick={() => !isDeveloping && toggleExpandDeveloped(idea.id)}
+                        disabled={isDeveloping}
+                        className="w-full flex items-start justify-between gap-4 p-5 text-left transition-colors hover:bg-white/[0.02] disabled:cursor-default"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-white/25 mb-1.5">
+                            {isDeveloping ? 'Desenvolvendo' : 'Conteúdo pronto'}
+                          </p>
+                          <p className="text-[16px] font-bold text-white leading-snug uppercase tracking-wide">
+                            {idea.title}
+                          </p>
+                          {idea.summary && !isDeveloping && (
+                            <p className="text-[13px] text-white/40 leading-relaxed mt-1.5 line-clamp-2">
+                              {idea.summary}
+                            </p>
+                          )}
+                        </div>
+                        {!isDeveloping && (
+                          <div className="shrink-0 text-gray-500">
+                            {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                          </div>
+                        )}
+                      </button>
+
+                      {/* Loading skeleton while developing */}
+                      {isDeveloping && (
+                        <div className="px-5 pb-5 border-t border-white/[0.04] pt-4">
+                          <div className="space-y-2 animate-pulse">
+                            <div className="h-3 bg-white/[0.06] rounded w-5/6" />
+                            <div className="h-3 bg-white/[0.05] rounded w-full" />
+                            <div className="h-3 bg-white/[0.05] rounded w-4/5" />
+                            <div className="h-3 bg-white/[0.04] rounded w-3/4" />
+                            <div className="h-3 bg-white/[0.04] rounded w-5/6" />
+                          </div>
+                          <div className="flex items-center gap-2 mt-4 text-[12px] text-blue-400/80 font-medium">
+                            <Loader2 size={12} className="animate-spin" />
+                            Criando conteúdo...
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Expanded content */}
+                      <AnimatePresence initial={false}>
+                        {!isDeveloping && isExpanded && idea.developed_content && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: 'auto', opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            transition={{ duration: 0.25, ease: 'easeOut' }}
+                            className="overflow-hidden"
+                          >
+                            <div className="px-5 pb-5 border-t border-white/[0.04] pt-4">
+                              <MarkdownRenderer className="max-w-none">
+                                {idea.developed_content}
+                              </MarkdownRenderer>
+                              <div className="flex justify-end mt-5 pt-4 border-t border-white/[0.04]">
+                                <button
+                                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600/15 border border-blue-600/25 text-blue-400 text-[12px] font-bold hover:bg-blue-600/25 transition-colors"
+                                  title="Enviar (em breve)"
+                                >
+                                  <Send size={13} strokeWidth={2} />
+                                  Enviar
+                                </button>
+                              </div>
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+                    </motion.div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* DESENVOLVIDOS empty state */}
+            {activeTab === 'developed' && !loadingTab && developedIdeas.length === 0 && (
               <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
                 <div className="w-20 h-20 rounded-3xl bg-white/[0.03] border border-white/[0.06] flex items-center justify-center">
                   <FileCheck size={32} strokeWidth={1.2} className="text-gray-600" />
                 </div>
                 <div>
                   <p className="text-[15px] font-semibold text-gray-400">Seus conteúdos desenvolvidos aparecerão aqui</p>
-                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Desenvolva suas ideias em roteiros completos prontos para gravar</p>
+                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Selecione ideias e clique em "Criar conteúdo" para desenvolvê-las</p>
                 </div>
               </div>
             )}
@@ -937,7 +1106,10 @@ const ContentGenerator = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="shrink-0 flex justify-center px-6 pb-3"
           >
-            <button className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200">
+            <button
+              onClick={handleDevelop}
+              className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200"
+            >
               Criar conteúdo · {selectedIdeas.length}
             </button>
           </motion.div>

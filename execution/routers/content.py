@@ -36,6 +36,7 @@ class IdeaOut(BaseModel):
     title: str
     summary: Optional[str] = None
     status: str
+    developed_content: Optional[str] = None
     is_saved: bool = False
     is_dismissed: bool = False
     batch_id: Optional[str] = None
@@ -45,12 +46,21 @@ class IdeaOut(BaseModel):
         from_attributes = True
 
 
+class DevelopRequest(BaseModel):
+    idea_id: int
+    title: str
+    summary: Optional[str] = ""
+    tone_id: Optional[int] = None
+    base_id: Optional[int] = None
+
+
 def _serialize(idea: ContentIdea) -> IdeaOut:
     return IdeaOut(
         id=idea.id,
         title=idea.title,
         summary=idea.summary,
         status=idea.status or "idea",
+        developed_content=idea.developed_content,
         is_saved=bool(idea.is_saved),
         is_dismissed=bool(idea.is_dismissed),
         batch_id=idea.batch_id,
@@ -58,9 +68,47 @@ def _serialize(idea: ContentIdea) -> IdeaOut:
     )
 
 
+# Cache the agent directive file so it's read once per process
+_AGENT_DIRECTIVE_CACHE = None
+def _load_agent_directive() -> str:
+    global _AGENT_DIRECTIVE_CACHE
+    if _AGENT_DIRECTIVE_CACHE is not None:
+        return _AGENT_DIRECTIVE_CACHE
+    path = os.path.join(os.path.dirname(__file__), "..", "..", "directives", "viral-content-agent.md")
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            _AGENT_DIRECTIVE_CACHE = f.read()
+    except FileNotFoundError:
+        _AGENT_DIRECTIVE_CACHE = ""
+        logger.error(f"Diretiva do agente não encontrada em {path}")
+    return _AGENT_DIRECTIVE_CACHE
+
+
+def _build_develop_system_prompt(base_text: str, tone_text: str) -> str:
+    """Inject base and tone into the agent directive as ARQUIVO 1 / ARQUIVO 2 sections."""
+    directive = _load_agent_directive()
+    injection = f"""
+
+---
+
+## ARQUIVO 1 — DATABASE DE VIRAIS
+
+{base_text if base_text else "Nenhuma base de conhecimento selecionada."}
+
+---
+
+## ARQUIVO 2 — TOM DO USUÁRIO
+
+{tone_text if tone_text else "Nenhum tom fornecido. Use tom direto, profissional mas acessível."}
+
+---
+"""
+    return directive + injection
+
+
 @router.get("/ideas", response_model=List[IdeaOut])
 async def list_ideas(
-    tab: str = Query("ideas", regex="^(ideas|history|saved)$"),
+    tab: str = Query("ideas", regex="^(ideas|history|saved|developed)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -71,6 +119,8 @@ async def list_ideas(
         query = query.where(or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None)))
     elif tab == "saved":
         query = query.where(ContentIdea.is_saved == 1)
+    elif tab == "developed":
+        query = query.where(ContentIdea.status == "developed")
     # history: no extra filter (show all)
 
     query = query.order_by(desc(ContentIdea.created_at))
@@ -185,6 +235,99 @@ async def delete_idea(
     await db.delete(idea)
     await db.commit()
     return {"ok": True}
+
+
+@router.post("/develop", response_model=IdeaOut)
+async def develop_content(
+    request: DevelopRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run MODO 4 of Viral Content Machine over a selected idea and store the
+    generated markdown on the idea row."""
+    # Fetch the idea and verify ownership
+    result = await db.execute(
+        select(ContentIdea).where(
+            ContentIdea.id == request.idea_id,
+            ContentIdea.user_id == current_user.id,
+        )
+    )
+    idea = result.scalars().first()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Ideia não encontrada.")
+
+    # Mark as developing
+    idea.status = "developing"
+    await db.commit()
+
+    # Gather context
+    tone_text = ""
+    base_text = ""
+
+    tone_id = request.tone_id or idea.tone_id
+    base_id = request.base_id or idea.base_id
+
+    if tone_id:
+        r = await db.execute(
+            select(Tone).where(Tone.id == tone_id, Tone.user_id == current_user.id)
+        )
+        tone = r.scalars().first()
+        if tone and tone.tone_md:
+            tone_text = tone.tone_md
+
+    if base_id:
+        r = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == base_id,
+                KnowledgeBase.user_id == current_user.id,
+            )
+        )
+        kb = r.scalars().first()
+        if kb and kb.compiled_md:
+            base_text = kb.compiled_md
+
+    # Build prompts
+    system_prompt = _build_develop_system_prompt(base_text, tone_text)
+
+    title = request.title or idea.title or ""
+    summary = request.summary or idea.summary or ""
+    user_message = (
+        f"Crie um conteúdo viral completo no formato Reels sobre o seguinte tema: "
+        f"{title}"
+        + (f"\n\nResumo: {summary}" if summary else "")
+        + "\n\nUse o MODO 4 (Criador de Conteúdo). Entregue o briefing completo "
+          "seguindo exatamente o formato de saída para Reels definido na sua diretiva, "
+          "com ganchos, takes, legenda e notas de produção."
+    )
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY não configurada.")
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
+
+    try:
+        response = model.generate_content(user_message)
+        content_md = (response.text or "").strip()
+
+        if not content_md:
+            raise ValueError("Resposta vazia do modelo.")
+
+        # Persist
+        idea.developed_content = content_md
+        idea.status = "developed"
+        await db.commit()
+        await db.refresh(idea)
+
+        return _serialize(idea)
+
+    except Exception as e:
+        logger.error(f"Erro em develop_content: {e}", exc_info=True)
+        # Roll back status so user can retry
+        idea.status = "idea"
+        await db.commit()
+        raise HTTPException(status_code=500, detail=f"Erro ao desenvolver conteúdo: {str(e)}")
 
 
 @router.post("/generate", response_model=List[IdeaOut])
