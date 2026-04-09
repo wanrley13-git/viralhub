@@ -4,9 +4,9 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import {
   Upload, Link as LinkIcon, FileVideo, Sparkles, Loader2, Download,
   Terminal, Activity, AlertCircle, Library as LibraryIcon,
-  Calendar, FileText, Search, Trash2, CheckSquare, CloudDownload, X
+  Calendar, FileText, Search, Trash2, CheckSquare, Square, CloudDownload, X
 } from 'lucide-react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import { useSidebar } from '../contexts/SidebarContext';
 import { getAccessToken } from '../supabaseClient';
@@ -65,14 +65,23 @@ const Analyzer = () => {
     })();
   }, []);
 
-  // Close modals on ESC
+  // Close modals on ESC / deselect all when in bulk-select mode
   useEffect(() => {
     const handleEsc = (e) => {
-      if (e.key === 'Escape') setSelectedAnalysis(null);
+      if (e.key !== 'Escape') return;
+      // Priority: close reading modal first if open
+      if (selectedAnalysis) {
+        setSelectedAnalysis(null);
+        return;
+      }
+      // Otherwise, if in select mode with items selected, clear the selection
+      if (isSelectMode && selectedExports.length > 0) {
+        setSelectedExports([]);
+      }
     };
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
-  }, []);
+  }, [selectedAnalysis, isSelectMode, selectedExports.length]);
 
   useEffect(() => {
     if (taskId) {
@@ -209,25 +218,50 @@ const Analyzer = () => {
     element.click();
   };
 
-  const handleExportZip = async () => {
+  // Concatenate the selected analyses into a single markdown file and
+  // trigger a download. Everything happens client-side — no backend
+  // round-trip — so it's instant even for dozens of reports.
+  const handleExportMarkdown = () => {
     if (selectedExports.length === 0) return;
     setExporting(true);
     try {
-      const token = await getAccessToken();
-      const res = await axios.post(`${API_URL}/analyze/export`, {
-        analysis_ids: selectedExports
-      }, {
-        headers: { Authorization: `Bearer ${token}` },
-        responseType: 'blob'
+      // Preserve the order in which reports are displayed on screen
+      // (most recent first) rather than click-order, so the exported
+      // file feels chronological.
+      const idSet = new Set(selectedExports);
+      const picked = (analyses || []).filter(a => idSet.has(a.id));
+
+      const today = new Date().toLocaleDateString('pt-BR', {
+        day: '2-digit', month: 'long', year: 'numeric'
       });
 
-      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const header =
+`# Análises Exportadas — ViralHub
+Data: ${today}
+Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
+
+---
+
+`;
+
+      const body = picked.map((a, i) => {
+        const title = (a.title || `Análise #${a.id}`).trim();
+        const content = (a.report_md || '').trim();
+        return `## ${i + 1}. ${title}\n\n${content}`;
+      }).join('\n\n---\n\n');
+
+      const full = header + body + '\n';
+
+      const blob = new Blob([full], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.setAttribute('download', 'relatorios_viralhub.zip');
+      const stamp = new Date().toISOString().slice(0, 10);
+      link.download = `viralhub_analises_${stamp}.md`;
       document.body.appendChild(link);
       link.click();
       link.remove();
+      URL.revokeObjectURL(url);
 
       setIsSelectMode(false);
       setSelectedExports([]);
@@ -243,6 +277,21 @@ const Analyzer = () => {
     (a.title && a.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (a.report_md && a.report_md.toLowerCase().includes(searchTerm.toLowerCase()))
   );
+
+  // "Selecionar todos" / "Desmarcar todos" toggle over the currently
+  // visible (post-search) list of analyses.
+  const visibleIds = filteredAnalyses.map(a => a.id);
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedExports.includes(id));
+
+  const toggleSelectAll = () => {
+    if (allVisibleSelected) {
+      // Deselect only the visible ones, preserve any hidden-but-selected
+      // (e.g. cards currently filtered out by search).
+      setSelectedExports(prev => prev.filter(id => !visibleIds.includes(id)));
+    } else {
+      setSelectedExports(prev => Array.from(new Set([...prev, ...visibleIds])));
+    }
+  };
 
   return (
     <div className="animate-fade-in relative min-h-screen transition-all duration-300" style={{ paddingLeft: collapsed ? 72 : 260 }}>
@@ -433,13 +482,20 @@ const Analyzer = () => {
                 <CheckSquare size={14} strokeWidth={2.5} /> {isSelectMode ? 'Cancelar' : 'Ação em Lote'}
               </button>
 
-              {isSelectMode && selectedExports.length > 0 && (
+              {isSelectMode && visibleIds.length > 0 && (
                 <button
-                  onClick={handleExportZip}
-                  disabled={exporting}
-                  className="btn-magnetic flex items-center gap-2 px-4 py-2.5 bg-green-500/15 border border-green-500/20 text-green-400 rounded-2xl text-xs font-bold"
+                  onClick={toggleSelectAll}
+                  className={`btn-magnetic flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all ${
+                    allVisibleSelected
+                      ? 'bg-primary/15 text-primary border border-primary/20'
+                      : 'bg-surface-flat text-gray-400 hover:text-white border border-border-subtle hover:border-border-hover'
+                  }`}
                 >
-                  {exporting ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} strokeWidth={2.5} />} ZIP ({selectedExports.length})
+                  {allVisibleSelected
+                    ? <CheckSquare size={14} strokeWidth={2.5} />
+                    : <Square size={14} strokeWidth={2.5} />
+                  }
+                  {allVisibleSelected ? 'Desmarcar todos' : 'Selecionar todos'}
                 </button>
               )}
 
@@ -580,6 +636,52 @@ const Analyzer = () => {
           )}
         </div>
       </div>
+
+      {/* ═══ FLOATING BULK EXPORT BAR ═══ */}
+      <AnimatePresence>
+        {isSelectMode && selectedExports.length > 0 && !selectedAnalysis && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            className="fixed bottom-8 left-0 right-0 z-[80] flex justify-center items-center px-6 pointer-events-none"
+            style={{ paddingLeft: collapsed ? 72 : 260 }}
+          >
+            <div className="pointer-events-auto flex items-center gap-2 pl-5 pr-2 py-2 rounded-full bg-[#16161a]/95 backdrop-blur-xl border border-white/[0.08] shadow-[0_20px_64px_rgba(0,0,0,0.55)]">
+              <div className="flex items-center gap-2.5">
+                <div className="w-1.5 h-1.5 rounded-full bg-primary animate-glow-pulse" />
+                <span className="text-[13px] font-bold text-white tracking-tight">
+                  {selectedExports.length} {selectedExports.length === 1 ? 'selecionado' : 'selecionados'}
+                </span>
+              </div>
+
+              <div className="w-px h-6 bg-white/[0.08] mx-1" />
+
+              <button
+                onClick={() => setSelectedExports([])}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-full text-[12px] font-bold text-gray-400 hover:text-white hover:bg-white/[0.05] transition-colors"
+                title="Limpar seleção (Esc)"
+              >
+                <X size={13} strokeWidth={2.5} />
+                Limpar
+              </button>
+
+              <button
+                onClick={handleExportMarkdown}
+                disabled={exporting}
+                className="flex items-center gap-2 pl-4 pr-5 py-2.5 rounded-full bg-primary hover:bg-primary/90 text-white text-[13px] font-bold shadow-[0_0_24px_rgba(55,178,77,0.35)] transition-colors duration-200 disabled:opacity-60 disabled:pointer-events-none"
+              >
+                {exporting
+                  ? <Loader2 size={14} strokeWidth={2.5} className="animate-spin" />
+                  : <Download size={14} strokeWidth={2.5} />
+                }
+                Exportar
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Modal de Leitura */}
       {selectedAnalysis && !isSelectMode && (
