@@ -12,6 +12,7 @@ import { useSidebar } from '../contexts/SidebarContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { getAccessToken } from '../supabaseClient';
 import { resolveThumbnailUrl } from '../components/Thumbnail';
+import useConfirm from '../hooks/useConfirm';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -46,6 +47,7 @@ const ProjectListView = ({ collapsed }) => {
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
+  const { confirm, ConfirmDialog } = useConfirm();
   const navigate = useNavigate();
   const loading = !loaded;
 
@@ -79,7 +81,13 @@ const ProjectListView = ({ collapsed }) => {
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('Excluir este projeto e todos seus cards?')) return;
+    const ok = await confirm({
+      title: 'Excluir projeto?',
+      message: 'Todos os cards deste projeto também serão excluídos. Essa ação não pode ser desfeita.',
+      confirmText: 'Excluir projeto',
+      confirmColor: 'red',
+    });
+    if (!ok) return;
     try {
       const token = await getAccessToken();
       await axios.delete(`${API_URL}/projects/${id}`, {
@@ -226,6 +234,7 @@ const ProjectListView = ({ collapsed }) => {
           </div>
         )}
       </div>
+      <ConfirmDialog />
     </div>
   );
 };
@@ -242,6 +251,7 @@ const BoardView = ({ projectId, collapsed }) => {
   const [previewTask, setPreviewTask] = useState(null);
   const [columns, setColumns] = useState(DEFAULT_COLUMNS);
   const [lightboxSrc, setLightboxSrc] = useState(null);
+  const { confirm, ConfirmDialog } = useConfirm();
   const [viewMode, setViewMode] = useState(() => {
     try { return localStorage.getItem('viralhub_kanban_view') || 'kanban'; } catch { return 'kanban'; }
   });
@@ -399,10 +409,16 @@ const BoardView = ({ projectId, collapsed }) => {
     saveColumns(newCols);
   };
 
-  const deleteColumn = (colId) => {
+  const deleteColumn = async (colId) => {
     const tasksInColumn = tasks.filter(t => t.status === colId);
     if (tasksInColumn.length > 0) {
-      if (!window.confirm(`Essa coluna tem ${tasksInColumn.length} card(s). Os cards serão movidos para "Nova tarefa". Continuar?`)) return;
+      const ok = await confirm({
+        title: 'Excluir coluna?',
+        message: `Essa coluna tem ${tasksInColumn.length} card(s). Os cards serão movidos para "Nova tarefa".`,
+        confirmText: 'Excluir coluna',
+        confirmColor: 'red',
+      });
+      if (!ok) return;
       tasksInColumn.forEach(t => onTaskUpdate(t.id, { status: 'todo' }));
     }
     const newCols = columns.filter(c => c.id !== colId);
@@ -576,6 +592,8 @@ const BoardView = ({ projectId, collapsed }) => {
       {lightboxSrc && (
         <ImageLightbox src={lightboxSrc} onClose={() => setLightboxSrc(null)} />
       )}
+
+      <ConfirmDialog />
     </div>
   );
 };

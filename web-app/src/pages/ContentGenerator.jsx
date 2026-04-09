@@ -14,6 +14,7 @@ import { useNotes } from '../contexts/NotesContext';
 import { getAccessToken } from '../supabaseClient';
 import { resolveThumbnailUrl } from '../components/Thumbnail';
 import MarkdownRenderer from '../components/MarkdownRenderer';
+import useConfirm from '../hooks/useConfirm';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -202,6 +203,7 @@ const ContentGenerator = () => {
   const { collapsed } = useSidebar();
   const { projects, fetchProjects } = useProjects();
   const { folders: noteFolders, createNote, updateNote } = useNotes();
+  const { confirm, ConfirmDialog } = useConfirm();
 
   // Page tabs
   const [activeTab, setActiveTab] = useState(() => {
@@ -685,7 +687,13 @@ const ContentGenerator = () => {
   };
 
   const handleKBDelete = async (kbId) => {
-    if (!window.confirm('Excluir esta base?')) return;
+    const ok = await confirm({
+      title: 'Excluir base de conhecimento?',
+      message: 'Todos os dados desta base serão removidos. Essa ação não pode ser desfeita.',
+      confirmText: 'Excluir base',
+      confirmColor: 'red',
+    });
+    if (!ok) return;
     try {
       const token = await getAccessToken();
       await axios.delete(`${API_URL}/knowledge/${kbId}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -745,7 +753,13 @@ const ContentGenerator = () => {
   };
 
   const handleToneDelete = async (id) => {
-    if (!window.confirm('Excluir este tom?')) return;
+    const ok = await confirm({
+      title: 'Excluir tom?',
+      message: 'Essa perfilagem de tom será removida permanentemente.',
+      confirmText: 'Excluir tom',
+      confirmColor: 'red',
+    });
+    if (!ok) return;
     try {
       const token = await getAccessToken();
       await axios.delete(`${API_URL}/tone/${id}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -2511,6 +2525,8 @@ const ContentGenerator = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ConfirmDialog />
     </div>
   );
 };

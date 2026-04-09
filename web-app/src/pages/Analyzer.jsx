@@ -11,6 +11,7 @@ import { useDropzone } from 'react-dropzone';
 import { useSidebar } from '../contexts/SidebarContext';
 import { getAccessToken } from '../supabaseClient';
 import Thumbnail from '../components/Thumbnail';
+import useToast from '../hooks/useToast';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -67,6 +68,7 @@ const groupAnalysesByDate = (list) => {
 
 const Analyzer = () => {
   const { collapsed } = useSidebar();
+  const { toast, ToastContainer } = useToast();
   // === Estados de Upload & Análise ===
   const [activeTab, setActiveTab] = useState('upload');
   const [progressTab, setProgressTab] = useState('status');
@@ -419,7 +421,7 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
       setSelectedExports([]);
     } catch (err) {
       console.error('Erro exportando:', err);
-      alert('Erro ao exportar relatórios.');
+      toast.error({ title: 'Erro ao exportar', message: 'Não foi possível gerar o arquivo de relatórios.' });
     } finally {
       setExporting(false);
     }
@@ -450,7 +452,7 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
       await fetchHistory();
     } catch (err) {
       console.error('Erro apagando em lote:', err);
-      alert('Erro ao apagar análises em lote.');
+      toast.error({ title: 'Erro ao apagar', message: 'Falha ao remover uma ou mais análises.' });
     } finally {
       setDeleting(false);
     }
@@ -1038,6 +1040,7 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
         </div>
       )}
 
+      <ToastContainer />
     </div>
   );
 };

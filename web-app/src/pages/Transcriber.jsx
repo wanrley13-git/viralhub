@@ -10,11 +10,15 @@ import { motion } from 'framer-motion';
 import { useSidebar } from '../contexts/SidebarContext';
 import { getAccessToken } from '../supabaseClient';
 import Thumbnail from '../components/Thumbnail';
+import useConfirm from '../hooks/useConfirm';
+import useToast from '../hooks/useToast';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
 const Transcriber = () => {
   const { collapsed } = useSidebar();
+  const { confirm, ConfirmDialog } = useConfirm();
+  const { toast, ToastContainer } = useToast();
 
   // === Estados de Upload & Transcrição ===
   const [progressTab, setProgressTab] = useState('status');
@@ -134,7 +138,13 @@ const Transcriber = () => {
 
   const handleDeleteUnit = async (e, id) => {
     e.stopPropagation();
-    if (!window.confirm('Excluir permanentemente esta transcrição?')) return;
+    const ok = await confirm({
+      title: 'Excluir transcrição?',
+      message: 'Essa transcrição será removida permanentemente. A ação não pode ser desfeita.',
+      confirmText: 'Excluir',
+      confirmColor: 'red',
+    });
+    if (!ok) return;
     try {
       const token = await getAccessToken();
       await axios.delete(`${API_URL}/transcribe/${id}`, {
@@ -182,7 +192,7 @@ const Transcriber = () => {
       setSelectedExports([]);
     } catch (err) {
       console.error('Erro exportando:', err);
-      alert('Erro ao exportar transcrições.');
+      toast.error({ title: 'Erro ao exportar', message: 'Não foi possível gerar o ZIP das transcrições.' });
     } finally {
       setExporting(false);
     }
@@ -500,6 +510,9 @@ const Transcriber = () => {
           </div>
         </div>
       )}
+
+      <ConfirmDialog />
+      <ToastContainer />
     </div>
   );
 };
