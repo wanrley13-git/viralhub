@@ -1,6 +1,6 @@
 import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Lightbulb, Minus, Plus, ChevronDown, Video, X,
+  Lightbulb, Minus, Plus, ChevronDown, Video, X, ImagePlus,
   BookOpen, Mic, Check, Trash2, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
   LayoutGrid, Grid3x3, Clock, Heart, Pencil, Eye, Download,
@@ -44,6 +44,20 @@ const RefChip = ({ analysis, onRemove }) => (
       <X size={10} strokeWidth={2.5} />
     </button>
   </span>
+);
+
+// ─── Image thumbnail ─────────────────────────────
+// The previewUrl is created ONCE at upload time (inside handleImageUpload)
+// and stored alongside the file. Never call URL.createObjectURL in the
+// render path — that triggers a fresh blob URL on every keystroke and
+// causes the <img> to flicker as the user types.
+const ImageThumb = ({ previewUrl, onRemove }) => (
+  <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/[0.08] shrink-0 group">
+    <img src={previewUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+    <button onClick={onRemove} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+      <X size={12} strokeWidth={2.5} className="text-white" />
+    </button>
+  </div>
 );
 
 // ─── Format absolute date for history headers ───
@@ -155,6 +169,11 @@ const IdeaGenerator = () => {
   const [selectedBaseId, setSelectedBaseId] = useState(null);
   const [selectedToneId, setSelectedToneId] = useState(null);
   const [quantity, setQuantity] = useState(5);
+  // uploadedImages: Array<{ file: File, previewUrl: string }>. previewUrl is
+  // created exactly once via URL.createObjectURL and revoked on remove /
+  // unmount so the <img> tag can use a stable src across re-renders.
+  const [uploadedImages, setUploadedImages] = useState([]);
+  const MAX_IMAGES = 5;
 
   // @ mention
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -235,6 +254,7 @@ const IdeaGenerator = () => {
 
   const textareaRef = useRef(null);
   const mentionRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Derived
   const selectedRefs = segments.filter(s => s.type === 'ref').map(s => s.analysis);
@@ -536,6 +556,10 @@ const IdeaGenerator = () => {
   };
 
   // ─── Generate ideas ───
+  // Backend endpoint is multipart/form-data (to accept image uploads as
+  // Gemini Parts). reference_ids is JSON-stringified into a single form
+  // field; images are appended under the "images" key and read server-side
+  // into Gemini multimodal contents.
   const handleGenerate = async () => {
     const fullPrompt = segments.map(s => s.type === 'ref' ? `[Referência: ${s.analysis.title}]` : s.value).join('');
     if (!fullPrompt.trim()) return;
@@ -544,17 +568,31 @@ const IdeaGenerator = () => {
     setErrorToast(null);
     try {
       const token = await getAccessToken();
-      const res = await axios.post(`${API_URL}/content/ideas/generate`, {
-        prompt: fullPrompt,
-        tone_id: selectedToneId || null,
-        base_id: selectedBaseId || null,
-        reference_ids: selectedRefs.map(r => r.id),
-        quantity,
-      }, { headers: { Authorization: `Bearer ${token}` }, timeout: 180000 });
+
+      const formData = new FormData();
+      formData.append('prompt', fullPrompt);
+      if (selectedToneId) formData.append('tone_id', String(selectedToneId));
+      if (selectedBaseId) formData.append('base_id', String(selectedBaseId));
+      formData.append('reference_ids', JSON.stringify(selectedRefs.map(r => r.id)));
+      formData.append('quantity', String(quantity));
+      uploadedImages.forEach(img => formData.append('images', img.file));
+
+      const res = await axios.post(`${API_URL}/content/ideas/generate`, formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 180000,
+      });
 
       setIdeas(prev => [...res.data, ...prev]);
       setSelectedIdeas([]);
       setActiveTab('ideas');
+
+      // Clear the attached images after a successful generation so the
+      // next request starts clean. Revoke each blob URL first.
+      uploadedImages.forEach(img => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl); });
+      setUploadedImages([]);
     } catch (err) {
       const msg = err.response?.data?.detail || 'Erro ao gerar ideias. Tente novamente.';
       setErrorToast(msg);
@@ -851,6 +889,41 @@ const IdeaGenerator = () => {
       const r = [...prev.slice(0, s), { type: 'text', value: merged }, ...prev.slice(e)];
       return r.length === 0 ? [{ type: 'text', value: '' }] : r;
     });
+  }, []);
+
+  // Create one blob URL per file at upload time and store it in state.
+  // Respects MAX_IMAGES and accepts only image/* files.
+  const handleImageUpload = (e) => {
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+    if (files.length === 0) { e.target.value = ''; return; }
+    setUploadedImages(prev => {
+      const remaining = Math.max(0, MAX_IMAGES - prev.length);
+      const added = files.slice(0, remaining).map(file => ({
+        file,
+        previewUrl: URL.createObjectURL(file),
+      }));
+      return [...prev, ...added];
+    });
+    e.target.value = '';
+  };
+
+  const removeImage = useCallback((index) => {
+    setUploadedImages(prev => {
+      const target = prev[index];
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  // Revoke any outstanding blob URLs when the component unmounts so we
+  // don't leak object URLs across navigations.
+  useEffect(() => {
+    return () => {
+      setUploadedImages(prev => {
+        prev.forEach(img => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl); });
+        return prev;
+      });
+    };
   }, []);
 
   const handleKeyDown = (e) => {
@@ -1414,8 +1487,40 @@ const IdeaGenerator = () => {
         {/* Fade gradient — sits right above the prompt bar's top edge */}
         <div aria-hidden className="absolute left-0 right-0 bottom-full h-[200px] bg-gradient-to-t from-[#09090b] to-transparent pointer-events-none" />
         <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-4px_16px_rgba(0,0,0,0.15)]">
+          {uploadedImages.length > 0 && (
+            <div className="flex items-center gap-2 mb-3">
+              {uploadedImages.map((img, i) => (
+                <ImageThumb
+                  key={img.previewUrl}
+                  previewUrl={img.previewUrl}
+                  onRemove={() => removeImage(i)}
+                />
+              ))}
+              {uploadedImages.length >= MAX_IMAGES && (
+                <span className="text-[10px] font-mono text-white/30 ml-1">{MAX_IMAGES}/{MAX_IMAGES}</span>
+              )}
+            </div>
+          )}
+
           <div className="relative">
             <div className="flex flex-wrap items-center gap-1.5 min-h-[28px] cursor-text" onClick={() => textareaRef.current?.focus()}>
+              <button
+                onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
+                disabled={uploadedImages.length >= MAX_IMAGES}
+                className="shrink-0 w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-white/[0.07] transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                title={uploadedImages.length >= MAX_IMAGES ? `Máximo de ${MAX_IMAGES} imagens` : 'Anexar imagem'}
+              >
+                <ImagePlus size={15} strokeWidth={1.8} />
+              </button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                multiple
+                onChange={handleImageUpload}
+                className="hidden"
+              />
+
               {segments.map((seg, i) => {
                 if (seg.type === 'ref') return <RefChip key={`ref-${seg.analysis.id}`} analysis={seg.analysis} onRemove={removeRef} />;
                 if (i === segments.length - 1) return (
