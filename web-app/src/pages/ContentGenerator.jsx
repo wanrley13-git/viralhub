@@ -1628,7 +1628,7 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="shrink-0 flex justify-center items-center px-6 py-8 bg-gradient-to-b from-transparent via-black/70 to-transparent pointer-events-none"
+            className="shrink-0 flex justify-center items-center px-6 h-[150px] bg-gradient-to-t from-black/50 to-transparent pointer-events-none"
           >
             <button
               onClick={handleDevelop}
@@ -1648,7 +1648,7 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="shrink-0 relative flex justify-center items-center px-6 py-8 bg-gradient-to-b from-transparent via-black/70 to-transparent pointer-events-none"
+            className="shrink-0 relative flex justify-center items-center px-6 h-[150px] bg-gradient-to-t from-black/50 to-transparent pointer-events-none"
           >
             <button
               onClick={() => setBulkSendPopupOpen(o => !o)}
