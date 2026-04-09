@@ -23,6 +23,7 @@ from routers.projects import router as projects_router
 from routers.uploads import router as uploads_router
 from routers.calendar import router as calendar_router
 from routers.content import router as content_router
+from routers.ideas import router as ideas_router
 
 app = FastAPI(title="ViralAnalyst Content Hub API")
 
@@ -55,6 +56,13 @@ app.include_router(projects_router)
 app.include_router(uploads_router)
 app.include_router(calendar_router)
 app.include_router(content_router)
+# content_router is registered FIRST on purpose. It already owns
+# PATCH /content/ideas/{id}/save, POST /content/ideas/{id}/save,
+# DELETE /content/ideas/{id}, GET /content/ideas and DELETE /content/ideas,
+# and none of them filter by idea_type — so ContentGenerator keeps working
+# unchanged even after the new IdeaGenerator router mounts creative-scoped
+# handlers at the same /content/ideas/* paths.
+app.include_router(ideas_router)
 
 @app.on_event("startup")
 async def on_startup():

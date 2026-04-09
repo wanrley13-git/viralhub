@@ -130,6 +130,11 @@ class ContentIdea(Base):
     is_saved = Column(Integer, default=0)            # 1 if bookmarked
     is_dismissed = Column(Integer, default=0)        # 1 if cleared from Ideias view (still in history)
     batch_id = Column(String, nullable=True)         # groups ideas generated together
+    # "content" = ContentGenerator (viral-content-agent directive),
+    # "creative" = IdeaGenerator (agente-criativo directive).
+    # Column exists in ORM with a server_default so SELECTs don't break even
+    # if the DB column hasn't been migrated yet.
+    idea_type = Column(String(20), nullable=False, server_default="content")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("Profile")
