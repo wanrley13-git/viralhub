@@ -1628,7 +1628,7 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="absolute inset-x-0 bottom-[180px] z-10 flex justify-center items-center px-6 pointer-events-none"
+            className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center px-6 pointer-events-none"
           >
             <button
               onClick={handleDevelop}
@@ -1648,7 +1648,7 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="absolute inset-x-0 bottom-[180px] z-10 flex justify-center items-center px-6 pointer-events-none"
+            className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center px-6 pointer-events-none"
           >
             <button
               onClick={() => setBulkSendPopupOpen(o => !o)}
