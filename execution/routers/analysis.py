@@ -16,10 +16,11 @@ from database import get_db
 from models import User, Analysis
 from auth import get_current_user_dual as get_current_user
 from analyzer import (
-    download_video, 
-    extract_zip, 
-    analyze_single_video, 
-    cleanup_temp_files, 
+    download_video,
+    download_videos_batch,
+    extract_zip,
+    analyze_single_video,
+    cleanup_temp_files,
     extract_thumbnail,
     TMP_DIR
 )
@@ -71,23 +72,35 @@ async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: b
             tasks_progress[task_id]["status"] = "processing"
 
         local_files = []
+        download_failures: list[dict] = []
         if is_links:
-            for link in files_or_links:
-                fp = await download_video(link, on_progress)
-                if fp:
-                    local_files.append(fp)
+            # Batch-aware download: applies inter-download delay on
+            # multi-link requests, retries once on rate-limit errors, and
+            # keeps going when individual videos fail instead of aborting
+            # the whole task. Single-link requests behave exactly like
+            # before (no delay).
+            dl_results = await download_videos_batch(files_or_links, on_progress)
+            local_files = [r["path"] for r in dl_results if r["path"]]
+            download_failures = [r for r in dl_results if not r["path"]]
+            # Expose per-link outcome to the frontend for the final report
+            tasks_progress[task_id]["download_failures"] = download_failures
         else:
             local_files = files_or_links
 
         if not local_files:
             tasks_progress[task_id]["status"] = "error"
-            # Extract the most recent failure reason from the logs so the
-            # frontend surfaces the actual yt-dlp error instead of a generic message.
-            recent_failures = [
-                msg for msg in tasks_progress[task_id]["logs"]
-                if msg.startswith("Falha no download")
-            ]
-            detail = recent_failures[-1] if recent_failures else "Nenhum vídeo pôde ser processado."
+            # Prefer the structured per-link failures over log scraping
+            if download_failures:
+                detail = (
+                    f"Nenhum vídeo pôde ser baixado. "
+                    f"Último erro: {download_failures[-1].get('error', 'desconhecido')}"
+                )
+            else:
+                recent_failures = [
+                    msg for msg in tasks_progress[task_id]["logs"]
+                    if msg.startswith("Falha no download") or msg.startswith("Falha definitiva")
+                ]
+                detail = recent_failures[-1] if recent_failures else "Nenhum vídeo pôde ser processado."
             tasks_progress[task_id]["logs"].append(f"Erro: {detail}")
             return
 

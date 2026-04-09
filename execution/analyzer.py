@@ -85,10 +85,57 @@ def get_system_instruction():
     print(f"WARN: prompt file não encontrado em {PROMPT_FILE}")
     return "Você é o ViralAnalyst. Analise os vídeos enviados."
 
-async def download_video(link: str, progress_callback=None) -> str:
-    """Faz download de vídeo de links (YouTube, TikTok, Instagram) usando yt_dlp"""
+# ─── Download error classification ───────────────────────────────────
+# Markers that indicate Instagram / TikTok / YouTube is throttling us and
+# a retry after a short backoff has a decent chance of succeeding.
+_RATE_LIMIT_MARKERS = (
+    'rate-limit', 'rate limit', 'ratelimit',
+    'login required', 'login-required',
+    'too many requests', '429',
+)
+
+def _is_rate_limit_error(raw: str) -> bool:
+    if not raw:
+        return False
+    lower = raw.lower()
+    return any(m in lower for m in _RATE_LIMIT_MARKERS)
+
+def _classify_download_error(raw: str, link: str) -> tuple[str, str]:
+    """Turn a raw yt-dlp exception string into (short_message, hint).
+
+    `short_message` is a one-line, ANSI-stripped, length-capped version of
+    the first line of the exception. `hint` is a friendly "(...)" suffix
+    that suggests the likely cause to the end user.
+    """
+    import re as _re
+    clean = _re.sub(r'\x1b\[[0-9;]*m', '', raw or '')
+    short = clean.strip().split('\n')[0][:200] if clean.strip() else 'erro desconhecido'
+
+    link_lower = link.lower()
+    is_instagram = "instagram.com" in link_lower
+    is_tiktok = "tiktok.com" in link_lower
+    is_youtube = "youtube.com" in link_lower or "youtu.be" in link_lower
+    platform = 'Instagram' if is_instagram else 'TikTok' if is_tiktok else 'YouTube' if is_youtube else 'link'
+
+    lower = clean.lower()
+    hint = ''
+    if 'login' in lower or 'rate' in lower or 'unavailable' in lower or 'restricted' in lower or 'private' in lower:
+        hint = f' (o {platform} pode estar exigindo login, ou o post é privado/restrito)'
+    elif 'unsupported url' in lower:
+        hint = ' (URL não suportada pelo yt-dlp)'
+    elif '404' in clean or 'not found' in lower:
+        hint = ' (vídeo não encontrado ou removido)'
+
+    return short, hint
+
+
+async def _download_video_once(link: str, progress_callback=None, attempt_label: str = "") -> tuple[str | None, str | None]:
+    """Single download attempt. Returns (local_path, None) on success or
+    (None, raw_error_string) on failure. Does NOT log failures — the
+    caller decides whether to retry or to report a definitive failure."""
+    prefix = f"[{attempt_label}] " if attempt_label else ""
     if progress_callback:
-        await progress_callback(f"Iniciando download: {link}", 5)
+        await progress_callback(f"{prefix}Iniciando download: {link}", 5)
 
     filename = f"{uuid.uuid4()}.mp4"
     out_tmpl = os.path.join(TMP_DIR, filename)
@@ -134,31 +181,108 @@ async def download_video(link: str, progress_callback=None) -> str:
         await asyncio.to_thread(run_ydl)
 
         if progress_callback:
-            await progress_callback(f"Download concluído: {link}", 15)
-        return out_tmpl
+            await progress_callback(f"{prefix}Download concluído: {link}", 15)
+        return out_tmpl, None
     except Exception as e:
-        # Extract a human-friendly message from the yt-dlp exception
         raw = str(e)
-        # Strip ANSI color codes yt-dlp sometimes injects
-        import re as _re
-        raw = _re.sub(r'\x1b\[[0-9;]*m', '', raw)
-        # Trim to something readable (~200 chars)
-        short = raw.strip().split('\n')[0][:200] if raw.strip() else 'erro desconhecido'
-
-        platform = 'Instagram' if is_instagram else 'TikTok' if is_tiktok else 'YouTube' if is_youtube else 'link'
-        hint = ''
-        lower = raw.lower()
-        if 'login' in lower or 'rate' in lower or 'unavailable' in lower or 'restricted' in lower or 'private' in lower:
-            hint = f' (o {platform} pode estar exigindo login, ou o post é privado/restrito)'
-        elif 'unsupported url' in lower:
-            hint = ' (URL não suportada pelo yt-dlp)'
-        elif '404' in raw or 'not found' in lower:
-            hint = ' (vídeo não encontrado ou removido)'
-
         print(f"Erro ao baixar {link}: {raw}")
-        if progress_callback:
-            await progress_callback(f"Falha no download de {link}: {short}{hint}", 15)
-        return None
+        return None, raw
+
+
+async def download_video(link: str, progress_callback=None) -> str | None:
+    """Backwards-compatible single-link download.
+
+    Returns the local file path on success, or None on failure (with an
+    error message pushed through `progress_callback`). Preserves the
+    exact behavior older callers rely on (single link, no retry, no
+    inter-download delay).
+    """
+    path, err = await _download_video_once(link, progress_callback)
+    if path:
+        return path
+    # Report the failure in the same format the old implementation used,
+    # so existing UI error surfacing keeps working untouched.
+    short, hint = _classify_download_error(err or 'erro desconhecido', link)
+    if progress_callback:
+        await progress_callback(f"Falha no download de {link}: {short}{hint}", 15)
+    return None
+
+
+async def download_videos_batch(
+    links: list[str],
+    progress_callback=None,
+) -> list[dict]:
+    """Download multiple videos sequentially with rate-limit handling.
+
+    Behavior:
+      • Single link → no delay, no extra ceremony (equivalent to the old
+        download_video). A rate-limit retry still fires as a safety net.
+      • Multi-link → a 4s polite delay between downloads to avoid
+        tripping Instagram/TikTok/YouTube rate limits.
+      • On rate-limit-looking errors, wait 10s and retry once.
+      • On definitive failure, record the error and CONTINUE with the
+        remaining links — never abort the whole batch.
+
+    Returns a list of result dicts, one per input link:
+        [{"link": str, "path": str | None, "error": str | None}, ...]
+    Successful entries have `error=None`; failed entries have `path=None`
+    and a human-friendly `error` string.
+    """
+    results: list[dict] = []
+    total = len(links)
+    is_batch = total > 1
+    INTER_DOWNLOAD_DELAY_S = 4      # 3–5s range as requested
+    RATE_LIMIT_BACKOFF_S = 10
+
+    for idx, link in enumerate(links):
+        # Polite delay between downloads in a batch (never before the first)
+        if is_batch and idx > 0:
+            if progress_callback:
+                await progress_callback(
+                    f"Aguardando {INTER_DOWNLOAD_DELAY_S}s antes do próximo download ({idx+1}/{total})...",
+                    5,
+                )
+            await asyncio.sleep(INTER_DOWNLOAD_DELAY_S)
+
+        # ── Attempt 1 ──
+        path, err = await _download_video_once(link, progress_callback)
+
+        # ── Attempt 2 (only if rate-limited) ──
+        if path is None and _is_rate_limit_error(err or ''):
+            if progress_callback:
+                await progress_callback(
+                    f"Rate-limit detectado em {link}. Aguardando {RATE_LIMIT_BACKOFF_S}s para retry...",
+                    10,
+                )
+            await asyncio.sleep(RATE_LIMIT_BACKOFF_S)
+            path, err = await _download_video_once(
+                link, progress_callback, attempt_label="retry"
+            )
+
+        if path:
+            results.append({"link": link, "path": path, "error": None})
+        else:
+            short, hint = _classify_download_error(err or 'erro desconhecido', link)
+            friendly = f"{short}{hint}"
+            if progress_callback:
+                await progress_callback(
+                    f"Falha definitiva no download de {link}: {friendly}",
+                    15,
+                )
+            results.append({"link": link, "path": None, "error": friendly})
+
+    # Emit a batch-level summary so the frontend's log panel shows a
+    # clean "X de Y" line at the end instead of the user scanning raw
+    # error messages to figure out how many actually succeeded.
+    if is_batch and progress_callback:
+        ok = sum(1 for r in results if r["path"])
+        ko = total - ok
+        await progress_callback(
+            f"Downloads concluídos: {ok}/{total} com sucesso" + (f", {ko} falharam." if ko else "."),
+            20,
+        )
+
+    return results
 
 async def extract_zip(zip_path: str, progress_callback=None) -> list[str]:
     """Extrai vídeos de um arquivo ZIP e retorna a lista de caminhos"""

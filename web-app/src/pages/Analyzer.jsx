@@ -71,7 +71,12 @@ const Analyzer = () => {
   const [statusMessage, setStatusMessage] = useState('Iniciando...');
   const [logs, setLogs] = useState([]);
   const [taskId, setTaskId] = useState(null);
-  const logEndRef = useRef(null);
+  // Ref to the scrollable LOGS CONTAINER (not a sentinel inside it).
+  // We set scrollTop directly so only this inner box scrolls — never the
+  // page. Using scrollIntoView here previously caused a loop where every
+  // new log line scrolled the whole document down to keep the container
+  // in view, fighting the user's own scroll input.
+  const logsContainerRef = useRef(null);
 
   // === Estados da Biblioteca ===
   const [analyses, setAnalyses] = useState([]);
@@ -178,8 +183,14 @@ const Analyzer = () => {
     }
   }, [taskId]);
 
+  // Keep the logs panel pinned to the bottom as new lines arrive. We
+  // mutate scrollTop on the INNER container ONLY — never the window or
+  // document — so the rest of the page stays put regardless of how many
+  // log updates stream in per second.
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const el = logsContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [logs]);
 
   // === Lógicas de Upload ===
@@ -426,14 +437,16 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
                   <p className="text-gray-400 font-medium text-center text-sm animate-pulse max-w-xs">{statusMessage}</p>
                 </div>
               ) : (
-                <div className="w-full bg-surface border border-border-subtle rounded-2xl p-5 font-mono text-sm text-green-400/70 h-52 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar">
+                <div
+                  ref={logsContainerRef}
+                  className="w-full bg-surface border border-border-subtle rounded-2xl p-5 font-mono text-sm text-green-400/70 h-52 overflow-y-auto flex flex-col gap-1.5 custom-scrollbar"
+                >
                   {logs.map((log, i) => (
                     <div key={i} className="flex gap-3">
                       <span className="text-gray-600 shrink-0">[{new Date().toLocaleTimeString([], {hour12: false})}]</span>
                       <span>{log}</span>
                     </div>
                   ))}
-                  <div ref={logEndRef} />
                 </div>
               )}
             </div>
