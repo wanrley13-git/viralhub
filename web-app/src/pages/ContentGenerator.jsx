@@ -33,6 +33,63 @@ const TABS = [
 
 const MIN_QTY = 1;
 const MAX_QTY = 40;
+const MAX_IMAGES = 5;
+
+// ─── Persistence keys (localStorage + sessionStorage) ───
+// Scoped so Content/Idea Generator don't clobber each other's drafts.
+const LS_DRAFT_PROMPT  = 'contentGenerator_draft_prompt';
+const LS_DRAFT_TONE_ID = 'contentGenerator_selectedToneId';
+const LS_DRAFT_BASE_ID = 'contentGenerator_selectedBaseId';
+const SS_DRAFT_IMAGES  = 'contentGenerator_draft_images';
+// sessionStorage quota is ~5MB per origin in every major browser. We
+// cap the serialized image payload below that to avoid QuotaExceeded
+// errors silently killing the persist step.
+const MAX_IMAGE_STORE_BYTES = 5 * 1024 * 1024;
+
+// Decode a `data:` URL into a Blob synchronously so image restoration
+// can happen inside a useState initializer (no async race between the
+// restore effect and the persist effect clearing sessionStorage).
+const dataUrlToBlob = (dataUrl) => {
+  const comma = dataUrl.indexOf(',');
+  if (comma < 0) return null;
+  const header = dataUrl.slice(0, comma);
+  const b64 = dataUrl.slice(comma + 1);
+  const mimeMatch = /data:([^;]+)/.exec(header);
+  const mime = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+};
+
+// ─── Normalize API errors into a renderable string ───
+// FastAPI returns 422 as { detail: [{loc, msg, type}, ...] } and
+// HTTPException returns { detail: "string" }. Rendering the array or
+// object shapes directly in a toast would crash React with error #31
+// ("Objects are not valid as a React child") — flatten into a string.
+const formatApiError = (err, fallback = 'Erro inesperado.') => {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) => {
+        if (typeof d === 'string') return d;
+        if (d && typeof d === 'object') {
+          const loc = Array.isArray(d.loc) ? d.loc.slice(1).join('.') : '';
+          const msg = d.msg || d.message || '';
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return '';
+      })
+      .filter(Boolean);
+    if (parts.length > 0) return parts.join(' · ');
+  }
+  if (detail && typeof detail === 'object') {
+    try { return JSON.stringify(detail); } catch { /* fall through */ }
+  }
+  if (typeof err?.message === 'string' && err.message) return err.message;
+  return fallback;
+};
 
 // ─── Small components ───
 const RefChip = ({ analysis, onRemove }) => (
@@ -159,15 +216,131 @@ const ContentGenerator = () => {
     try { localStorage.setItem('viralhub_generator_tab', activeTab); } catch {}
   }, [activeTab]);
 
-  // Prompt bar segments
-  const [segments, setSegments] = useState([{ type: 'text', value: '' }]);
-  const [selectedBaseId, setSelectedBaseId] = useState(null);
-  const [selectedToneId, setSelectedToneId] = useState(null);
+  // ─── Draft persistence ───
+  // Persist the plain text of the prompt bar (ignores @ref chips, which
+  // hold live analysis objects that can't be serialized) with a 500ms
+  // debounce so we don't hammer localStorage on every keystroke.
+  // Cleared automatically when the text goes empty — i.e. only when the
+  // user wipes the field manually, never as a side-effect of generating.
+  useEffect(() => {
+    const plainText = segments
+      .filter((s) => s.type === 'text')
+      .map((s) => s.value)
+      .join('');
+    const t = setTimeout(() => {
+      try {
+        if (plainText) localStorage.setItem(LS_DRAFT_PROMPT, plainText);
+        else localStorage.removeItem(LS_DRAFT_PROMPT);
+      } catch {}
+    }, 500);
+    return () => clearTimeout(t);
+  }, [segments]);
+
+  // Persist the selected base / tone so the same choice is remembered
+  // across page navigations. `null` means "none selected" → remove key.
+  useEffect(() => {
+    try {
+      if (selectedBaseId != null) localStorage.setItem(LS_DRAFT_BASE_ID, String(selectedBaseId));
+      else localStorage.removeItem(LS_DRAFT_BASE_ID);
+    } catch {}
+  }, [selectedBaseId]);
+  useEffect(() => {
+    try {
+      if (selectedToneId != null) localStorage.setItem(LS_DRAFT_TONE_ID, String(selectedToneId));
+      else localStorage.removeItem(LS_DRAFT_TONE_ID);
+    } catch {}
+  }, [selectedToneId]);
+
+  // Persist uploaded images as base64 dataUrls so attachments survive a
+  // cross-page navigation. Silently skips persistence if the payload
+  // would exceed ~5MB to stay under the sessionStorage quota — the
+  // in-memory state still works for the current session.
+  useEffect(() => {
+    try {
+      if (uploadedImages.length === 0) {
+        sessionStorage.removeItem(SS_DRAFT_IMAGES);
+        return;
+      }
+      const payload = uploadedImages
+        .filter((img) => img && img.dataUrl)
+        .map((img) => ({
+          name: img.file?.name || 'image',
+          type: img.file?.type || 'image/png',
+          dataUrl: img.dataUrl,
+        }));
+      if (payload.length === 0) return;
+      const json = JSON.stringify(payload);
+      if (json.length > MAX_IMAGE_STORE_BYTES) return;
+      sessionStorage.setItem(SS_DRAFT_IMAGES, json);
+    } catch {}
+  }, [uploadedImages]);
+
+  // Prompt bar segments — restored from localStorage so a draft survives
+  // navigating to another page and back. Only the plain text is
+  // serialized; @ref chips point at live analysis objects that can't
+  // round-trip through JSON safely.
+  const [segments, setSegments] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LS_DRAFT_PROMPT);
+      if (saved) return [{ type: 'text', value: saved }];
+    } catch {}
+    return [{ type: 'text', value: '' }];
+  });
+  const [selectedBaseId, setSelectedBaseId] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LS_DRAFT_BASE_ID);
+      if (saved != null && saved !== '') {
+        const n = parseInt(saved, 10);
+        return Number.isFinite(n) ? n : null;
+      }
+    } catch {}
+    return null;
+  });
+  const [selectedToneId, setSelectedToneId] = useState(() => {
+    try {
+      const saved = localStorage.getItem(LS_DRAFT_TONE_ID);
+      if (saved != null && saved !== '') {
+        const n = parseInt(saved, 10);
+        return Number.isFinite(n) ? n : null;
+      }
+    } catch {}
+    return null;
+  });
   const [quantity, setQuantity] = useState(5);
-  // uploadedImages: Array<{ file: File, previewUrl: string }>. previewUrl
-  // is created exactly once via URL.createObjectURL and revoked on
-  // remove / successful submit / unmount to avoid blob URL leaks.
-  const [uploadedImages, setUploadedImages] = useState([]);
+  // uploadedImages: Array<{ file: File|Blob, previewUrl: string, dataUrl: string }>.
+  // The previewUrl is created exactly once at upload (or restore) time
+  // and revoked on remove / unmount so the <img> tag can use a stable
+  // src across re-renders. The dataUrl is the base64 representation
+  // cached for cross-page persistence via sessionStorage.
+  //
+  // Initializer synchronously restores any draft images stashed in
+  // sessionStorage by a previous mount — running this in useState
+  // (instead of a useEffect) avoids a race where the persist effect
+  // would wipe sessionStorage on the very first render before the
+  // async restore could run.
+  const [uploadedImages, setUploadedImages] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem(SS_DRAFT_IMAGES);
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      if (!Array.isArray(parsed)) return [];
+      return parsed.slice(0, MAX_IMAGES).map((entry) => {
+        try {
+          const blob = dataUrlToBlob(entry.dataUrl);
+          if (!blob) return null;
+          const file = new File([blob], entry.name || 'image', {
+            type: entry.type || blob.type || 'image/png',
+          });
+          return {
+            file,
+            previewUrl: URL.createObjectURL(file),
+            dataUrl: entry.dataUrl,
+          };
+        } catch { return null; }
+      }).filter(Boolean);
+    } catch {}
+    return [];
+  });
 
   // @ mention
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -622,19 +795,13 @@ const ContentGenerator = () => {
       setSelectedIdeas([]);
       setActiveTab('ideas');
 
-      // Clear the attached images after a successful generation so the
-      // next request starts clean. Revoke each blob URL first.
-      uploadedImages.forEach(img => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl); });
-      setUploadedImages([]);
+      // Keep the uploaded images in the prompt bar after a successful
+      // generation. The user may want to iterate on the same visual
+      // context with a tweaked prompt, so attachments stay until
+      // manually removed (X on each thumbnail) or the component
+      // unmounts.
     } catch (err) {
-      // FastAPI 422 responses may include `detail` as an array of
-      // {loc, msg, type}, which would crash React if rendered directly.
-      // Flatten any object/array shape into a string.
-      const detail = err.response?.data?.detail;
-      let msg = 'Erro ao gerar conteúdo. Tente novamente.';
-      if (typeof detail === 'string') msg = detail;
-      else if (Array.isArray(detail)) msg = detail.map(d => d?.msg || JSON.stringify(d)).join('; ');
-      else if (detail && typeof detail === 'object') msg = detail.msg || JSON.stringify(detail);
+      const msg = formatApiError(err, 'Erro ao gerar conteúdo. Tente novamente.');
       setErrorToast(msg);
       setTimeout(() => setErrorToast(null), 5000);
     } finally {
@@ -975,7 +1142,8 @@ const ContentGenerator = () => {
       }
       setClearConfirmOpen(false);
     } catch (err) {
-      setErrorToast('Erro ao limpar ideias.');
+      const errorText = formatApiError(err, 'tente novamente.');
+      setErrorToast(`Erro ao limpar ideias: ${errorText}`);
       setTimeout(() => setErrorToast(null), 5000);
     }
   };
@@ -1075,16 +1243,34 @@ const ContentGenerator = () => {
     });
   }, []);
 
-  // Create one blob URL per file at upload time and store it alongside
-  // the File object. Accepts only image/* files.
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
-    if (files.length === 0) { e.target.value = ''; return; }
-    setUploadedImages(prev => [
-      ...prev,
-      ...files.map(file => ({ file, previewUrl: URL.createObjectURL(file) })),
-    ]);
+  // Create one blob URL per file at upload time AND read the file as a
+  // base64 dataUrl so it can be persisted to sessionStorage for
+  // cross-page drafts. Respects MAX_IMAGES and accepts only image/*
+  // files. FileReader is async, so the state update lands after the
+  // reads resolve — this is fine because the <input> has already been
+  // cleared at that point.
+  const handleImageUpload = async (e) => {
+    const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith('image/'));
     e.target.value = '';
+    if (files.length === 0) return;
+    const reads = await Promise.all(
+      files.map((file) => new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          file,
+          previewUrl: URL.createObjectURL(file),
+          dataUrl: reader.result,
+        });
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      }))
+    );
+    const valid = reads.filter(Boolean);
+    if (valid.length === 0) return;
+    setUploadedImages((prev) => {
+      const remaining = Math.max(0, MAX_IMAGES - prev.length);
+      return [...prev, ...valid.slice(0, remaining)];
+    });
   };
 
   const removeImage = useCallback((index) => {
