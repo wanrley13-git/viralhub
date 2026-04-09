@@ -142,7 +142,7 @@ const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSav
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
-    onClick={() => onToggleSelect(idea.id)}
+    onClick={() => onExpand?.(idea)}
     style={bgColor ? {
       backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor,
       ...(isSelected ? { borderColor: `color-mix(in srgb, ${bgColor} 92%, white)` } : {})
@@ -155,15 +155,8 @@ const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSav
           : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
     }`}
   >
-    {/* Top-right corner: expand + heart + selection checkbox */}
+    {/* Top-right corner: heart + selection checkbox */}
     <div className="absolute top-3 right-3 flex items-center gap-2">
-      <button
-        onClick={(e) => { e.stopPropagation(); onExpand?.(idea); }}
-        className="w-7 h-7 flex items-center justify-center rounded-full text-white/45 hover:text-white hover:bg-white/[0.08] transition-colors"
-        title="Expandir ideia"
-      >
-        <Eye size={13} strokeWidth={2} />
-      </button>
       <button
         onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
         className="w-7 h-7 flex items-center justify-center rounded-full transition-transform duration-200 active:scale-125 overflow-visible"
@@ -180,11 +173,16 @@ const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSav
           stroke={idea.is_saved ? '#E2272F' : '#ffffff'}
         />
       </button>
-      <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
-        isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
-      }`}>
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onToggleSelect(idea.id); }}
+        className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+          isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20 hover:bg-white/[0.12]'
+        }`}
+        title={isSelected ? 'Desselecionar' : 'Selecionar'}
+      >
         <Check size={12} strokeWidth={3} />
-      </div>
+      </button>
     </div>
 
     <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
