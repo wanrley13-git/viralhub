@@ -4,7 +4,7 @@ import logging
 import os
 import traceback
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -19,6 +19,12 @@ from analyzer import configure_genai
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/knowledge", tags=["knowledge"])
+
+# Hard caps, mirrored in ContentGenerator.jsx / IdeaGenerator.jsx.
+MAX_VIDEOS_PER_KB = 50
+# Upload de base pronta: 500 KB de texto aguenta ~80k palavras, o que
+# já é muito mais do que qualquer base compilada realista precisa.
+MAX_UPLOAD_BYTES = 500 * 1024
 
 
 def _find_directive_file(filename: str) -> Optional[str]:
@@ -206,8 +212,8 @@ async def delete_knowledge_base(kb_id: int, current_user: User = Depends(get_cur
 
 @router.put("/{kb_id}/selection")
 async def set_selection(kb_id: int, body: KBSetSelection, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    if len(body.selected_ids) > 30:
-        raise HTTPException(status_code=400, detail="Máximo de 30 vídeos por base")
+    if len(body.selected_ids) > MAX_VIDEOS_PER_KB:
+        raise HTTPException(status_code=400, detail=f"Máximo de {MAX_VIDEOS_PER_KB} vídeos por base")
 
     result = await db.execute(
         select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, KnowledgeBase.user_id == current_user.id)
@@ -225,6 +231,82 @@ async def set_selection(kb_id: int, body: KBSetSelection, current_user: User = D
 
     await db.commit()
     await db.refresh(kb)
+    return kb_to_dict(kb)
+
+
+# ── Upload (base pronta) ─────────────────────────────
+
+@router.post("/{kb_id}/upload")
+async def upload_knowledge_base(
+    kb_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Importa uma base de conhecimento já compilada a partir de um arquivo.
+
+    Aceita .txt e .md em UTF-8, até MAX_UPLOAD_BYTES. O conteúdo é salvo
+    direto em `compiled_md` e a base é marcada como não-stale (já pronta
+    pra ser usada pelos agentes). Não mexe em `selected_ids` — a base
+    importada vive independente dos vídeos do analyzer.
+    """
+    # 1. Ownership check
+    result = await db.execute(
+        select(KnowledgeBase).filter(
+            KnowledgeBase.id == kb_id,
+            KnowledgeBase.user_id == current_user.id,
+        )
+    )
+    kb = result.scalars().first()
+    if not kb:
+        raise HTTPException(status_code=404, detail="Base não encontrada")
+
+    # 2. Extension check — only .txt / .md
+    filename = (file.filename or "").lower()
+    if not (filename.endswith(".txt") or filename.endswith(".md")):
+        raise HTTPException(
+            status_code=400,
+            detail="Formato inválido. Envie um arquivo .txt ou .md.",
+        )
+
+    # 3. Read + size validation
+    try:
+        raw = await file.read()
+    except Exception as e:
+        logger.error(f"upload_knowledge_base: erro ao ler upload: {e}")
+        raise HTTPException(status_code=400, detail="Não foi possível ler o arquivo enviado.")
+
+    if not raw:
+        raise HTTPException(status_code=400, detail="O arquivo enviado está vazio.")
+
+    if len(raw) > MAX_UPLOAD_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Arquivo muito grande. Limite: {MAX_UPLOAD_BYTES // 1024} KB.",
+        )
+
+    # 4. Decode as UTF-8 (reject binaries / wrong encodings with a clear msg)
+    try:
+        content = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(
+            status_code=400,
+            detail="Arquivo não está em UTF-8. Salve o arquivo como UTF-8 e tente novamente.",
+        )
+
+    if not content.strip():
+        raise HTTPException(status_code=400, detail="O conteúdo do arquivo está vazio.")
+
+    # 5. Persist
+    kb.compiled_md = content
+    kb.is_stale = 0
+    await db.commit()
+    await db.refresh(kb)
+
+    logger.info(
+        f"upload_knowledge_base: kb_id={kb_id} user={current_user.id} "
+        f"file={filename} size={len(raw)}B"
+    )
     return kb_to_dict(kb)
 
 

@@ -16,6 +16,12 @@ import { getAccessToken } from '../supabaseClient';
 import { resolveThumbnailUrl } from '../components/Thumbnail';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import useConfirm from '../hooks/useConfirm';
+import useToast from '../hooks/useToast';
+
+// Hard cap mirrored from execution/routers/knowledge.py (MAX_VIDEOS_PER_KB).
+const MAX_VIDEOS_PER_KB = 50;
+// Upload de base pronta: mesmo limite do backend (500 KB).
+const MAX_KB_UPLOAD_BYTES = 500 * 1024;
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -208,6 +214,7 @@ const IdeaGenerator = () => {
   const { projects, fetchProjects } = useProjects();
   const { folders: noteFolders, createNote, updateNote } = useNotes();
   const { confirm, ConfirmDialog } = useConfirm();
+  const { toast, ToastContainer } = useToast();
 
   // Page tabs — persisted under ideaGenerator_activeTab
   const [activeTab, setActiveTab] = useState(() => {
@@ -571,7 +578,7 @@ const IdeaGenerator = () => {
   const toggleKBSelect = (id) => {
     setKbSelectedIds(prev => {
       if (prev.includes(id)) return prev.filter(x => x !== id);
-      if (prev.length >= 30) return prev;
+      if (prev.length >= MAX_VIDEOS_PER_KB) return prev;
       return [...prev, id];
     });
   };
@@ -597,6 +604,88 @@ const IdeaGenerator = () => {
       console.error('Erro ao salvar KB:', err);
       setKbCompileError(err.response?.data?.detail || err.message || 'Erro ao salvar base.');
       return null;
+    }
+  };
+
+  // ─── Import a pre-compiled base (.txt / .md) ───
+  // Creates a new KB row, uploads the file content into compiled_md, and
+  // refreshes the list. Used by the "Importar base pronta" button.
+  const kbUploadInputRef = useRef(null);
+  const [kbUploading, setKbUploading] = useState(false);
+
+  const handleKBUploadClick = () => {
+    if (kbUploading) return;
+    kbUploadInputRef.current?.click();
+  };
+
+  const handleKBUploadFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (e.target) e.target.value = '';
+    if (!file) return;
+
+    const name = file.name || '';
+    const lower = name.toLowerCase();
+    if (!(lower.endsWith('.txt') || lower.endsWith('.md'))) {
+      toast.error('Formato inválido. Envie um arquivo .txt ou .md.');
+      return;
+    }
+    if (file.size > MAX_KB_UPLOAD_BYTES) {
+      toast.error(`Arquivo muito grande. Limite: ${Math.round(MAX_KB_UPLOAD_BYTES / 1024)} KB.`);
+      return;
+    }
+    if (file.size === 0) {
+      toast.error('O arquivo está vazio.');
+      return;
+    }
+
+    setKbUploading(true);
+    let createdKbId = null;
+    try {
+      const token = await getAccessToken();
+
+      const defaultName = name.replace(/\.(txt|md)$/i, '').trim() || 'Base importada';
+      const createRes = await axios.post(
+        `${API_URL}/knowledge/`,
+        { name: defaultName },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      createdKbId = createRes.data?.id;
+      if (!createdKbId) throw new Error('Falha ao criar a base.');
+
+      const formData = new FormData();
+      formData.append('file', file);
+      await axios.post(
+        `${API_URL}/knowledge/${createdKbId}/upload`,
+        formData,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          },
+          timeout: 30000,
+        }
+      );
+
+      await fetchKnowledgeBases();
+      setSelectedBaseId(createdKbId);
+      toast.success('Base importada com sucesso.');
+    } catch (err) {
+      console.error('Erro ao importar base:', err);
+      if (createdKbId) {
+        try {
+          const token = await getAccessToken();
+          await axios.delete(`${API_URL}/knowledge/${createdKbId}`, {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          await fetchKnowledgeBases();
+        } catch (cleanupErr) {
+          console.warn('Falha ao limpar KB orfã:', cleanupErr);
+        }
+      }
+      const msg = err.response?.data?.detail || err.message || 'Erro ao importar base.';
+      toast.error({ title: 'Falha ao importar base', message: msg });
+    } finally {
+      setKbUploading(false);
     }
   };
 
@@ -1907,14 +1996,24 @@ const IdeaGenerator = () => {
                     <div className="flex flex-col items-center justify-center h-full min-h-[300px] space-y-4 opacity-60">
                       <div className="p-8 bg-white/[0.03] rounded-3xl border border-white/[0.06]"><BookOpen size={40} strokeWidth={1.5} className="text-primary" /></div>
                       <h4 className="text-lg font-extrabold text-white">Nenhuma base criada</h4>
-                      <p className="text-sm text-gray-500 max-w-xs text-center">Selecione vídeos da sua biblioteca para criar uma base de conhecimento compilada.</p>
-                      <button onClick={() => openKBCreate()} className="btn-primary px-5 py-2.5 rounded-2xl text-sm flex items-center gap-2"><Plus size={15} strokeWidth={2.5} /> Criar Base</button>
+                      <p className="text-sm text-gray-500 max-w-xs text-center">Selecione vídeos da sua biblioteca para criar uma base de conhecimento compilada — ou importe um arquivo .txt/.md pronto.</p>
+                      <div className="flex items-center gap-2">
+                        <button onClick={() => openKBCreate()} className="btn-primary px-5 py-2.5 rounded-2xl text-sm flex items-center gap-2"><Plus size={15} strokeWidth={2.5} /> Criar Base</button>
+                        <button onClick={handleKBUploadClick} disabled={kbUploading} className="btn-magnetic bg-[#18181d] text-white px-5 py-2.5 rounded-2xl text-sm flex items-center gap-2 border border-white/[0.06] hover:border-white/[0.12] disabled:opacity-50">
+                          {kbUploading ? <><Loader2 size={14} className="animate-spin" /> Importando...</> : <><Upload size={14} strokeWidth={2.5} /> Importar</>}
+                        </button>
+                      </div>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <button onClick={() => openKBCreate()} className="w-full p-4 bg-white/[0.02] hover:bg-white/[0.04] rounded-2xl border border-dashed border-white/[0.08] hover:border-white/[0.12] transition-all flex items-center justify-center gap-2.5 text-gray-500 hover:text-white text-sm font-semibold">
-                        <Plus size={15} strokeWidth={2.5} /> Nova Base
-                      </button>
+                      <div className="grid grid-cols-2 gap-3">
+                        <button onClick={() => openKBCreate()} className="p-4 bg-white/[0.02] hover:bg-white/[0.04] rounded-2xl border border-dashed border-white/[0.08] hover:border-white/[0.12] transition-all flex items-center justify-center gap-2.5 text-gray-500 hover:text-white text-sm font-semibold">
+                          <Plus size={15} strokeWidth={2.5} /> Nova Base
+                        </button>
+                        <button onClick={handleKBUploadClick} disabled={kbUploading} className="p-4 bg-white/[0.02] hover:bg-white/[0.04] rounded-2xl border border-dashed border-white/[0.08] hover:border-white/[0.12] transition-all flex items-center justify-center gap-2.5 text-gray-500 hover:text-white text-sm font-semibold disabled:opacity-50">
+                          {kbUploading ? <><Loader2 size={15} className="animate-spin" /> Importando...</> : <><Upload size={15} strokeWidth={2.5} /> Importar base pronta</>}
+                        </button>
+                      </div>
                       {kbAllBases.map(kb => {
                         const ids = kb.selected_ids || [];
                         const thumbs = analyses.filter(a => ids.includes(a.id) && a.thumbnail_url);
@@ -1980,7 +2079,7 @@ const IdeaGenerator = () => {
                 <div className="flex-1 overflow-y-auto custom-scrollbar p-5 flex flex-col gap-4">
                   <input value={kbEditName} onChange={e => setKbEditName(e.target.value)} className="bg-transparent text-xl font-bold text-white tracking-tight focus:outline-none placeholder-gray-700 border-b border-white/[0.06] pb-3" placeholder="Nome da base..." />
                   <div className="flex items-center justify-between">
-                    <p className="text-gray-500 text-xs uppercase tracking-wide">{kbSelectedIds.length}/30 selecionados</p>
+                    <p className="text-gray-500 text-xs uppercase tracking-wide">{kbSelectedIds.length}/{MAX_VIDEOS_PER_KB} selecionados</p>
                     <div className="relative w-56">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" size={13} />
                       <input value={kbSearchTerm} onChange={e => setKbSearchTerm(e.target.value)} className="input-field rounded-xl py-2 pl-9 pr-3 text-xs" placeholder="Buscar vídeo..." />
@@ -2143,7 +2242,17 @@ const IdeaGenerator = () => {
         )}
       </AnimatePresence>
 
+      {/* Hidden input for "Importar base pronta" flow. */}
+      <input
+        ref={kbUploadInputRef}
+        type="file"
+        accept=".txt,.md,text/plain,text/markdown"
+        className="hidden"
+        onChange={handleKBUploadFile}
+      />
+
       <ConfirmDialog />
+      <ToastContainer />
     </div>
   );
 };
