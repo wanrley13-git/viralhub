@@ -24,6 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc, or_
 import google.generativeai as genai
+from google.generativeai import protos as genai_protos
 from dotenv import load_dotenv
 
 from database import get_db
@@ -315,20 +316,71 @@ async def generate_creative_ideas(
             + "\n\n---\n"
         )
 
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY não configurada.")
+
+    genai.configure(api_key=api_key)
+
+    # ── Step 1: Refine the prompt with Google Search grounding ──
+    # A short Gemini call with google_search_retrieval enabled turns raw
+    # user input (which may mention tools, releases or techniques the base
+    # model doesn't know with certainty) into a structured briefing backed
+    # by web results. This step is intentionally NON-FATAL: if it fails for
+    # ANY reason (timeout, SDK version without the tools kwarg, grounding
+    # disabled for the API key, rate limits, …) we fall back to the
+    # original prompt so the creative agent always runs.
+    #
+    # NOTE on the tool form: google-generativeai 0.8.2 does NOT accept the
+    # string shorthand ``tools='google_search_retrieval'`` — only
+    # ``'code_execution'`` is accepted as a string. The working form in
+    # this SDK version is the explicit proto Tool below. Newer SDK
+    # releases accept the shorthand; both live paths fail-safely via the
+    # surrounding try/except.
+    refined_prompt = request.prompt
+    try:
+        refiner_model = genai.GenerativeModel(
+            "gemini-2.5-flash",
+            system_instruction=(
+                "Você é um refinador de briefings para criação de conteúdo. "
+                "Receba o pedido do usuário e pesquise na web se houver termos, "
+                "ferramentas, técnicas ou referências que você não conhece com certeza. "
+                "Retorne um briefing claro, estruturado e contextualizado. "
+                "Não invente nada — só use informações confirmadas na busca. "
+                "Não gere ideias. Apenas refine e enriqueça o pedido original."
+            ),
+        )
+        search_tool = genai_protos.Tool(
+            google_search_retrieval=genai_protos.GoogleSearchRetrieval()
+        )
+        refine_response = await asyncio.to_thread(
+            refiner_model.generate_content,
+            request.prompt,
+            tools=[search_tool],
+            request_options={"timeout": 30},
+        )
+        refined_text = (getattr(refine_response, "text", None) or "").strip()
+        if refined_text:
+            refined_prompt = refined_text
+    except Exception as refine_err:
+        logger.warning(
+            f"Refinador com Google Search falhou, usando prompt original: {refine_err}"
+        )
+
+    logger.info(f"Prompt original: {request.prompt}")
+    logger.info(f"Prompt refinado: {refined_prompt}")
+
+    # ── Step 2: Build the user_message for the creative agent with the
+    # refined briefing substituting the raw prompt ──
     user_message = (
         "Com base no briefing a seguir, execute a FASE 2 — RAJADA DE IDEIAS. "
         f"Gere exatamente {request.quantity} ideias. "
         "Para cada ideia, retorne um título provocativo e uma frase explicativa. "
         "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
         'Formato: [{"title": "...", "summary": "..."}, ...]'
-        f"\n\nBriefing: {request.prompt}"
+        f"\n\nBriefing: {refined_prompt}"
     )
 
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(status_code=500, detail="GEMINI_API_KEY não configurada.")
-
-    genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 
     raw = ""
