@@ -76,10 +76,10 @@ const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSav
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
     onClick={() => onToggleSelect(idea.id)}
-    style={bgColor && !isSelected ? { backgroundColor: bgColor } : undefined}
+    style={bgColor ? { backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor } : undefined}
     className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-colors duration-200 group flex flex-col ${
       isSelected
-        ? 'bg-primary/5 border-primary/30'
+        ? (bgColor ? 'border-primary' : 'bg-white/[0.06] border-primary')
         : bgColor
           ? 'border-white/[0.08] hover:border-primary/40'
           : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
@@ -1277,14 +1277,14 @@ const ContentGenerator = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.2, delay: Math.min(i * 0.02, 0.2), ease: 'easeOut' }}
                       onClick={() => isReady && setDevelopedViewing(idea)}
-                      style={!hasFailed ? { backgroundColor: isSelected ? '#1a2e1d' : '#121E13' } : undefined}
+                      style={!hasFailed ? { backgroundColor: isSelected ? 'color-mix(in srgb, #121E13 92%, white)' : '#121E13' } : undefined}
                       className={`group relative ${cs.pad} rounded-2xl border transition-all duration-300 flex flex-col ${
                         isDeveloping
                           ? 'border-white/[0.08] cursor-default'
                           : hasFailed
                             ? 'bg-red-500/[0.04] border-red-500/20 cursor-default'
                             : isSelected
-                              ? 'border-primary cursor-pointer shadow-[0_0_0_1px_rgba(34,197,94,0.4),0_8px_24px_rgba(34,197,94,0.12)]'
+                              ? 'border-primary cursor-pointer'
                               : 'border-white/[0.08] hover:border-primary/40 cursor-pointer'
                       }`}
                     >
