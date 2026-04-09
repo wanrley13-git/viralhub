@@ -990,7 +990,7 @@ const ContentGenerator = () => {
   const goBack = () => setConfigTab(configTab.startsWith('tone') ? 'tone' : 'bases');
 
   return (
-    <div className="flex flex-col h-screen transition-all duration-300" style={{ marginLeft: collapsed ? 72 : 260 }}>
+    <div className="relative flex flex-col h-screen transition-all duration-300" style={{ marginLeft: collapsed ? 72 : 260 }}>
       {/* ═══ TABS + CONTROLS ═══ */}
       <div className="shrink-0 px-8 pt-6">
         <div className="flex items-center gap-2">
@@ -1620,6 +1620,20 @@ const ContentGenerator = () => {
         )}
       </AnimatePresence>
 
+      {/* ═══ BASE GRADIENT — sits at the bottom of the page, extends upward behind the prompt bar and button ═══ */}
+      <AnimatePresence>
+        {(selectedIdeas.length > 0 || (activeTab === 'developed' && selectedDeveloped.length > 0)) && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            aria-hidden
+            className="absolute bottom-0 left-0 right-0 h-[320px] bg-gradient-to-t from-black/50 to-transparent pointer-events-none z-0"
+          />
+        )}
+      </AnimatePresence>
+
       {/* ═══ DEVELOP BUTTON (floating above prompt bar) ═══ */}
       <AnimatePresence>
         {selectedIdeas.length > 0 && (
@@ -1628,7 +1642,7 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="shrink-0 flex justify-center items-center px-6 h-[150px] bg-gradient-to-t from-black/50 to-transparent pointer-events-none"
+            className="shrink-0 relative z-10 flex justify-center items-center px-6 h-[150px] pointer-events-none"
           >
             <button
               onClick={handleDevelop}
@@ -1648,7 +1662,7 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="shrink-0 relative flex justify-center items-center px-6 h-[150px] bg-gradient-to-t from-black/50 to-transparent pointer-events-none"
+            className="shrink-0 relative z-10 flex justify-center items-center px-6 h-[150px] pointer-events-none"
           >
             <button
               onClick={() => setBulkSendPopupOpen(o => !o)}
