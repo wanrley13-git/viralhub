@@ -1,6 +1,6 @@
 import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import {
-  Lightbulb, Minus, Plus, ChevronDown, Video, X, ImagePlus,
+  Lightbulb, Minus, Plus, ChevronDown, Video, X,
   BookOpen, Mic, Check, Trash2, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
   LayoutGrid, Grid3x3, Clock, Heart, Pencil, Eye, Download,
@@ -44,15 +44,6 @@ const RefChip = ({ analysis, onRemove }) => (
       <X size={10} strokeWidth={2.5} />
     </button>
   </span>
-);
-
-const ImageThumb = ({ file, onRemove }) => (
-  <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/[0.08] shrink-0 group">
-    <img src={URL.createObjectURL(file)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
-    <button onClick={onRemove} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-      <X size={12} strokeWidth={2.5} className="text-white" />
-    </button>
-  </div>
 );
 
 // ─── Format absolute date for history headers ───
@@ -164,7 +155,6 @@ const IdeaGenerator = () => {
   const [selectedBaseId, setSelectedBaseId] = useState(null);
   const [selectedToneId, setSelectedToneId] = useState(null);
   const [quantity, setQuantity] = useState(5);
-  const [uploadedImages, setUploadedImages] = useState([]);
 
   // @ mention
   const [mentionOpen, setMentionOpen] = useState(false);
@@ -245,7 +235,6 @@ const IdeaGenerator = () => {
 
   const textareaRef = useRef(null);
   const mentionRef = useRef(null);
-  const fileInputRef = useRef(null);
 
   // Derived
   const selectedRefs = segments.filter(s => s.type === 'ref').map(s => s.analysis);
@@ -584,19 +573,28 @@ const IdeaGenerator = () => {
   const handleClearAll = async () => {
     if (activeTab === 'saved') return;
     const scope = activeTab === 'history' ? 'history' : 'active';
+    // Close the confirm popup immediately so the UI feels snappy even if
+    // the network round-trip is slow.
+    setClearConfirmOpen(false);
     try {
       const token = await getAccessToken();
-      await axios.delete(`${API_URL}/content/ideas/clear?scope=${scope}`, { headers: { Authorization: `Bearer ${token}` } });
-      setIdeas([]);
+      await axios.delete(
+        `${API_URL}/content/ideas/clear`,
+        { headers: { Authorization: `Bearer ${token}` }, params: { scope } }
+      );
+      // Clear local state after the server confirms success.
       setSelectedIdeas([]);
-      if (scope === 'history') {
-        setHistoryIdeas([]);
-      }
-      setClearConfirmOpen(false);
+      setIdeas([]);
+      if (scope === 'history') setHistoryIdeas([]);
+      // Refetch from the server as a safety net so any lingering rows
+      // (e.g. favorited ideas that survive a history wipe) reappear.
+      fetchIdeas();
+      if (scope === 'history') fetchHistory();
       setSuccessToast(scope === 'history' ? 'Histórico limpo.' : 'Ideias limpas.');
       setTimeout(() => setSuccessToast(null), 3000);
     } catch (err) {
-      setErrorToast('Erro ao limpar ideias.');
+      const detail = err.response?.data?.detail || err.message || 'Erro ao limpar ideias.';
+      setErrorToast(`Erro ao limpar ideias: ${detail}`);
       setTimeout(() => setErrorToast(null), 5000);
     }
   };
@@ -855,12 +853,6 @@ const IdeaGenerator = () => {
     });
   }, []);
 
-  const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) setUploadedImages(p => [...p, ...files]);
-    e.target.value = '';
-  };
-
   const handleKeyDown = (e) => {
     if (mentionOpen && filteredAnalyses.length > 0) {
       if (e.key === 'ArrowDown') { e.preventDefault(); setMentionIdx(i => Math.min(i + 1, filteredAnalyses.length - 1)); }
@@ -1011,11 +1003,20 @@ const IdeaGenerator = () => {
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="h-full">
 
-            {/* Loading skeleton (Ideias only, while generating) */}
-            {activeTab === 'ideas' && generating && (
+            {/* Loading spinner for history/saved */}
+            {(activeTab === 'history' || activeTab === 'saved') && loadingTab && (
+              <div className="h-full flex items-center justify-center">
+                <Loader2 size={24} className="animate-spin text-gray-600" />
+              </div>
+            )}
+
+            {/* IDEIAS tab: skeletons (when generating) prepend the grid so
+                existing ideas stay visible — matches the prepend order of
+                setIdeas(prev => [...new, ...prev]). */}
+            {activeTab === 'ideas' && (generating || ideas.length > 0) && (
               <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
-                {Array.from({ length: quantity }).map((_, i) => (
-                  <div key={i} className={`bg-white/[0.03] border border-white/[0.08] rounded-2xl ${cs.pad} animate-pulse flex flex-col gap-2.5`} style={{ animationDelay: `${i * 40}ms` }}>
+                {generating && Array.from({ length: quantity }).map((_, i) => (
+                  <div key={`skeleton-${i}`} className={`bg-white/[0.03] border border-white/[0.08] rounded-2xl ${cs.pad} animate-pulse flex flex-col gap-2.5`} style={{ animationDelay: `${i * 40}ms` }}>
                     <div className="h-3 bg-white/[0.04] rounded w-16" />
                     <div className="h-5 bg-white/[0.06] rounded w-full" />
                     <div className="h-5 bg-white/[0.05] rounded w-3/4" />
@@ -1025,19 +1026,6 @@ const IdeaGenerator = () => {
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {/* Loading spinner for history/saved */}
-            {(activeTab === 'history' || activeTab === 'saved') && loadingTab && (
-              <div className="h-full flex items-center justify-center">
-                <Loader2 size={24} className="animate-spin text-gray-600" />
-              </div>
-            )}
-
-            {/* IDEIAS tab cards */}
-            {activeTab === 'ideas' && !generating && ideas.length > 0 && (
-              <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
                 {ideas.map((idea, i) => (
                   <IdeaCard
                     key={idea.id}
@@ -1426,19 +1414,8 @@ const IdeaGenerator = () => {
         {/* Fade gradient — sits right above the prompt bar's top edge */}
         <div aria-hidden className="absolute left-0 right-0 bottom-full h-[200px] bg-gradient-to-t from-[#09090b] to-transparent pointer-events-none" />
         <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-4px_16px_rgba(0,0,0,0.15)]">
-          {uploadedImages.length > 0 && (
-            <div className="flex items-center gap-2 mb-3">
-              {uploadedImages.map((file, i) => <ImageThumb key={i} file={file} onRemove={() => setUploadedImages(p => p.filter((_, j) => j !== i))} />)}
-            </div>
-          )}
-
           <div className="relative">
             <div className="flex flex-wrap items-center gap-1.5 min-h-[28px] cursor-text" onClick={() => textareaRef.current?.focus()}>
-              <button onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }} className="shrink-0 w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-white/[0.07] transition-all duration-200" title="Anexar imagem">
-                <ImagePlus size={15} strokeWidth={1.8} />
-              </button>
-              <input ref={fileInputRef} type="file" accept="image/*" multiple onChange={handleImageUpload} className="hidden" />
-
               {segments.map((seg, i) => {
                 if (seg.type === 'ref') return <RefChip key={`ref-${seg.analysis.id}`} analysis={seg.analysis} onRemove={removeRef} />;
                 if (i === segments.length - 1) return (
