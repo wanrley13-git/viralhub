@@ -1110,7 +1110,7 @@ const ContentGenerator = () => {
       </div>
 
       {/* ═══ CONTENT ═══ */}
-      <div className="flex-1 overflow-y-auto px-8 py-6 custom-scrollbar">
+      <div className="flex-1 overflow-y-auto px-8 py-6 pb-[200px] custom-scrollbar">
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="h-full">
 
@@ -1694,6 +1694,9 @@ const ContentGenerator = () => {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ═══ FADE GRADIENT (above prompt bar) ═══ */}
+      <div aria-hidden className="absolute bottom-[155px] left-0 right-0 h-20 bg-gradient-to-t from-[#09090b] to-transparent pointer-events-none z-[15]" />
 
       {/* ═══ FLOATING PROMPT BAR ═══ */}
       <div className="shrink-0 relative z-20 flex justify-center px-6 pb-7">
