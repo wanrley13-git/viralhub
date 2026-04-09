@@ -27,6 +27,15 @@ from analyzer import (
 
 router = APIRouter(prefix="/analyze", tags=["analyze"])
 
+# Per-endpoint quantity caps. Kept as module-level constants so the
+# frontend and backend can agree on the limits via the error messages.
+MAX_LINKS_PER_ANALYSIS = 20
+MAX_FILES_PER_ANALYSIS = 30
+
+# Terminal statuses — any task in one of these is considered done and
+# cannot be cancelled / resumed / replaced by "active task" logic.
+TERMINAL_STATUSES = ("completed", "error", "cancelled")
+
 # Armazenamento de tarefas temporárias em memória
 # Shape: { task_id: { progress, logs, status, report, user_id } }
 tasks_progress = {}
@@ -34,9 +43,19 @@ tasks_progress = {}
 def _user_has_active_task(user_id: int) -> Optional[str]:
     """Return the first in-progress (queued/processing) task_id owned by user, else None."""
     for task_id, task in tasks_progress.items():
-        if task.get("user_id") == user_id and task.get("status") not in ("completed", "error"):
+        if task.get("user_id") == user_id and task.get("status") not in TERMINAL_STATUSES:
             return task_id
     return None
+
+
+def _is_task_cancelled(task_id: str) -> bool:
+    """Small helper used as the cancellation callback passed into the
+    download/analysis loops. Safe to call even after the task entry is
+    gone — a missing entry is treated as cancelled so the worker exits."""
+    task = tasks_progress.get(task_id)
+    if not task:
+        return True
+    return task.get("status") == "cancelled"
 
 
 class AnalyzeLinksRequest(BaseModel):
@@ -73,7 +92,7 @@ async def get_progress(task_id: str):
 
             yield f"data: {json.dumps(task)}\n\n"
 
-            if task.get("status") == "completed" or task.get("status") == "error":
+            if task.get("status") in TERMINAL_STATUSES:
                 break
 
             await asyncio.sleep(POLL_INTERVAL_S)
@@ -91,27 +110,53 @@ async def get_progress(task_id: str):
 async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: bool, user_id: int, db_factory):
     try:
         tasks_progress[task_id]["logs"].append("Iniciando pipeline de análise...")
-        
+
         async def on_progress(message: str, percentage: int):
-            tasks_progress[task_id]["progress"] = percentage
-            tasks_progress[task_id]["logs"].append(message)
-            tasks_progress[task_id]["status"] = "processing"
+            # Don't clobber a terminal status (cancelled/error/completed)
+            # with a stray "processing" update from an in-flight callback
+            # that fires after cancel was requested.
+            task = tasks_progress.get(task_id)
+            if not task:
+                return
+            if task.get("status") in TERMINAL_STATUSES:
+                # Still record the message for the log stream but keep
+                # the status pinned so the frontend can see the wrap-up.
+                task["logs"].append(message)
+                return
+            task["progress"] = percentage
+            task["logs"].append(message)
+            task["status"] = "processing"
+
+        def cancelled() -> bool:
+            return _is_task_cancelled(task_id)
 
         local_files = []
         download_failures: list[dict] = []
         if is_links:
             # Batch-aware download: applies inter-download delay on
-            # multi-link requests, retries once on rate-limit errors, and
-            # keeps going when individual videos fail instead of aborting
-            # the whole task. Single-link requests behave exactly like
-            # before (no delay).
-            dl_results = await download_videos_batch(files_or_links, on_progress)
+            # multi-link requests, retries on rate-limit errors, keeps
+            # going when individual videos fail, and now respects the
+            # task-level cancel flag (partial results on cancel).
+            dl_results = await download_videos_batch(
+                files_or_links, on_progress, is_cancelled=cancelled
+            )
             local_files = [r["path"] for r in dl_results if r["path"]]
             download_failures = [r for r in dl_results if not r["path"]]
             # Expose per-link outcome to the frontend for the final report
             tasks_progress[task_id]["download_failures"] = download_failures
         else:
             local_files = files_or_links
+
+        # ── Early exit on cancellation (download phase) ──
+        if cancelled():
+            tasks_progress[task_id]["status"] = "cancelled"
+            tasks_progress[task_id]["logs"].append(
+                "Análise cancelada pelo usuário durante a fase de download."
+            )
+            # Drop any partial files we already downloaded — they're
+            # orphaned because the analyses never ran.
+            cleanup_temp_files(local_files)
+            return
 
         if not local_files:
             tasks_progress[task_id]["status"] = "error"
@@ -133,8 +178,22 @@ async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: b
         total_files = len(local_files)
         final_reports = []
         for idx, fp in enumerate(local_files):
+            # Check cancellation BEFORE firing the next (expensive)
+            # Gemini call. We don't interrupt analyze_single_video
+            # mid-flight — that would need async-task cancellation and
+            # risks leaking uploaded Gemini file handles — but the next
+            # one will not start.
+            if cancelled():
+                tasks_progress[task_id]["status"] = "cancelled"
+                tasks_progress[task_id]["logs"].append(
+                    f"Análise cancelada pelo usuário ({idx}/{total_files} vídeos processados)."
+                )
+                # Clean up the videos we haven't analysed yet.
+                cleanup_temp_files(local_files[idx:])
+                return
+
             report_md, ai_title = await analyze_single_video(fp, on_progress, idx+1, total_files)
-            
+
             thumb_url = extract_thumbnail(fp)
 
             # Salva no Banco de Dados
@@ -148,19 +207,35 @@ async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: b
                 db.add(new_analysis)
                 await db.commit()
                 break
-            
+
             final_reports.append(ai_title)
+
+        # Final cancel check — if the user clicked cancel during the
+        # very last analyze_single_video call, prefer the cancelled
+        # state over "completed" since they explicitly asked to stop.
+        if cancelled():
+            tasks_progress[task_id]["status"] = "cancelled"
+            tasks_progress[task_id]["logs"].append(
+                f"Análise cancelada pelo usuário ao final ({len(final_reports)}/{total_files} salvos)."
+            )
+            cleanup_temp_files(local_files)
+            return
 
         # Atualiza a Task para concluída
         tasks_progress[task_id]["report"] = f"Sucesso! Análise individualizada concluída para {len(final_reports)} vídeos."
         tasks_progress[task_id]["status"] = "completed"
         tasks_progress[task_id]["progress"] = 100
-        
+
         cleanup_temp_files(local_files)
-        
+
     except Exception as e:
-        tasks_progress[task_id]["status"] = "error"
-        tasks_progress[task_id]["logs"].append(f"Erro fatal: {str(e)}")
+        # Don't mask a user-requested cancellation with a generic error.
+        task = tasks_progress.get(task_id)
+        if task and task.get("status") == "cancelled":
+            task["logs"].append(f"(erro ignorado após cancelamento: {str(e)})")
+        else:
+            tasks_progress[task_id]["status"] = "error"
+            tasks_progress[task_id]["logs"].append(f"Erro fatal: {str(e)}")
 
 @router.get("/active")
 async def get_active_task(current_user: User = Depends(get_current_user)):
@@ -184,6 +259,14 @@ async def analyze_links(
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user)
 ):
+    # Hard cap on links per request — anything above this reliably
+    # trips Instagram/TikTok rate-limits even with the backoff logic.
+    if len(request.links) > MAX_LINKS_PER_ANALYSIS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Máximo de {MAX_LINKS_PER_ANALYSIS} links por análise."
+        )
+
     # Reject if user already has an analysis running
     existing = _user_has_active_task(current_user.id)
     if existing:
@@ -195,12 +278,37 @@ async def analyze_links(
     background_tasks.add_task(run_analysis_task, task_id, request.links, True, current_user.id, get_db)
     return {"taskId": task_id}
 
+
+@router.delete("/cancel/{task_id}")
+async def cancel_analysis(task_id: str, current_user: User = Depends(get_current_user)):
+    """Request cancellation of an in-progress analysis task. The actual
+    stop happens cooperatively in the worker loops — this endpoint
+    only flips the status flag and returns immediately."""
+    task = tasks_progress.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    if task.get("user_id") != current_user.id:
+        raise HTTPException(status_code=403, detail="Você não tem permissão para cancelar esta tarefa.")
+    if task.get("status") in TERMINAL_STATUSES:
+        raise HTTPException(status_code=409, detail=f"Tarefa já finalizada ({task.get('status')}).")
+
+    task["status"] = "cancelled"
+    task["logs"].append("Cancelamento solicitado pelo usuário. Encerrando...")
+    return {"message": "Análise cancelada"}
+
+
 @router.post("/files")
 async def analyze_files(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
     current_user: User = Depends(get_current_user)
 ):
+    if len(files) > MAX_FILES_PER_ANALYSIS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Máximo de {MAX_FILES_PER_ANALYSIS} arquivos por análise."
+        )
+
     existing = _user_has_active_task(current_user.id)
     if existing:
         raise HTTPException(status_code=409, detail="Você já tem uma análise em andamento. Aguarde finalizar para iniciar outra.")

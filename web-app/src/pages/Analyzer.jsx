@@ -14,6 +14,13 @@ import Thumbnail from '../components/Thumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
+// Hard caps, mirrored from the backend (routers/analysis.py). Keep in
+// sync: the server enforces them with HTTP 400s and the UI refuses to
+// even fire the request when the user is over the limit, so they never
+// have to wait for a round-trip to discover it's too many.
+const MAX_LINKS_PER_ANALYSIS = 20;
+const MAX_FILES_PER_ANALYSIS = 30;
+
 // ─── Date helpers for library grouping ───
 // Normalize to local "YYYY-MM-DD" key so two ISO strings from the same
 // calendar day always collapse into the same bucket regardless of hours.
@@ -198,6 +205,17 @@ const Analyzer = () => {
           setTaskId(null);
           eventSource.close();
         }
+
+        if (data.status === 'cancelled') {
+          terminated = true;
+          setStatusMessage('Análise cancelada pelo usuário');
+          setLoading(false);
+          setTaskId(null);
+          eventSource.close();
+          // Refresh the library anyway — any videos that finished
+          // analysing before the cancel landed were saved to the DB.
+          fetchHistory();
+        }
       };
 
       eventSource.onerror = () => {
@@ -275,7 +293,9 @@ const Analyzer = () => {
       let res;
       if (activeTab === 'upload') {
         if (files.length === 0) throw new Error("Anexe pelo menos um vídeo ou arquivo ZIP.");
-        if (files.length > 50) throw new Error("O limite atual é de 50 arquivos por análise.");
+        if (files.length > MAX_FILES_PER_ANALYSIS) {
+          throw new Error(`Máximo de ${MAX_FILES_PER_ANALYSIS} arquivos por análise.`);
+        }
 
         const formData = new FormData();
         files.forEach(file => formData.append('files', file));
@@ -286,7 +306,9 @@ const Analyzer = () => {
       } else {
         const linkList = links.split('\n').map(l => l.trim()).filter(l => l);
         if (linkList.length === 0) throw new Error("Insira pelo menos um link.");
-        if (linkList.length > 50) throw new Error("O limite atual é de 50 links por análise.");
+        if (linkList.length > MAX_LINKS_PER_ANALYSIS) {
+          throw new Error(`Máximo de ${MAX_LINKS_PER_ANALYSIS} links por análise.`);
+        }
         res = await axios.post(`${API_URL}/analyze/links`, { links: linkList }, config);
       }
       if (res.data.taskId) setTaskId(res.data.taskId);
@@ -294,6 +316,28 @@ const Analyzer = () => {
       console.error(err);
       setError(err.response?.data?.detail || err.message || "Erro ao iniciar análise.");
       setLoading(false);
+    }
+  };
+
+  // Request server-side cancellation of the currently running task.
+  // The worker loops poll the status flag and bail out cooperatively,
+  // so the UI doesn't flip to "cancelado" the instant this returns —
+  // it waits for the SSE stream to push the "cancelled" status.
+  const [cancelling, setCancelling] = useState(false);
+  const handleCancelAnalysis = async () => {
+    if (!taskId || cancelling) return;
+    setCancelling(true);
+    try {
+      const token = await getAccessToken();
+      await axios.delete(`${API_URL}/analyze/cancel/${taskId}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setStatusMessage('Cancelando análise... aguarde o worker encerrar.');
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.detail || err.message || 'Erro ao cancelar análise.');
+    } finally {
+      setCancelling(false);
     }
   };
 
@@ -506,6 +550,34 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
                   ))}
                 </div>
               )}
+
+              {/* Cancel button — visible any time a task is active,
+                  regardless of which progress tab (status / log) is
+                  selected. The worker loops poll the cancel flag at
+                  every download/analysis step, so the actual stop
+                  happens cooperatively rather than instantaneously. */}
+              {taskId && (
+                <button
+                  onClick={handleCancelAnalysis}
+                  disabled={cancelling}
+                  className="mt-8 px-6 py-3 rounded-2xl flex items-center gap-2.5 text-sm font-semibold
+                             bg-red-500/10 hover:bg-red-500/20 border border-red-500/30 hover:border-red-500/50
+                             text-red-300 hover:text-red-200 transition-all duration-200
+                             disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {cancelling ? (
+                    <>
+                      <Loader2 size={15} strokeWidth={2.5} className="animate-spin" />
+                      Cancelando...
+                    </>
+                  ) : (
+                    <>
+                      <X size={15} strokeWidth={2.5} />
+                      Cancelar análise
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           ) : (
             /* ── Upload State ── */
@@ -557,7 +629,7 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
                       ) : (
                         <>
                           <p className="text-white font-semibold text-sm">Arraste e solte vídeos ou ZIP com vídeos aqui</p>
-                          <p className="text-sm text-gray-600 font-mono tracking-wide">.mp4, .mov, .zip — Máx: 50 por operação</p>
+                          <p className="text-sm text-gray-600 font-mono tracking-wide">.mp4, .mov, .zip — Máx: {MAX_FILES_PER_ANALYSIS} por operação</p>
                         </>
                       )}
                     </div>
@@ -571,10 +643,31 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
                       rows="3"
                       placeholder={"https://youtube.com/shorts/...\nhttps://..."}
                     />
-                    <p className="text-sm text-gray-600 font-mono tracking-wide text-center">Copie e cole o link de até 50 vídeos do Instagram, Shorts ou TikTok</p>
+                    <p className="text-sm text-gray-600 font-mono tracking-wide text-center">Copie e cole o link de até {MAX_LINKS_PER_ANALYSIS} vídeos do Instagram, Shorts ou TikTok</p>
                   </div>
                 )}
               </div>
+
+              {/* Live over-limit warning — fires BEFORE the user hits
+                  Iniciar so they don't waste a click on a request the
+                  backend would just 400 back. Mirrors the server caps
+                  from routers/analysis.py (20 / 30). */}
+              {(() => {
+                const linkCount = activeTab === 'link'
+                  ? links.split('\n').map(l => l.trim()).filter(Boolean).length
+                  : 0;
+                const tooManyLinks = activeTab === 'link' && linkCount > MAX_LINKS_PER_ANALYSIS;
+                const tooManyFiles = activeTab === 'upload' && files.length > MAX_FILES_PER_ANALYSIS;
+                if (!tooManyLinks && !tooManyFiles) return null;
+                const msg = tooManyLinks
+                  ? `Você colou ${linkCount} links. Máximo de ${MAX_LINKS_PER_ANALYSIS} por análise — remova ${linkCount - MAX_LINKS_PER_ANALYSIS} para continuar.`
+                  : `Você anexou ${files.length} arquivos. Máximo de ${MAX_FILES_PER_ANALYSIS} por análise — remova ${files.length - MAX_FILES_PER_ANALYSIS} para continuar.`;
+                return (
+                  <div className="mt-5 p-4 bg-amber-500/8 border border-amber-500/20 text-amber-300 rounded-2xl text-sm font-medium flex items-center gap-2.5 animate-fade-in">
+                    <AlertTriangle size={15} /> {msg}
+                  </div>
+                );
+              })()}
 
               {error && (
                 <div className="mt-5 p-4 bg-red-500/8 border border-red-500/15 text-red-400 rounded-2xl text-sm font-medium flex items-center gap-2.5 animate-fade-in">
@@ -584,7 +677,14 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
 
               <button
                 onClick={handleAnalyze}
-                disabled={loading || taskId || (activeTab === 'upload' ? files.length === 0 : links.trim() === '')}
+                disabled={
+                  loading ||
+                  taskId ||
+                  (activeTab === 'upload'
+                    ? files.length === 0 || files.length > MAX_FILES_PER_ANALYSIS
+                    : links.trim() === '' ||
+                      links.split('\n').map(l => l.trim()).filter(Boolean).length > MAX_LINKS_PER_ANALYSIS)
+                }
                 className="w-full mt-8 py-4 btn-white rounded-2xl flex justify-center items-center gap-2.5 text-sm disabled:opacity-40 disabled:pointer-events-none group"
               >
                 {loading || taskId ? (

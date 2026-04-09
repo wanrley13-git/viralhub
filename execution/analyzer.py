@@ -211,6 +211,7 @@ async def download_video(link: str, progress_callback=None) -> str | None:
 async def download_videos_batch(
     links: list[str],
     progress_callback=None,
+    is_cancelled=None,
 ) -> list[dict]:
     """Download multiple videos sequentially with rate-limit handling.
 
@@ -230,8 +231,14 @@ async def download_videos_batch(
         remaining links — never abort the whole batch.
       • Logs an ETA (average per-download time × remaining links) so
         the frontend can show "restam ~Xm:YYs" while the batch runs.
+      • Cancellation: if `is_cancelled` is provided, it is called
+        before each download (and before the long waits). When it
+        returns True, the batch stops immediately and returns
+        whatever partial results it has collected so far — any link
+        that was never reached is simply omitted from the result.
 
-    Returns a list of result dicts, one per input link:
+    Returns a list of result dicts, one per input link (partial on
+    cancellation):
         [{"link": str, "path": str | None, "error": str | None}, ...]
     Successful entries have `error=None`; failed entries have `path=None`
     and a human-friendly `error` string.
@@ -250,7 +257,36 @@ async def download_videos_batch(
     downloads_since_cooldown = 0
     total_download_time_s = 0.0
 
+    def _cancelled() -> bool:
+        try:
+            return bool(is_cancelled and is_cancelled())
+        except Exception:
+            return False
+
+    async def _cancellable_sleep(total_s: float) -> bool:
+        """Sleep in 1s slices, returning True if cancellation fired
+        mid-wait so the caller can short-circuit the loop."""
+        remaining = float(total_s)
+        while remaining > 0:
+            if _cancelled():
+                return True
+            step = 1.0 if remaining > 1.0 else remaining
+            await asyncio.sleep(step)
+            remaining -= step
+        return False
+
     for idx, link in enumerate(links):
+        # Bail out immediately if the user clicked "Cancelar" on the
+        # frontend. Any link past this point is simply dropped from the
+        # result list — the caller sees partial results and cleans up.
+        if _cancelled():
+            if progress_callback:
+                await progress_callback(
+                    f"Download cancelado pelo usuário ({idx}/{total} processados).",
+                    15,
+                )
+            break
+
         # Polite delay between downloads in a batch (never before the first).
         # Delay grows with batch depth: 4s for 1–10, 6s for 11–20, 8s for 21–30…
         if is_batch and idx > 0:
@@ -260,7 +296,13 @@ async def download_videos_batch(
                     f"Aguardando {delay}s antes do próximo download ({idx+1}/{total})...",
                     5,
                 )
-            await asyncio.sleep(delay)
+            if await _cancellable_sleep(delay):
+                if progress_callback:
+                    await progress_callback(
+                        f"Download cancelado pelo usuário ({idx}/{total} processados).",
+                        15,
+                    )
+                break
 
             # Extra cooldown every 15 successful downloads to give the
             # platform a breather and reset rate-limit counters.
@@ -270,7 +312,13 @@ async def download_videos_batch(
                         f"Cooldown anti-rate-limit: pausando {COOLDOWN_S}s após {success_count} downloads bem-sucedidos...",
                         5,
                     )
-                await asyncio.sleep(COOLDOWN_S)
+                if await _cancellable_sleep(COOLDOWN_S):
+                    if progress_callback:
+                        await progress_callback(
+                            f"Download cancelado pelo usuário ({idx}/{total} processados).",
+                            15,
+                        )
+                    break
                 downloads_since_cooldown = 0
 
         # ── Attempt 1 ──
@@ -291,10 +339,21 @@ async def download_videos_batch(
                     f"Rate-limit detectado em {link}. Retry {retry_idx}/{len(RATE_LIMIT_BACKOFFS_S)} em {wait_s}s...",
                     10,
                 )
-            await asyncio.sleep(wait_s)
+            if await _cancellable_sleep(wait_s):
+                break
             path, err = await _download_video_once(
                 link, progress_callback, attempt_label=f"retry {retry_idx}"
             )
+
+        # The retry loop may have broken on cancellation — honor it at
+        # the outer level so we don't record the half-attempted result.
+        if _cancelled():
+            if progress_callback:
+                await progress_callback(
+                    f"Download cancelado pelo usuário ({idx}/{total} processados).",
+                    15,
+                )
+            break
 
         if path:
             success_count += 1
