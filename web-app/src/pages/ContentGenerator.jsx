@@ -1701,7 +1701,7 @@ const ContentGenerator = () => {
       </AnimatePresence>
 
       {/* ═══ FLOATING PROMPT BAR ═══ */}
-      <div className="shrink-0 flex justify-center px-6 pb-7">
+      <div className="shrink-0 relative z-20 flex justify-center px-6 pb-7">
         <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-8px_40px_rgba(0,0,0,0.35)]">
           {uploadedImages.length > 0 && (
             <div className="flex items-center gap-2 mb-3">
