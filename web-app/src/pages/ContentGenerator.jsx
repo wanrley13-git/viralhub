@@ -909,6 +909,21 @@ const ContentGenerator = () => {
     return () => document.removeEventListener('keydown', h);
   }, []);
 
+  // ESC: close developed modal first; otherwise clear card selections
+  useEffect(() => {
+    const h = (e) => {
+      if (e.key !== 'Escape') return;
+      if (developedViewing) {
+        setDevelopedViewing(null);
+      } else if (selectedIdeas.length > 0 || selectedDeveloped.length > 0) {
+        setSelectedIdeas([]);
+        setSelectedDeveloped([]);
+      }
+    };
+    document.addEventListener('keydown', h);
+    return () => document.removeEventListener('keydown', h);
+  }, [developedViewing, selectedIdeas, selectedDeveloped]);
+
   const stepQuantity = (dir) => setQuantity(p => Math.min(MAX_QTY, Math.max(MIN_QTY, p + dir)));
 
   // Hold-to-repeat on stepper buttons
