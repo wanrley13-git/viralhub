@@ -1277,14 +1277,14 @@ const ContentGenerator = () => {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.2, delay: Math.min(i * 0.02, 0.2), ease: 'easeOut' }}
                       onClick={() => isReady && setDevelopedViewing(idea)}
-                      style={!hasFailed && !isSelected ? { backgroundColor: '#121E13' } : undefined}
+                      style={!hasFailed ? { backgroundColor: isSelected ? '#1a2e1d' : '#121E13' } : undefined}
                       className={`group relative ${cs.pad} rounded-2xl border transition-all duration-300 flex flex-col ${
                         isDeveloping
                           ? 'border-white/[0.08] cursor-default'
                           : hasFailed
                             ? 'bg-red-500/[0.04] border-red-500/20 cursor-default'
                             : isSelected
-                              ? 'bg-primary/5 border-primary/30 cursor-pointer'
+                              ? 'border-primary cursor-pointer shadow-[0_0_0_1px_rgba(34,197,94,0.4),0_8px_24px_rgba(34,197,94,0.12)]'
                               : 'border-white/[0.08] hover:border-primary/40 cursor-pointer'
                       }`}
                     >
@@ -1648,51 +1648,49 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="shrink-0 flex justify-center px-6 pt-10 pb-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"
+            className="shrink-0 relative flex justify-center px-6 pt-10 pb-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"
           >
-            <div className="relative pointer-events-auto">
-              <button
-                onClick={() => setBulkSendPopupOpen(o => !o)}
-                className="flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200"
-              >
-                <Send size={15} strokeWidth={2.5} />
-                Enviar · {selectedDeveloped.length}
-              </button>
+            <button
+              onClick={() => setBulkSendPopupOpen(o => !o)}
+              className="flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200 pointer-events-auto"
+            >
+              <Send size={15} strokeWidth={2.5} />
+              Enviar · {selectedDeveloped.length}
+            </button>
 
-              <AnimatePresence>
-                {bulkSendPopupOpen && (
-                  <>
-                    <div
-                      className="fixed inset-0 z-[90]"
-                      onClick={() => setBulkSendPopupOpen(false)}
-                    />
-                    <motion.div
-                      initial={{ opacity: 0, y: 8, scale: 0.96 }}
-                      animate={{ opacity: 1, y: 0, scale: 1 }}
-                      exit={{ opacity: 0, y: 8, scale: 0.96 }}
-                      transition={{ duration: 0.15, ease: 'easeOut' }}
-                      className="absolute bottom-full mb-3 left-1/2 -translate-x-1/2 z-[95] bg-[#16161a] border border-white/[0.08] rounded-2xl shadow-[0_20px_64px_rgba(0,0,0,0.6)] overflow-hidden min-w-[220px]"
+            <AnimatePresence>
+              {bulkSendPopupOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-[90] pointer-events-auto"
+                    onClick={() => setBulkSendPopupOpen(false)}
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-[95] bg-[#16161a] border border-white/[0.08] rounded-2xl shadow-[0_20px_64px_rgba(0,0,0,0.6)] overflow-hidden min-w-[220px] pointer-events-auto"
+                  >
+                    <button
+                      onClick={() => openBulkSendDest('kanban')}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-[13px] font-bold text-white hover:bg-white/[0.05] transition-colors"
                     >
-                      <button
-                        onClick={() => openBulkSendDest('kanban')}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-left text-[13px] font-bold text-white hover:bg-white/[0.05] transition-colors"
-                      >
-                        <Layout size={14} strokeWidth={2} className="text-primary" />
-                        Enviar para Kanban
-                      </button>
-                      <div className="h-px bg-white/[0.06]" />
-                      <button
-                        onClick={() => openBulkSendDest('calendar')}
-                        className="w-full flex items-center gap-3 px-4 py-3 text-left text-[13px] font-bold text-white hover:bg-white/[0.05] transition-colors"
-                      >
-                        <CalendarDays size={14} strokeWidth={2} className="text-primary" />
-                        Enviar para Calendário
-                      </button>
-                    </motion.div>
-                  </>
-                )}
-              </AnimatePresence>
-            </div>
+                      <Layout size={14} strokeWidth={2} className="text-primary" />
+                      Enviar para Kanban
+                    </button>
+                    <div className="h-px bg-white/[0.06]" />
+                    <button
+                      onClick={() => openBulkSendDest('calendar')}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-[13px] font-bold text-white hover:bg-white/[0.05] transition-colors"
+                    >
+                      <CalendarDays size={14} strokeWidth={2} className="text-primary" />
+                      Enviar para Calendário
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>
