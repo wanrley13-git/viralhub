@@ -3,7 +3,7 @@ import {
   Lightbulb, FileCheck, FileText, Minus, Plus, ChevronDown, ChevronUp, Video, X, ImagePlus,
   BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
-  LayoutGrid, Grid3x3, Clock, Heart, Send, Layout, CalendarDays, StickyNote,
+  LayoutGrid, Grid3x3, Clock, Heart, Send, Layout, CalendarDays, StickyNote, Folder,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -235,6 +235,7 @@ const ContentGenerator = () => {
   const [selectedIdeas, setSelectedIdeas] = useState([]);
   const [selectedDeveloped, setSelectedDeveloped] = useState([]);
   const [bulkSendPopupOpen, setBulkSendPopupOpen] = useState(false);
+  const [notesFolderPickerOpen, setNotesFolderPickerOpen] = useState(false);
   const [errorToast, setErrorToast] = useState(null);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [quantityEditing, setQuantityEditing] = useState(false);
@@ -272,6 +273,12 @@ const ContentGenerator = () => {
     // fetchIdeas is triggered by the tab-based useEffect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Close the notes folder picker whenever the developed-viewing modal closes,
+  // otherwise the picker would pop up already-open on the next modal view.
+  useEffect(() => {
+    if (!developedViewing) setNotesFolderPickerOpen(false);
+  }, [developedViewing]);
 
   const fetchIdeas = async () => {
     try {
@@ -780,16 +787,20 @@ const ContentGenerator = () => {
 
   // ─── Send developed content directly to Notes (no modal) ───
   // Creates one note per idea using the same Notes context that the Notes page
-  // uses, so the notes show up instantly in /notes.
-  const sendToNotes = (ideaOrIdeas) => {
+  // uses, so the notes show up instantly in /notes. Pass an explicit folderId to
+  // target a specific folder; otherwise falls back to "Geral" / first root folder.
+  const sendToNotes = (ideaOrIdeas, folderId) => {
     const ideasArr = Array.isArray(ideaOrIdeas) ? ideaOrIdeas : [ideaOrIdeas];
     if (ideasArr.length === 0) return;
 
-    // Target folder: prefer the default "Geral" folder, otherwise first root folder.
-    const targetFolder =
-      noteFolders.find((f) => f.id === 'default') ||
-      noteFolders.find((f) => f.parentId === null) ||
-      noteFolders[0];
+    // Target folder: explicit param, else default "Geral", else first root folder.
+    let targetFolder = folderId ? noteFolders.find((f) => f.id === folderId) : null;
+    if (!targetFolder) {
+      targetFolder =
+        noteFolders.find((f) => f.id === 'default') ||
+        noteFolders.find((f) => f.parentId === null) ||
+        noteFolders[0];
+    }
 
     if (!targetFolder) {
       setErrorToast('Nenhuma pasta de notas disponível.');
@@ -812,7 +823,21 @@ const ContentGenerator = () => {
     setTimeout(() => setSuccessToast(null), 3000);
 
     setBulkSendPopupOpen(false);
+    setNotesFolderPickerOpen(false);
     setSelectedDeveloped([]);
+  };
+
+  // Build a "Parent / Child" display path for a note folder, walking up parentId.
+  const getNoteFolderPath = (folder) => {
+    const parts = [];
+    let current = folder;
+    const guard = new Set();
+    while (current && !guard.has(current.id)) {
+      guard.add(current.id);
+      parts.unshift(current.name);
+      current = current.parentId ? noteFolders.find((f) => f.id === current.parentId) : null;
+    }
+    return parts.join(' / ');
   };
 
   // Parse a project's columns_json once, safely
@@ -1499,18 +1524,70 @@ const ContentGenerator = () => {
                 </button>
                 <button
                   onClick={() => openSendDest(developedViewing, 'kanban')}
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-white text-[12px] font-bold hover:bg-white/[0.08] transition-colors"
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold transition-colors"
                 >
                   <Layout size={13} strokeWidth={2} />
                   Enviar para Kanban
                 </button>
-                <button
-                  onClick={() => sendToNotes(developedViewing)}
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold transition-colors"
-                >
-                  <StickyNote size={13} strokeWidth={2} />
-                  Enviar para Notas
-                </button>
+                <div className="relative">
+                  <button
+                    onClick={() => {
+                      if (noteFolders.length === 0) {
+                        sendToNotes(developedViewing);
+                      } else {
+                        setNotesFolderPickerOpen((o) => !o);
+                      }
+                    }}
+                    className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold transition-colors"
+                  >
+                    <StickyNote size={13} strokeWidth={2} />
+                    Enviar para Notas
+                  </button>
+
+                  <AnimatePresence>
+                    {notesFolderPickerOpen && noteFolders.length > 0 && (
+                      <>
+                        {/* Click-outside backdrop */}
+                        <div
+                          className="fixed inset-0 z-[120]"
+                          onClick={() => setNotesFolderPickerOpen(false)}
+                        />
+                        <motion.div
+                          initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                          animate={{ opacity: 1, y: 0, scale: 1 }}
+                          exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                          transition={{ duration: 0.15, ease: 'easeOut' }}
+                          className="absolute bottom-full right-0 mb-2 z-[125] bg-[#16161a] border border-white/[0.08] rounded-xl shadow-[0_20px_64px_rgba(0,0,0,0.6)] min-w-[240px] max-h-[300px] overflow-y-auto custom-scrollbar"
+                        >
+                          <div className="px-3.5 py-2.5 border-b border-white/[0.06] sticky top-0 bg-[#16161a]">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-white/40">
+                              Escolha a pasta
+                            </p>
+                          </div>
+                          <div className="py-1">
+                            {noteFolders
+                              .slice()
+                              .sort((a, b) =>
+                                getNoteFolderPath(a).localeCompare(getNoteFolderPath(b), 'pt-BR')
+                              )
+                              .map((folder) => (
+                                <button
+                                  key={folder.id}
+                                  onClick={() => {
+                                    sendToNotes(developedViewing, folder.id);
+                                  }}
+                                  className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-left text-[12px] font-bold text-white hover:bg-white/[0.05] transition-colors"
+                                >
+                                  <Folder size={13} strokeWidth={2} className="text-primary/70 shrink-0" />
+                                  <span className="truncate">{getNoteFolderPath(folder)}</span>
+                                </button>
+                              ))}
+                          </div>
+                        </motion.div>
+                      </>
+                    )}
+                  </AnimatePresence>
+                </div>
               </div>
             </motion.div>
           </motion.div>
