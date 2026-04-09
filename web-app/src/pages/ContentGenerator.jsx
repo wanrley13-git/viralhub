@@ -45,9 +45,14 @@ const RefChip = ({ analysis, onRemove }) => (
   </span>
 );
 
-const ImageThumb = ({ file, onRemove }) => (
+// The previewUrl is created ONCE at upload time (inside handleImageUpload)
+// and stored alongside the file. Never call URL.createObjectURL in the
+// render path — every re-render would allocate a new blob URL, making
+// the <img> src change on every paint and causing the thumbnail to
+// flicker / reload constantly.
+const ImageThumb = ({ previewUrl, onRemove }) => (
   <div className="relative w-10 h-10 rounded-lg overflow-hidden border border-white/[0.08] shrink-0 group">
-    <img src={URL.createObjectURL(file)} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
+    <img src={previewUrl} alt="" loading="lazy" decoding="async" className="w-full h-full object-cover" />
     <button onClick={onRemove} className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
       <X size={12} strokeWidth={2.5} className="text-white" />
     </button>
@@ -159,6 +164,9 @@ const ContentGenerator = () => {
   const [selectedBaseId, setSelectedBaseId] = useState(null);
   const [selectedToneId, setSelectedToneId] = useState(null);
   const [quantity, setQuantity] = useState(5);
+  // uploadedImages: Array<{ file: File, previewUrl: string }>. previewUrl
+  // is created exactly once via URL.createObjectURL and revoked on
+  // remove / successful submit / unmount to avoid blob URL leaks.
   const [uploadedImages, setUploadedImages] = useState([]);
 
   // @ mention
@@ -575,6 +583,16 @@ const ContentGenerator = () => {
   };
 
   // ─── Generate ideas ───
+  //
+  // POST /content/generate is multipart/form-data — text fields plus an
+  // optional `images` array read server-side into Gemini multimodal
+  // contents.
+  //
+  // IMPORTANT: do NOT set the Content-Type header manually. axios/the
+  // browser auto-generates `multipart/form-data; boundary=...` from the
+  // FormData body — if we override it with a bare `multipart/form-data`
+  // the boundary is missing and the server returns 422 because it can't
+  // parse the payload.
   const handleGenerate = async () => {
     const fullPrompt = segments.map(s => s.type === 'ref' ? `[Referência: ${s.analysis.title}]` : s.value).join('');
     if (!fullPrompt.trim()) return;
@@ -583,19 +601,40 @@ const ContentGenerator = () => {
     setErrorToast(null);
     try {
       const token = await getAccessToken();
-      const res = await axios.post(`${API_URL}/content/generate`, {
-        prompt: fullPrompt,
-        tone_id: selectedToneId || null,
-        base_id: selectedBaseId || null,
-        reference_ids: selectedRefs.map(r => r.id),
-        quantity,
-      }, { headers: { Authorization: `Bearer ${token}` } });
+
+      // Only append fields that actually have a value. tone_id and base_id
+      // must be OMITTED (not sent as empty string) when unset, otherwise
+      // FastAPI tries to coerce "" to int and rejects with 422.
+      const formData = new FormData();
+      formData.append('prompt', fullPrompt);
+      if (selectedToneId != null) formData.append('tone_id', String(selectedToneId));
+      if (selectedBaseId != null) formData.append('base_id', String(selectedBaseId));
+      formData.append('reference_ids', JSON.stringify(selectedRefs.map(r => r.id)));
+      formData.append('quantity', String(quantity));
+      uploadedImages.forEach(img => formData.append('images', img.file));
+
+      const res = await axios.post(`${API_URL}/content/generate`, formData, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 180000,
+      });
 
       setIdeas(prev => [...res.data, ...prev]);
       setSelectedIdeas([]);
       setActiveTab('ideas');
+
+      // Clear the attached images after a successful generation so the
+      // next request starts clean. Revoke each blob URL first.
+      uploadedImages.forEach(img => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl); });
+      setUploadedImages([]);
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Erro ao gerar conteúdo. Tente novamente.';
+      // FastAPI 422 responses may include `detail` as an array of
+      // {loc, msg, type}, which would crash React if rendered directly.
+      // Flatten any object/array shape into a string.
+      const detail = err.response?.data?.detail;
+      let msg = 'Erro ao gerar conteúdo. Tente novamente.';
+      if (typeof detail === 'string') msg = detail;
+      else if (Array.isArray(detail)) msg = detail.map(d => d?.msg || JSON.stringify(d)).join('; ');
+      else if (detail && typeof detail === 'object') msg = detail.msg || JSON.stringify(detail);
       setErrorToast(msg);
       setTimeout(() => setErrorToast(null), 5000);
     } finally {
@@ -1036,11 +1075,36 @@ const ContentGenerator = () => {
     });
   }, []);
 
+  // Create one blob URL per file at upload time and store it alongside
+  // the File object. Accepts only image/* files.
   const handleImageUpload = (e) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length > 0) setUploadedImages(p => [...p, ...files]);
+    const files = Array.from(e.target.files || []).filter(f => f.type.startsWith('image/'));
+    if (files.length === 0) { e.target.value = ''; return; }
+    setUploadedImages(prev => [
+      ...prev,
+      ...files.map(file => ({ file, previewUrl: URL.createObjectURL(file) })),
+    ]);
     e.target.value = '';
   };
+
+  const removeImage = useCallback((index) => {
+    setUploadedImages(prev => {
+      const target = prev[index];
+      if (target?.previewUrl) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((_, i) => i !== index);
+    });
+  }, []);
+
+  // Revoke any outstanding blob URLs when the component unmounts so we
+  // don't leak object URLs across navigations.
+  useEffect(() => {
+    return () => {
+      setUploadedImages(prev => {
+        prev.forEach(img => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl); });
+        return prev;
+      });
+    };
+  }, []);
 
   const handleKeyDown = (e) => {
     if (mentionOpen && filteredAnalyses.length > 0) {
@@ -1196,11 +1260,20 @@ const ContentGenerator = () => {
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="h-full">
 
-            {/* Loading skeleton (Ideias only, while generating) */}
-            {activeTab === 'ideas' && generating && (
+            {/* Loading spinner for history/saved */}
+            {(activeTab === 'history' || activeTab === 'saved') && loadingTab && (
+              <div className="h-full flex items-center justify-center">
+                <Loader2 size={24} className="animate-spin text-gray-600" />
+              </div>
+            )}
+
+            {/* IDEIAS tab: skeletons (while generating) prepend the grid so
+                existing ideas stay visible — matches the prepend order of
+                setIdeas(prev => [...new, ...prev]). */}
+            {activeTab === 'ideas' && (generating || ideas.length > 0) && (
               <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
-                {Array.from({ length: quantity }).map((_, i) => (
-                  <div key={i} className={`bg-white/[0.03] border border-white/[0.08] rounded-2xl ${cs.pad} animate-pulse flex flex-col gap-2.5`} style={{ animationDelay: `${i * 40}ms` }}>
+                {generating && Array.from({ length: quantity }).map((_, i) => (
+                  <div key={`skeleton-${i}`} className={`bg-white/[0.03] border border-white/[0.08] rounded-2xl ${cs.pad} animate-pulse flex flex-col gap-2.5`} style={{ animationDelay: `${i * 40}ms` }}>
                     <div className="h-3 bg-white/[0.04] rounded w-16" />
                     <div className="h-5 bg-white/[0.06] rounded w-full" />
                     <div className="h-5 bg-white/[0.05] rounded w-3/4" />
@@ -1210,19 +1283,6 @@ const ContentGenerator = () => {
                     </div>
                   </div>
                 ))}
-              </div>
-            )}
-
-            {/* Loading spinner for history/saved */}
-            {(activeTab === 'history' || activeTab === 'saved') && loadingTab && (
-              <div className="h-full flex items-center justify-center">
-                <Loader2 size={24} className="animate-spin text-gray-600" />
-              </div>
-            )}
-
-            {/* IDEIAS tab cards */}
-            {activeTab === 'ideas' && !generating && ideas.length > 0 && (
-              <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
                 {ideas.map((idea, i) => (
                   <IdeaCard
                     key={idea.id}
@@ -1841,7 +1901,13 @@ const ContentGenerator = () => {
         <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-4px_16px_rgba(0,0,0,0.15)]">
           {uploadedImages.length > 0 && (
             <div className="flex items-center gap-2 mb-3">
-              {uploadedImages.map((file, i) => <ImageThumb key={i} file={file} onRemove={() => setUploadedImages(p => p.filter((_, j) => j !== i))} />)}
+              {uploadedImages.map((img, i) => (
+                <ImageThumb
+                  key={img.previewUrl}
+                  previewUrl={img.previewUrl}
+                  onRemove={() => removeImage(i)}
+                />
+              ))}
             </div>
           )}
 

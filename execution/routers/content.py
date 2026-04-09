@@ -5,7 +5,7 @@ import asyncio
 import logging
 import datetime
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, File, Form, UploadFile
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
@@ -24,6 +24,10 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/content", tags=["content"])
 
 
+# NOTE: POST /content/generate is multipart/form-data (so the prompt bar
+# can attach images alongside the text prompt). Form fields are declared
+# inline on the route signature; this pydantic model is kept only as
+# documentation of the shape the route assembles before calling Gemini.
 class GenerateRequest(BaseModel):
     prompt: str
     tone_id: Optional[int] = None
@@ -373,33 +377,75 @@ async def develop_content(
 
 @router.post("/generate", response_model=List[IdeaOut])
 async def generate_content(
-    request: GenerateRequest,
+    prompt: str = Form(...),
+    tone_id: Optional[int] = Form(None),
+    base_id: Optional[int] = Form(None),
+    reference_ids: str = Form("[]"),
+    quantity: int = Form(5),
+    # IMPORTANT: must be `List[UploadFile] = File(default=[])`, not
+    # `Optional[List[UploadFile]] = File(None)`. In FastAPI 0.111 the
+    # Optional variant makes Pydantic v2 reject a single uploaded file
+    # with a `list_type` 422 ("Input should be a valid list") because
+    # the form parser passes one UploadFile instead of wrapping it.
+    # The plain `List[UploadFile]` with `File(default=[])` correctly
+    # collects 0..N files under the same field name.
+    images: List[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    if not request.prompt.strip():
+    """Multipart endpoint. `reference_ids` is a JSON-stringified array of
+    ints (so the frontend can send it as a single form field); `images`
+    is an optional list of uploaded files piped into Gemini as visual
+    context. When no images are sent the call behaves exactly like the
+    old JSON-only version."""
+    if not prompt.strip():
         raise HTTPException(status_code=400, detail="O prompt não pode estar vazio.")
 
-    if request.quantity < 1 or request.quantity > 40:
+    if quantity < 1 or quantity > 40:
         raise HTTPException(status_code=400, detail="Quantidade deve ser entre 1 e 40.")
+
+    # Parse reference_ids from the JSON-stringified form field.
+    try:
+        parsed_ref_ids = json.loads(reference_ids) if reference_ids else []
+        if not isinstance(parsed_ref_ids, list):
+            raise ValueError("reference_ids deve ser um array JSON.")
+        parsed_ref_ids = [int(x) for x in parsed_ref_ids]
+    except (json.JSONDecodeError, ValueError, TypeError) as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"reference_ids inválido (esperado JSON array de inteiros): {e}",
+        )
+
+    # Read uploaded image bytes into Gemini Part dicts once, up front, so
+    # the generative model can consume them as visual context alongside
+    # the text prompt.
+    image_parts: List[dict] = []
+    for img_file in (images or []):
+        img_bytes = await img_file.read()
+        if not img_bytes:
+            continue
+        mime = img_file.content_type or "image/png"
+        image_parts.append({"mime_type": mime, "data": img_bytes})
+    if image_parts:
+        logger.info(f"Content generate: {len(image_parts)} imagem(ns) anexada(s)")
 
     # ── Gather context ──
     tone_text = ""
     base_text = ""
     references_text = ""
 
-    if request.tone_id:
+    if tone_id:
         result = await db.execute(
-            select(Tone).where(Tone.id == request.tone_id, Tone.user_id == current_user.id)
+            select(Tone).where(Tone.id == tone_id, Tone.user_id == current_user.id)
         )
         tone = result.scalars().first()
         if tone and tone.tone_md:
             tone_text = tone.tone_md
 
-    if request.base_id:
+    if base_id:
         result = await db.execute(
             select(KnowledgeBase).where(
-                KnowledgeBase.id == request.base_id,
+                KnowledgeBase.id == base_id,
                 KnowledgeBase.user_id == current_user.id,
             )
         )
@@ -407,10 +453,10 @@ async def generate_content(
         if kb and kb.compiled_md:
             base_text = kb.compiled_md
 
-    if request.reference_ids:
+    if parsed_ref_ids:
         result = await db.execute(
             select(Analysis).where(
-                Analysis.id.in_(request.reference_ids),
+                Analysis.id.in_(parsed_ref_ids),
                 Analysis.user_id == current_user.id,
             )
         )
@@ -419,7 +465,7 @@ async def generate_content(
 
         result = await db.execute(
             select(Transcription).where(
-                Transcription.id.in_(request.reference_ids),
+                Transcription.id.in_(parsed_ref_ids),
                 Transcription.user_id == current_user.id,
             )
         )
@@ -437,7 +483,7 @@ Sua tarefa é gerar ideias de conteúdo criativas, originais e com alto potencia
 {"## REFERÊNCIAS DE VÍDEOS" + chr(10) + references_text if references_text else ""}
 
 REGRAS:
-- Gere exatamente {request.quantity} ideias
+- Gere exatamente {quantity} ideias
 - Cada ideia deve ter um título curto, criativo e chamativo (máx 15 palavras)
 - Cada ideia deve ter um resumo de 2-3 frases explicando o conceito do conteúdo, como a chamada de uma notícia. O resumo deve fazer o leitor entender rapidamente do que se trata o vídeo.
 - Os títulos devem funcionar como ganchos de vídeo viral
@@ -446,7 +492,7 @@ REGRAS:
 - Formato: [{{"title": "...", "summary": "..."}}, ...]
 """
 
-    user_message = f"Gere {request.quantity} ideias de conteúdo viral sobre: {request.prompt}"
+    user_message = f"Gere {quantity} ideias de conteúdo viral sobre: {prompt}"
 
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -455,10 +501,14 @@ REGRAS:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 
+    raw = ""
     try:
+        # Multimodal content list: prompt text + any uploaded images so
+        # Gemini can ground the generated ideas on the attached visuals.
+        generate_contents = [user_message, *image_parts]
         response = await asyncio.to_thread(
             model.generate_content,
-            user_message,
+            generate_contents,
             request_options={"timeout": 180},
         )
         raw = (getattr(response, "text", None) or "").strip()
@@ -477,14 +527,14 @@ REGRAS:
         batch_id = str(uuid.uuid4())
         now = datetime.datetime.utcnow()
         saved = []
-        for item in parsed[: request.quantity]:
+        for item in parsed[:quantity]:
             idea = ContentIdea(
                 user_id=current_user.id,
                 title=item.get("title", "Sem título"),
                 summary=item.get("summary", ""),
-                prompt_used=request.prompt,
-                tone_id=request.tone_id,
-                base_id=request.base_id,
+                prompt_used=prompt,
+                tone_id=tone_id,
+                base_id=base_id,
                 status="idea",
                 is_saved=0,
                 is_dismissed=0,
