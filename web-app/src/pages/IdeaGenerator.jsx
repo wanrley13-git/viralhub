@@ -60,6 +60,35 @@ const ImageThumb = ({ previewUrl, onRemove }) => (
   </div>
 );
 
+// ─── Normalize API errors into a renderable string ───
+// FastAPI returns 422 as { detail: [{loc, msg, type}, ...] }. HTTPException
+// returns { detail: "string" }. Other errors may have neither. Return a
+// plain string so it can be dropped straight into a toast without
+// triggering React error #31 ("Objects are not valid as a React child").
+const formatApiError = (err, fallback = 'Erro inesperado.') => {
+  const detail = err?.response?.data?.detail;
+  if (typeof detail === 'string' && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const parts = detail
+      .map((d) => {
+        if (typeof d === 'string') return d;
+        if (d && typeof d === 'object') {
+          const loc = Array.isArray(d.loc) ? d.loc.slice(1).join('.') : '';
+          const msg = d.msg || d.message || '';
+          return loc ? `${loc}: ${msg}` : msg;
+        }
+        return '';
+      })
+      .filter(Boolean);
+    if (parts.length > 0) return parts.join(' · ');
+  }
+  if (detail && typeof detail === 'object') {
+    try { return JSON.stringify(detail); } catch { /* fall through */ }
+  }
+  if (typeof err?.message === 'string' && err.message) return err.message;
+  return fallback;
+};
+
 // ─── Format absolute date for history headers ───
 const formatDateHeader = (iso) => {
   if (!iso) return '';
@@ -560,6 +589,12 @@ const IdeaGenerator = () => {
   // Gemini Parts). reference_ids is JSON-stringified into a single form
   // field; images are appended under the "images" key and read server-side
   // into Gemini multimodal contents.
+  //
+  // IMPORTANT: do NOT set the Content-Type header manually. axios/the
+  // browser auto-generates `multipart/form-data; boundary=...` from the
+  // FormData body — if we override it with a bare `multipart/form-data`
+  // the boundary is missing and the server returns 422 because it can't
+  // parse the payload.
   const handleGenerate = async () => {
     const fullPrompt = segments.map(s => s.type === 'ref' ? `[Referência: ${s.analysis.title}]` : s.value).join('');
     if (!fullPrompt.trim()) return;
@@ -569,19 +604,19 @@ const IdeaGenerator = () => {
     try {
       const token = await getAccessToken();
 
+      // Only append fields that actually have a value. tone_id and base_id
+      // must be OMITTED (not sent as empty string) when unset, otherwise
+      // FastAPI tries to coerce "" to int and rejects with 422.
       const formData = new FormData();
       formData.append('prompt', fullPrompt);
-      if (selectedToneId) formData.append('tone_id', String(selectedToneId));
-      if (selectedBaseId) formData.append('base_id', String(selectedBaseId));
+      if (selectedToneId != null) formData.append('tone_id', String(selectedToneId));
+      if (selectedBaseId != null) formData.append('base_id', String(selectedBaseId));
       formData.append('reference_ids', JSON.stringify(selectedRefs.map(r => r.id)));
       formData.append('quantity', String(quantity));
       uploadedImages.forEach(img => formData.append('images', img.file));
 
       const res = await axios.post(`${API_URL}/content/ideas/generate`, formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'multipart/form-data',
-        },
+        headers: { Authorization: `Bearer ${token}` },
         timeout: 180000,
       });
 
@@ -594,7 +629,10 @@ const IdeaGenerator = () => {
       uploadedImages.forEach(img => { if (img.previewUrl) URL.revokeObjectURL(img.previewUrl); });
       setUploadedImages([]);
     } catch (err) {
-      const msg = err.response?.data?.detail || 'Erro ao gerar ideias. Tente novamente.';
+      // FastAPI's 422 response shape is { detail: [{loc, msg, type}, ...] }.
+      // Rendering that array directly would crash React with error #31
+      // ("Objects are not valid as a React child") — flatten into a string.
+      const msg = formatApiError(err, 'Erro ao gerar ideias. Tente novamente.');
       setErrorToast(msg);
       setTimeout(() => setErrorToast(null), 5000);
     } finally {

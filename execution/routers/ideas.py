@@ -264,7 +264,14 @@ async def generate_creative_ideas(
     base_id: Optional[int] = Form(None),
     reference_ids: str = Form("[]"),
     quantity: int = Form(5),
-    images: Optional[List[UploadFile]] = File(None),
+    # IMPORTANT: must be `List[UploadFile] = File(default=[])`, not
+    # `Optional[List[UploadFile]] = File(None)`. In FastAPI 0.111 the
+    # Optional variant makes Pydantic v2 reject a single uploaded file
+    # with a `list_type` 422 ("Input should be a valid list") because
+    # the form parser passes one UploadFile instead of wrapping it.
+    # The plain `List[UploadFile]` with `File(default=[])` correctly
+    # collects 0..N files under the same field name.
+    images: List[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
