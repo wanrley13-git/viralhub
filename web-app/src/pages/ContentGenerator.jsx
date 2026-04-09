@@ -216,65 +216,6 @@ const ContentGenerator = () => {
     try { localStorage.setItem('viralhub_generator_tab', activeTab); } catch {}
   }, [activeTab]);
 
-  // ─── Draft persistence ───
-  // Persist the plain text of the prompt bar (ignores @ref chips, which
-  // hold live analysis objects that can't be serialized) with a 500ms
-  // debounce so we don't hammer localStorage on every keystroke.
-  // Cleared automatically when the text goes empty — i.e. only when the
-  // user wipes the field manually, never as a side-effect of generating.
-  useEffect(() => {
-    const plainText = segments
-      .filter((s) => s.type === 'text')
-      .map((s) => s.value)
-      .join('');
-    const t = setTimeout(() => {
-      try {
-        if (plainText) localStorage.setItem(LS_DRAFT_PROMPT, plainText);
-        else localStorage.removeItem(LS_DRAFT_PROMPT);
-      } catch {}
-    }, 500);
-    return () => clearTimeout(t);
-  }, [segments]);
-
-  // Persist the selected base / tone so the same choice is remembered
-  // across page navigations. `null` means "none selected" → remove key.
-  useEffect(() => {
-    try {
-      if (selectedBaseId != null) localStorage.setItem(LS_DRAFT_BASE_ID, String(selectedBaseId));
-      else localStorage.removeItem(LS_DRAFT_BASE_ID);
-    } catch {}
-  }, [selectedBaseId]);
-  useEffect(() => {
-    try {
-      if (selectedToneId != null) localStorage.setItem(LS_DRAFT_TONE_ID, String(selectedToneId));
-      else localStorage.removeItem(LS_DRAFT_TONE_ID);
-    } catch {}
-  }, [selectedToneId]);
-
-  // Persist uploaded images as base64 dataUrls so attachments survive a
-  // cross-page navigation. Silently skips persistence if the payload
-  // would exceed ~5MB to stay under the sessionStorage quota — the
-  // in-memory state still works for the current session.
-  useEffect(() => {
-    try {
-      if (uploadedImages.length === 0) {
-        sessionStorage.removeItem(SS_DRAFT_IMAGES);
-        return;
-      }
-      const payload = uploadedImages
-        .filter((img) => img && img.dataUrl)
-        .map((img) => ({
-          name: img.file?.name || 'image',
-          type: img.file?.type || 'image/png',
-          dataUrl: img.dataUrl,
-        }));
-      if (payload.length === 0) return;
-      const json = JSON.stringify(payload);
-      if (json.length > MAX_IMAGE_STORE_BYTES) return;
-      sessionStorage.setItem(SS_DRAFT_IMAGES, json);
-    } catch {}
-  }, [uploadedImages]);
-
   // Prompt bar segments — restored from localStorage so a draft survives
   // navigating to another page and back. Only the plain text is
   // serialized; @ref chips point at live analysis objects that can't
@@ -341,6 +282,71 @@ const ContentGenerator = () => {
     } catch {}
     return [];
   });
+
+  // ─── Draft persistence ───
+  // IMPORTANT: these effects must live AFTER the state declarations
+  // they depend on. The dependency arrays are read synchronously when
+  // the function body executes, so a `[segments]` dep above the
+  // `const [segments] = useState(...)` line would TDZ-crash with
+  // "Cannot access 'b' before initialization" in production builds.
+  //
+  // Persist the plain text of the prompt bar (ignores @ref chips, which
+  // hold live analysis objects that can't be serialized) with a 500ms
+  // debounce so we don't hammer localStorage on every keystroke.
+  // Cleared automatically when the text goes empty — i.e. only when the
+  // user wipes the field manually, never as a side-effect of generating.
+  useEffect(() => {
+    const plainText = segments
+      .filter((s) => s.type === 'text')
+      .map((s) => s.value)
+      .join('');
+    const t = setTimeout(() => {
+      try {
+        if (plainText) localStorage.setItem(LS_DRAFT_PROMPT, plainText);
+        else localStorage.removeItem(LS_DRAFT_PROMPT);
+      } catch {}
+    }, 500);
+    return () => clearTimeout(t);
+  }, [segments]);
+
+  // Persist the selected base / tone so the same choice is remembered
+  // across page navigations. `null` means "none selected" → remove key.
+  useEffect(() => {
+    try {
+      if (selectedBaseId != null) localStorage.setItem(LS_DRAFT_BASE_ID, String(selectedBaseId));
+      else localStorage.removeItem(LS_DRAFT_BASE_ID);
+    } catch {}
+  }, [selectedBaseId]);
+  useEffect(() => {
+    try {
+      if (selectedToneId != null) localStorage.setItem(LS_DRAFT_TONE_ID, String(selectedToneId));
+      else localStorage.removeItem(LS_DRAFT_TONE_ID);
+    } catch {}
+  }, [selectedToneId]);
+
+  // Persist uploaded images as base64 dataUrls so attachments survive a
+  // cross-page navigation. Silently skips persistence if the payload
+  // would exceed ~5MB to stay under the sessionStorage quota — the
+  // in-memory state still works for the current session.
+  useEffect(() => {
+    try {
+      if (uploadedImages.length === 0) {
+        sessionStorage.removeItem(SS_DRAFT_IMAGES);
+        return;
+      }
+      const payload = uploadedImages
+        .filter((img) => img && img.dataUrl)
+        .map((img) => ({
+          name: img.file?.name || 'image',
+          type: img.file?.type || 'image/png',
+          dataUrl: img.dataUrl,
+        }));
+      if (payload.length === 0) return;
+      const json = JSON.stringify(payload);
+      if (json.length > MAX_IMAGE_STORE_BYTES) return;
+      sessionStorage.setItem(SS_DRAFT_IMAGES, json);
+    } catch {}
+  }, [uploadedImages]);
 
   // @ mention
   const [mentionOpen, setMentionOpen] = useState(false);
