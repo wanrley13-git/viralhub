@@ -4,7 +4,7 @@ import MarkdownRenderer from '../components/MarkdownRenderer';
 import {
   Upload, Link as LinkIcon, FileVideo, Sparkles, Loader2, Download,
   Terminal, Activity, AlertCircle, Library as LibraryIcon,
-  Calendar, FileText, Search, Trash2, CheckSquare, Square, CloudDownload, X
+  Calendar, FileText, Search, Trash2, Check, CloudDownload, X, AlertTriangle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -13,6 +13,50 @@ import { getAccessToken } from '../supabaseClient';
 import Thumbnail from '../components/Thumbnail';
 
 const API_URL = import.meta.env.VITE_API_URL;
+
+// ─── Date helpers for library grouping ───
+// Normalize to local "YYYY-MM-DD" key so two ISO strings from the same
+// calendar day always collapse into the same bucket regardless of hours.
+const toDateKey = (iso) => {
+  const d = new Date(iso);
+  if (isNaN(d)) return 'unknown';
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+};
+
+// Human-friendly label for a date key — "Hoje" / "Ontem" / "DD/MM/YYYY"
+const formatGroupHeader = (dateKey) => {
+  if (!dateKey || dateKey === 'unknown') return 'Sem data';
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const y = new Date(now); y.setDate(y.getDate() - 1);
+  const yesterday = `${y.getFullYear()}-${String(y.getMonth() + 1).padStart(2, '0')}-${String(y.getDate()).padStart(2, '0')}`;
+  if (dateKey === today) return 'Hoje';
+  if (dateKey === yesterday) return 'Ontem';
+  const [yy, mm, dd] = dateKey.split('-');
+  return `${dd}/${mm}/${yy}`;
+};
+
+// Bucket a flat list of analyses into { dateKey, label, items[] } groups
+// already sorted most-recent-day-first, with items inside each day kept in
+// the original (already-chronological-desc) order.
+const groupAnalysesByDate = (list) => {
+  const buckets = new Map();
+  for (const a of list) {
+    const key = toDateKey(a.created_at);
+    if (!buckets.has(key)) buckets.set(key, []);
+    buckets.get(key).push(a);
+  }
+  return Array.from(buckets.entries())
+    .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+    .map(([dateKey, items]) => ({
+      dateKey,
+      label: formatGroupHeader(dateKey),
+      items,
+    }));
+};
 
 const Analyzer = () => {
   const { collapsed } = useSidebar();
@@ -34,9 +78,13 @@ const Analyzer = () => {
   const [historyLoading, setHistoryLoading] = useState(true);
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
-  const [isSelectMode, setIsSelectMode] = useState(false);
+  // Bulk selection is now implicit: clicking the card checkbox toggles an
+  // id into selectedExports. When the list is non-empty, the floating bar
+  // and "bulk mode" UI appears automatically — no explicit toggle needed.
   const [selectedExports, setSelectedExports] = useState([]);
   const [exporting, setExporting] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [cardSize, setCardSize] = useState(2); // 0=small(6cols), 1=medium(5cols), 2=large(4cols)
 
   useEffect(() => {
@@ -65,23 +113,28 @@ const Analyzer = () => {
     })();
   }, []);
 
-  // Close modals on ESC / deselect all when in bulk-select mode
+  // ESC priority:
+  //   1. Close delete confirmation if open
+  //   2. Close reading modal if open
+  //   3. Otherwise clear the current bulk selection
   useEffect(() => {
     const handleEsc = (e) => {
       if (e.key !== 'Escape') return;
-      // Priority: close reading modal first if open
+      if (deleteConfirmOpen) {
+        setDeleteConfirmOpen(false);
+        return;
+      }
       if (selectedAnalysis) {
         setSelectedAnalysis(null);
         return;
       }
-      // Otherwise, if in select mode with items selected, clear the selection
-      if (isSelectMode && selectedExports.length > 0) {
+      if (selectedExports.length > 0) {
         setSelectedExports([]);
       }
     };
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
-  }, [selectedAnalysis, isSelectMode, selectedExports.length]);
+  }, [selectedAnalysis, deleteConfirmOpen, selectedExports.length]);
 
   useEffect(() => {
     if (taskId) {
@@ -191,23 +244,6 @@ const Analyzer = () => {
     }
   };
 
-  const handleDeleteUnit = async (e, id) => {
-    e.stopPropagation();
-    if (!window.confirm('Excluir permanentemente este relatório?')) return;
-    try {
-      const token = await getAccessToken();
-      await axios.delete(`${API_URL}/analyze/${id}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      if (selectedAnalysis && selectedAnalysis.id === id) {
-          setSelectedAnalysis(null);
-      }
-      fetchHistory();
-    } catch (err) {
-      console.error('Erro ao excluir:', err);
-    }
-  };
-
   const downloadSingleReport = (e, analysis) => {
     e.stopPropagation();
     const element = document.createElement("a");
@@ -237,17 +273,22 @@ const Analyzer = () => {
 
       const header =
 `# Análises Exportadas — ViralHub
-Data: ${today}
+Data de exportação: ${today}
 Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
 
 ---
 
 `;
 
-      const body = picked.map((a, i) => {
+      const body = picked.map((a) => {
         const title = (a.title || `Análise #${a.id}`).trim();
         const content = (a.report_md || '').trim();
-        return `## ${i + 1}. ${title}\n\n${content}`;
+        const createdAt = a.created_at
+          ? new Date(a.created_at).toLocaleDateString('pt-BR', {
+              day: '2-digit', month: 'long', year: 'numeric'
+            })
+          : '—';
+        return `## ${title}\nData: ${createdAt}\n\n${content}`;
       }).join('\n\n---\n\n');
 
       const full = header + body + '\n';
@@ -263,7 +304,6 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
       link.remove();
       URL.revokeObjectURL(url);
 
-      setIsSelectMode(false);
       setSelectedExports([]);
     } catch (err) {
       console.error('Erro exportando:', err);
@@ -273,25 +313,66 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
     }
   };
 
+  // Bulk delete — fires one DELETE /analyze/{id} per selected analysis in
+  // parallel, then refreshes the history list. The confirmation step is
+  // handled by the custom modal (setDeleteConfirmOpen(true)).
+  const handleBulkDelete = async () => {
+    if (selectedExports.length === 0) return;
+    setDeleting(true);
+    try {
+      const token = await getAccessToken();
+      const cfg = { headers: { Authorization: `Bearer ${token}` } };
+      await Promise.all(
+        selectedExports.map(id =>
+          axios.delete(`${API_URL}/analyze/${id}`, cfg).catch(err => {
+            console.error(`Falha ao apagar análise #${id}:`, err);
+          })
+        )
+      );
+      // Drop them from the currently visible reading modal as well
+      if (selectedAnalysis && selectedExports.includes(selectedAnalysis.id)) {
+        setSelectedAnalysis(null);
+      }
+      setSelectedExports([]);
+      setDeleteConfirmOpen(false);
+      await fetchHistory();
+    } catch (err) {
+      console.error('Erro apagando em lote:', err);
+      alert('Erro ao apagar análises em lote.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   const filteredAnalyses = (analyses || []).filter(a =>
     (a.title && a.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
     (a.report_md && a.report_md.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
-  // "Selecionar todos" / "Desmarcar todos" toggle over the currently
-  // visible (post-search) list of analyses.
-  const visibleIds = filteredAnalyses.map(a => a.id);
-  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every(id => selectedExports.includes(id));
+  // Bucketed by calendar day for the grouped render below
+  const groupedAnalyses = groupAnalysesByDate(filteredAnalyses);
 
-  const toggleSelectAll = () => {
-    if (allVisibleSelected) {
-      // Deselect only the visible ones, preserve any hidden-but-selected
-      // (e.g. cards currently filtered out by search).
-      setSelectedExports(prev => prev.filter(id => !visibleIds.includes(id)));
+  // Toggle a single card's membership in the selection set
+  const toggleCardSelect = (id) => {
+    setSelectedExports(prev =>
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    );
+  };
+
+  // Per-group "Selecionar todos de [data]" toggle. Selects every id in
+  // the group if any is missing; otherwise removes all ids in the group.
+  const toggleGroupSelect = (groupItems) => {
+    const groupIds = groupItems.map(a => a.id);
+    const allSelected = groupIds.every(id => selectedExports.includes(id));
+    if (allSelected) {
+      setSelectedExports(prev => prev.filter(id => !groupIds.includes(id)));
     } else {
-      setSelectedExports(prev => Array.from(new Set([...prev, ...visibleIds])));
+      setSelectedExports(prev => Array.from(new Set([...prev, ...groupIds])));
     }
   };
+
+  // Is the click-to-toggle "bulk mode" active? (Any selection → yes)
+  const hasSelection = selectedExports.length > 0;
 
   return (
     <div className="animate-fade-in relative min-h-screen transition-all duration-300" style={{ paddingLeft: collapsed ? 72 : 260 }}>
@@ -468,37 +549,6 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
             </div>
 
             <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
-              <button
-                onClick={() => {
-                  setIsSelectMode(!isSelectMode);
-                  setSelectedExports([]);
-                }}
-                className={`btn-magnetic flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all ${
-                  isSelectMode
-                    ? 'bg-primary/15 text-primary border border-primary/20'
-                    : 'bg-surface-flat text-gray-400 hover:text-white border border-border-subtle hover:border-border-hover'
-                }`}
-              >
-                <CheckSquare size={14} strokeWidth={2.5} /> {isSelectMode ? 'Cancelar' : 'Ação em Lote'}
-              </button>
-
-              {isSelectMode && visibleIds.length > 0 && (
-                <button
-                  onClick={toggleSelectAll}
-                  className={`btn-magnetic flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs font-bold transition-all ${
-                    allVisibleSelected
-                      ? 'bg-primary/15 text-primary border border-primary/20'
-                      : 'bg-surface-flat text-gray-400 hover:text-white border border-border-subtle hover:border-border-hover'
-                  }`}
-                >
-                  {allVisibleSelected
-                    ? <CheckSquare size={14} strokeWidth={2.5} />
-                    : <Square size={14} strokeWidth={2.5} />
-                  }
-                  {allVisibleSelected ? 'Desmarcar todos' : 'Selecionar todos'}
-                </button>
-              )}
-
               <div className="relative flex-1 md:w-64">
                 <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-600" size={13} strokeWidth={2} />
                 <input
@@ -544,102 +594,124 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
               <p className="text-sm text-gray-600 mt-1.5">Nenhum relatório pronto para mostrar.</p>
             </div>
           ) : (
-            <div className={`grid grid-cols-1 md:grid-cols-2 gap-5 ${
-              cardSize === 0 ? 'lg:grid-cols-4 xl:grid-cols-6' :
-              cardSize === 1 ? 'lg:grid-cols-3 xl:grid-cols-5' :
-              'lg:grid-cols-3 xl:grid-cols-4'
-            }`}>
-              {filteredAnalyses.map((analysis, idx) => (
-                <motion.div
-                  key={analysis.id}
-                  initial={{ opacity: 0, y: 16 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.4, delay: idx * 0.06, ease: [0.16, 1, 0.3, 1] }}
-                  onClick={() => {
-                    if (isSelectMode) {
-                      setSelectedExports(prev => prev.includes(analysis.id) ? prev.filter(id => id !== analysis.id) : [...prev, analysis.id]);
-                    } else {
-                      setSelectedAnalysis(analysis);
-                    }
-                  }}
-                  className={`glass lift rounded-3xl p-5 transition-all cursor-pointer relative overflow-hidden group ${
-                    selectedExports.includes(analysis.id)
-                    ? 'border-primary/30 glow-primary bg-primary/5'
-                    : 'hover:border-border-hover'
-                  }`}
-                >
-                  {/* Select checkbox */}
-                  {isSelectMode && (
-                    <div className={`absolute top-4 left-4 z-10 w-5 h-5 rounded-lg border-2 flex items-center justify-center transition-all ${
-                      selectedExports.includes(analysis.id) ? 'bg-primary border-primary text-white' : 'border-white/15 bg-black/40'
+            <div className="flex flex-col gap-14">
+              {groupedAnalyses.map((group, gIdx) => {
+                const groupIds = group.items.map(a => a.id);
+                const groupAllSelected = groupIds.every(id => selectedExports.includes(id));
+                const groupPartiallySelected = !groupAllSelected && groupIds.some(id => selectedExports.includes(id));
+                return (
+                  <section key={group.dateKey}>
+                    {/* ── Group header: date divider + "Selecionar todos de [data]" ── */}
+                    <div className="flex items-center gap-4 mb-6 group/header">
+                      <button
+                        onClick={() => toggleGroupSelect(group.items)}
+                        className={`shrink-0 w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                          groupAllSelected
+                            ? 'bg-primary text-white'
+                            : groupPartiallySelected
+                              ? 'bg-primary/30 text-white'
+                              : 'bg-white/[0.06] text-transparent hover:text-white/20'
+                        }`}
+                        title={groupAllSelected ? `Desmarcar todos de ${group.label}` : `Selecionar todos de ${group.label}`}
+                      >
+                        <Check size={12} strokeWidth={3} />
+                      </button>
+                      <span className="data-label-primary whitespace-nowrap">{group.label}</span>
+                      <span className="text-[11px] text-gray-600 font-mono whitespace-nowrap">
+                        {group.items.length} {group.items.length === 1 ? 'relatório' : 'relatórios'}
+                      </span>
+                      <div className="flex-1 h-px bg-gradient-to-r from-white/[0.08] to-transparent" />
+                    </div>
+
+                    {/* ── Group grid ── */}
+                    <div className={`grid grid-cols-1 md:grid-cols-2 gap-5 ${
+                      cardSize === 0 ? 'lg:grid-cols-4 xl:grid-cols-6' :
+                      cardSize === 1 ? 'lg:grid-cols-3 xl:grid-cols-5' :
+                      'lg:grid-cols-3 xl:grid-cols-4'
                     }`}>
-                      {selectedExports.includes(analysis.id) && <CheckSquare size={11} />}
+                      {group.items.map((analysis, idx) => {
+                        const isSel = selectedExports.includes(analysis.id);
+                        return (
+                          <motion.div
+                            key={analysis.id}
+                            initial={{ opacity: 0, y: 16 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ duration: 0.4, delay: Math.min(gIdx * 0.04 + idx * 0.04, 0.5), ease: [0.16, 1, 0.3, 1] }}
+                            onClick={() => {
+                              // Implicit bulk mode: once anything is selected,
+                              // clicking a card toggles selection. Otherwise the
+                              // card opens the reading modal as usual.
+                              if (hasSelection) {
+                                toggleCardSelect(analysis.id);
+                              } else {
+                                setSelectedAnalysis(analysis);
+                              }
+                            }}
+                            className={`glass lift rounded-3xl p-5 transition-all cursor-pointer relative overflow-hidden group ${
+                              isSel
+                                ? 'border-primary/40 glow-primary bg-primary/[0.06]'
+                                : 'hover:border-border-hover'
+                            }`}
+                          >
+                            {/* ── Top-right: selection checkbox (always present, subtle → visible on hover, primary when selected) ── */}
+                            <button
+                              onClick={(e) => { e.stopPropagation(); toggleCardSelect(analysis.id); }}
+                              className={`absolute top-4 right-4 z-20 w-6 h-6 rounded-lg flex items-center justify-center transition-all ${
+                                isSel
+                                  ? 'bg-primary text-white shadow-[0_0_12px_rgba(55,178,77,0.5)]'
+                                  : 'bg-black/60 backdrop-blur-sm text-transparent opacity-0 group-hover:opacity-100 group-hover:text-white/40 border border-white/10'
+                              }`}
+                              title={isSel ? 'Desmarcar' : 'Selecionar'}
+                            >
+                              <Check size={13} strokeWidth={3} />
+                            </button>
+
+                            {/* Card type label */}
+                            <div className="flex items-center gap-2 mb-3.5">
+                              <div className="p-1.5 bg-primary/10 rounded-xl">
+                                <FileText size={13} strokeWidth={1.5} className="text-primary" />
+                              </div>
+                              <span className="data-label-primary">Relatório</span>
+                            </div>
+
+                            {/* Thumbnail */}
+                            <div className="w-full aspect-video rounded-2xl overflow-hidden mb-4 border border-border-subtle bg-surface relative">
+                              <Thumbnail
+                                url={analysis.thumbnail_url}
+                                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
+                              />
+                            </div>
+
+                            {/* Title */}
+                            <h3 className="text-[15px] font-extrabold text-white mb-2 line-clamp-1 group-hover:text-primary transition-colors tracking-tight">
+                              {analysis.title}
+                            </h3>
+
+                            {/* Date */}
+                            <div className="flex items-center gap-2 text-[11px] text-gray-600 mb-4 font-mono">
+                              <Calendar size={10} strokeWidth={1.5} />
+                              {new Date(analysis.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
+                            </div>
+
+                            {/* Preview */}
+                            <div className="text-[14px] text-gray-400 line-clamp-2 leading-relaxed">
+                              {analysis.report_md.substring(0, 120)}...
+                            </div>
+                          </motion.div>
+                        );
+                      })}
                     </div>
-                  )}
-
-                  {/* Hover actions */}
-                  <div className="absolute top-0 right-0 p-4 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                    {!isSelectMode && (
-                      <>
-                        <button
-                          onClick={(e) => downloadSingleReport(e, analysis)}
-                          className="p-2 bg-blue-500/10 hover:bg-blue-500/20 rounded-xl text-blue-400 transition-all btn-ghost"
-                          title="Baixar Markdown"
-                        >
-                          <CloudDownload size={13} strokeWidth={2.5} />
-                        </button>
-                        <button
-                          onClick={(e) => handleDeleteUnit(e, analysis.id)}
-                          className="p-2 bg-red-500/10 hover:bg-red-500/20 rounded-xl text-red-400 transition-all btn-ghost"
-                          title="Excluir"
-                        >
-                          <Trash2 size={13} strokeWidth={2.5} />
-                        </button>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Card type label */}
-                  <div className={`flex items-center gap-2 mb-3.5 ${isSelectMode ? 'ml-7' : ''}`}>
-                    <div className="p-1.5 bg-primary/10 rounded-xl">
-                      <FileText size={13} strokeWidth={1.5} className="text-primary" />
-                    </div>
-                    <span className="data-label-primary">Relatório</span>
-                  </div>
-
-                  {/* Thumbnail */}
-                  <div className="w-full aspect-video rounded-2xl overflow-hidden mb-4 border border-border-subtle bg-surface relative">
-                    <Thumbnail
-                      url={analysis.thumbnail_url}
-                      className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity duration-500"
-                    />
-                  </div>
-
-                  {/* Title */}
-                  <h3 className="text-[15px] font-extrabold text-white mb-2 line-clamp-1 group-hover:text-primary transition-colors tracking-tight">
-                    {analysis.title}
-                  </h3>
-
-                  {/* Date */}
-                  <div className="flex items-center gap-2 text-[11px] text-gray-600 mb-4 font-mono">
-                    <Calendar size={10} strokeWidth={1.5} />
-                    {new Date(analysis.created_at).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  </div>
-
-                  {/* Preview */}
-                  <div className="text-[14px] text-gray-400 line-clamp-2 leading-relaxed">
-                    {analysis.report_md.substring(0, 120)}...
-                  </div>
-                </motion.div>
-              ))}
+                  </section>
+                );
+              })}
             </div>
           )}
         </div>
       </div>
 
-      {/* ═══ FLOATING BULK EXPORT BAR ═══ */}
+      {/* ═══ FLOATING BULK ACTION BAR ═══ */}
       <AnimatePresence>
-        {isSelectMode && selectedExports.length > 0 && !selectedAnalysis && (
+        {hasSelection && !selectedAnalysis && !deleteConfirmOpen && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -667,24 +739,96 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
                 Limpar
               </button>
 
+              {/* Apagar · N (red) */}
+              <button
+                onClick={() => setDeleteConfirmOpen(true)}
+                disabled={deleting}
+                className="flex items-center gap-2 pl-4 pr-5 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white text-[13px] font-bold shadow-[0_0_24px_rgba(220,38,38,0.35)] transition-colors duration-200 disabled:opacity-60 disabled:pointer-events-none"
+              >
+                <Trash2 size={14} strokeWidth={2.5} />
+                Apagar · {selectedExports.length}
+              </button>
+
+              {/* Exportar · N (blue) */}
               <button
                 onClick={handleExportMarkdown}
                 disabled={exporting}
-                className="flex items-center gap-2 pl-4 pr-5 py-2.5 rounded-full bg-primary hover:bg-primary/90 text-white text-[13px] font-bold shadow-[0_0_24px_rgba(55,178,77,0.35)] transition-colors duration-200 disabled:opacity-60 disabled:pointer-events-none"
+                className="flex items-center gap-2 pl-4 pr-5 py-2.5 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[13px] font-bold shadow-[0_0_24px_rgba(37,99,235,0.35)] transition-colors duration-200 disabled:opacity-60 disabled:pointer-events-none"
               >
                 {exporting
                   ? <Loader2 size={14} strokeWidth={2.5} className="animate-spin" />
                   : <Download size={14} strokeWidth={2.5} />
                 }
-                Exportar
+                Exportar · {selectedExports.length}
               </button>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* ═══ DELETE CONFIRMATION MODAL ═══ */}
+      <AnimatePresence>
+        {deleteConfirmOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-6 backdrop-blur-md bg-black/60"
+            onClick={() => !deleting && setDeleteConfirmOpen(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 12, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 8, scale: 0.97 }}
+              transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+              className="w-full max-w-md rounded-3xl bg-[#16161a] border border-white/[0.08] shadow-[0_30px_80px_rgba(0,0,0,0.65)] overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="p-7">
+                <div className="flex items-start gap-4">
+                  <div className="shrink-0 p-3 rounded-2xl bg-red-500/10 border border-red-500/20">
+                    <AlertTriangle size={22} strokeWidth={2} className="text-red-400" />
+                  </div>
+                  <div className="flex-1 pt-1">
+                    <h3 className="text-[17px] font-extrabold text-white tracking-tight leading-tight">
+                      Apagar {selectedExports.length} {selectedExports.length === 1 ? 'análise' : 'análises'}?
+                    </h3>
+                    <p className="text-[13px] text-gray-400 mt-2 leading-relaxed">
+                      Tem certeza que deseja apagar {selectedExports.length} {selectedExports.length === 1 ? 'análise' : 'análises'}?
+                      Essa ação não pode ser desfeita.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-end gap-2 mt-7">
+                  <button
+                    onClick={() => setDeleteConfirmOpen(false)}
+                    disabled={deleting}
+                    className="px-5 py-2.5 rounded-full text-[13px] font-bold text-gray-300 hover:text-white hover:bg-white/[0.05] transition-colors disabled:opacity-60"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={handleBulkDelete}
+                    disabled={deleting}
+                    className="flex items-center gap-2 pl-4 pr-5 py-2.5 rounded-full bg-red-600 hover:bg-red-700 text-white text-[13px] font-bold shadow-[0_0_24px_rgba(220,38,38,0.35)] transition-colors duration-200 disabled:opacity-60 disabled:pointer-events-none"
+                  >
+                    {deleting
+                      ? <Loader2 size={14} strokeWidth={2.5} className="animate-spin" />
+                      : <Trash2 size={14} strokeWidth={2.5} />
+                    }
+                    {deleting ? 'Apagando...' : 'Apagar tudo'}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Modal de Leitura */}
-      {selectedAnalysis && !isSelectMode && (
+      {selectedAnalysis && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-md bg-black/50 animate-fade-in" onClick={() => setSelectedAnalysis(null)}>
           <div className="glass-raised w-full max-w-5xl h-[85vh] rounded-4xl flex flex-col relative overflow-hidden shadow-modal" onClick={(e) => e.stopPropagation()}>
             {/* Modal Header */}
