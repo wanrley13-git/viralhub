@@ -3,13 +3,14 @@ import {
   Lightbulb, FileCheck, FileText, Minus, Plus, ChevronDown, ChevronUp, Video, X, ImagePlus,
   BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
-  LayoutGrid, Grid3x3, Clock, Heart, Send, Layout, CalendarDays,
+  LayoutGrid, Grid3x3, Clock, Heart, Send, Layout, CalendarDays, StickyNote,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import { useSidebar } from '../contexts/SidebarContext';
 import { useProjects } from '../contexts/ProjectsContext';
+import { useNotes } from '../contexts/NotesContext';
 import { getAccessToken } from '../supabaseClient';
 import { resolveThumbnailUrl } from '../components/Thumbnail';
 import MarkdownRenderer from '../components/MarkdownRenderer';
@@ -138,6 +139,7 @@ const IdeaCard = memo(IdeaCardBase);
 const ContentGenerator = () => {
   const { collapsed } = useSidebar();
   const { projects, fetchProjects } = useProjects();
+  const { folders: noteFolders, createNote, updateNote } = useNotes();
 
   // Page tabs
   const [activeTab, setActiveTab] = useState(() => {
@@ -774,6 +776,43 @@ const ContentGenerator = () => {
   const closeSendDest = () => {
     setSendDest(null);
     setSending(false);
+  };
+
+  // ─── Send developed content directly to Notes (no modal) ───
+  // Creates one note per idea using the same Notes context that the Notes page
+  // uses, so the notes show up instantly in /notes.
+  const sendToNotes = (ideaOrIdeas) => {
+    const ideasArr = Array.isArray(ideaOrIdeas) ? ideaOrIdeas : [ideaOrIdeas];
+    if (ideasArr.length === 0) return;
+
+    // Target folder: prefer the default "Geral" folder, otherwise first root folder.
+    const targetFolder =
+      noteFolders.find((f) => f.id === 'default') ||
+      noteFolders.find((f) => f.parentId === null) ||
+      noteFolders[0];
+
+    if (!targetFolder) {
+      setErrorToast('Nenhuma pasta de notas disponível.');
+      setTimeout(() => setErrorToast(null), 4000);
+      return;
+    }
+
+    for (const idea of ideasArr) {
+      const note = createNote(targetFolder.id);
+      updateNote(note.id, {
+        title: idea.title || 'Sem título',
+        content: idea.developed_content || idea.summary || '',
+      });
+    }
+
+    const count = ideasArr.length;
+    setSuccessToast(
+      count === 1 ? 'Nota criada com sucesso' : `${count} notas criadas com sucesso`
+    );
+    setTimeout(() => setSuccessToast(null), 3000);
+
+    setBulkSendPopupOpen(false);
+    setSelectedDeveloped([]);
   };
 
   // Parse a project's columns_json once, safely
@@ -1466,11 +1505,11 @@ const ContentGenerator = () => {
                   Enviar para Kanban
                 </button>
                 <button
-                  onClick={() => openSendDest(developedViewing, 'calendar')}
+                  onClick={() => sendToNotes(developedViewing)}
                   className="flex items-center gap-2 px-5 py-2 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[12px] font-bold transition-colors"
                 >
-                  <CalendarDays size={13} strokeWidth={2} />
-                  Enviar para Calendário
+                  <StickyNote size={13} strokeWidth={2} />
+                  Enviar para Notas
                 </button>
               </div>
             </motion.div>
@@ -1699,11 +1738,16 @@ const ContentGenerator = () => {
                     </button>
                     <div className="h-px bg-white/[0.06]" />
                     <button
-                      onClick={() => openBulkSendDest('calendar')}
+                      onClick={() => {
+                        const ideasToSend = developedIdeas.filter(i =>
+                          selectedDeveloped.includes(i.id) && i.status !== 'developing' && !i._failed
+                        );
+                        sendToNotes(ideasToSend);
+                      }}
                       className="w-full flex items-center gap-3 px-4 py-3 text-left text-[13px] font-bold text-white hover:bg-white/[0.05] transition-colors"
                     >
-                      <CalendarDays size={14} strokeWidth={2} className="text-primary" />
-                      Enviar para Calendário
+                      <StickyNote size={14} strokeWidth={2} className="text-primary" />
+                      Enviar para Notas
                     </button>
                   </motion.div>
                 </>
