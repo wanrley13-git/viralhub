@@ -258,6 +258,61 @@ async def clear_ideas(
     return {"ok": True, "deleted": count}
 
 
+# IMPORTANT: This route MUST stay declared BEFORE `DELETE /ideas/{idea_id}`
+# below. FastAPI matches routes in registration order, and since
+# content_router is registered before ideas_router in api.py, a request to
+# `DELETE /content/ideas/clear` would otherwise be caught by the int-typed
+# `/ideas/{idea_id}` handler and fail with
+#   "idea_id: Input should be a valid integer, unable to parse string as an integer"
+# IdeaGenerator's frontend hits this endpoint to clear creative ideas; the
+# scoped clear handler in routers/ideas.py (DELETE /content/ideas/clear)
+# is shadowed by `/ideas/{idea_id}` here, so we mirror its creative-scoped
+# behaviour at this level to keep the precedence correct.
+@router.delete("/ideas/clear")
+async def clear_creative_ideas_scoped(
+    scope: str = Query("active", regex="^(active|history)$"),
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Clear creative ideas (idea_type='creative') for the current user.
+
+    Mirrors the two-mode behaviour of `DELETE /content/ideas`:
+    - scope=active: soft-dismiss active creative ideas (keeps favorites and
+      history intact).
+    - scope=history: hard-delete all non-favorited creative ideas (keeps
+      is_saved=1 rows intact).
+    """
+    CREATIVE_TYPE = "creative"
+    if scope == "active":
+        result = await db.execute(
+            select(ContentIdea).where(
+                ContentIdea.user_id == current_user.id,
+                ContentIdea.idea_type == CREATIVE_TYPE,
+                or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None)),
+            )
+        )
+        ideas = result.scalars().all()
+        for idea in ideas:
+            idea.is_dismissed = 1
+        await db.commit()
+        return {"ok": True, "dismissed": len(ideas)}
+
+    # scope == "history": hard-delete non-favorited creative ideas
+    result = await db.execute(
+        select(ContentIdea).where(
+            ContentIdea.user_id == current_user.id,
+            ContentIdea.idea_type == CREATIVE_TYPE,
+            or_(ContentIdea.is_saved == 0, ContentIdea.is_saved.is_(None)),
+        )
+    )
+    ideas = result.scalars().all()
+    count = len(ideas)
+    for idea in ideas:
+        await db.delete(idea)
+    await db.commit()
+    return {"ok": True, "deleted": count}
+
+
 @router.delete("/ideas/{idea_id}")
 async def delete_idea(
     idea_id: int,
