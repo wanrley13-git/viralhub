@@ -118,7 +118,7 @@ def _load_creative_directive() -> str:
     global _CREATIVE_DIRECTIVE_CACHE
     if _CREATIVE_DIRECTIVE_CACHE is not None:
         return _CREATIVE_DIRECTIVE_CACHE
-    path = _find_directive_file("agente-criativo-prompt.md")
+    path = _find_directive_file("Modo ideias (agente de ideias rápidas).md")
     if not path:
         _CREATIVE_DIRECTIVE_CACHE = ""
         return _CREATIVE_DIRECTIVE_CACHE
@@ -437,7 +437,7 @@ async def generate_creative_ideas(
     # ── Step 2: Build the user_message for the creative agent with the
     # refined briefing substituting the raw prompt ──
     user_message = (
-        "Com base no briefing a seguir, execute a FASE 2 — RAJADA DE IDEIAS. "
+        "Com base no briefing a seguir, gere as ideias criativas. "
         f"Gere exatamente {quantity} ideias. "
         "Para cada ideia, retorne um título provocativo e uma frase explicativa. "
         "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
