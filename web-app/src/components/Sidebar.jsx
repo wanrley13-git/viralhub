@@ -15,6 +15,7 @@ import {
   FolderKanban,
   Plus,
   BookOpen,
+  Lightbulb,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -43,14 +44,17 @@ const Sidebar = () => {
 
   const isHubActive = location.pathname === '/' || location.pathname === '/transcriber';
   const isKanbanActive = location.pathname.startsWith('/kanban');
+  const isGeneratorActive = location.pathname === '/creator' || location.pathname === '/ideas';
 
   const [hubOpen, setHubOpen] = useState(isHubActive);
   const [kanbanOpen, setKanbanOpen] = useState(isKanbanActive);
+  const [generatorOpen, setGeneratorOpen] = useState(isGeneratorActive);
 
   // Auto-collapse submenus based on current route
   useEffect(() => {
     setHubOpen(isHubActive);
     setKanbanOpen(isKanbanActive);
+    setGeneratorOpen(isGeneratorActive);
   }, [location.pathname]);
 
   // Fetch projects once on mount, and again only when entering a kanban
@@ -77,8 +81,12 @@ const Sidebar = () => {
     { icon: Film, label: 'Vídeos longos', path: '/transcriber' },
   ];
 
+  const generatorSubItems = [
+    { icon: Sparkles,  label: 'Conteúdos', path: '/creator' },
+    { icon: Lightbulb, label: 'Ideias',    path: '/ideas'   },
+  ];
+
   const menuItems = [
-    { icon: Sparkles, label: 'Gerador', path: '/creator' },
     { icon: BookOpen, label: 'Notas', path: '/notes' },
   ];
 
@@ -145,7 +153,10 @@ const Sidebar = () => {
                 } else {
                   const next = !hubOpen;
                   setHubOpen(next);
-                  if (next) setKanbanOpen(false);
+                  if (next) {
+                    setKanbanOpen(false);
+                    setGeneratorOpen(false);
+                  }
                 }
               }}
               title={collapsed ? 'Hub Analítico' : undefined}
@@ -190,6 +201,89 @@ const Sidebar = () => {
             {!collapsed && hubOpen && (
               <div className="ml-[22px] mt-2 space-y-1.5 border-l border-white/[0.06] pl-4">
                 {hubSubItems.map((sub) => (
+                  <NavLink
+                    key={sub.path}
+                    to={sub.path}
+                    end
+                    className={({ isActive }) => cn(
+                      "flex items-center gap-2.5 px-3 py-3 rounded-xl transition-all duration-200 group/sub",
+                      isActive
+                        ? "bg-primary/8 text-white"
+                        : "text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]"
+                    )}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <sub.icon size={14} strokeWidth={1.5} className={cn(
+                          "shrink-0 transition-colors",
+                          isActive ? "text-primary" : "text-gray-600 group-hover/sub:text-gray-400"
+                        )} />
+                        <span className="text-[13px] font-semibold leading-tight">{sub.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Gerador com submenu */}
+          <div>
+            <button
+              onClick={() => {
+                if (collapsed) {
+                  navigate('/creator');
+                } else {
+                  const next = !generatorOpen;
+                  setGeneratorOpen(next);
+                  if (next) {
+                    setHubOpen(false);
+                    setKanbanOpen(false);
+                  }
+                }
+              }}
+              title={collapsed ? 'Gerador' : undefined}
+              className={cn(
+                "w-full flex items-center rounded-2xl transition-all duration-200 group relative",
+                collapsed
+                  ? "justify-center p-3"
+                  : "gap-3.5 px-4 py-3",
+                isGeneratorActive
+                  ? "bg-primary/10 text-white border border-primary/15"
+                  : "text-gray-500 hover:text-white hover:bg-white/[0.03] border border-transparent"
+              )}
+            >
+              {isGeneratorActive && (
+                <div className={cn(
+                  "absolute top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full shadow-[0_0_12px_rgba(55,178,77,0.5)]",
+                  collapsed ? "-left-2" : "-left-4"
+                )} />
+              )}
+
+              <div className={cn(
+                "p-1.5 rounded-xl transition-colors shrink-0",
+                isGeneratorActive ? "bg-primary/20 text-primary" : "text-gray-500 group-hover:text-gray-300"
+              )}>
+                <Sparkles size={18} />
+              </div>
+
+              {!collapsed && (
+                <>
+                  <div className="flex flex-col flex-1 text-left">
+                    <span className="text-[13px] font-semibold leading-tight">Gerador</span>
+                  </div>
+                  <ChevronDown size={14} className={cn(
+                    "text-gray-600 transition-transform duration-200",
+                    generatorOpen && "rotate-180"
+                  )} />
+                </>
+              )}
+            </button>
+
+            {/* Sub-items */}
+            {!collapsed && generatorOpen && (
+              <div className="ml-[22px] mt-2 space-y-1.5 border-l border-white/[0.06] pl-4">
+                {generatorSubItems.map((sub) => (
                   <NavLink
                     key={sub.path}
                     to={sub.path}
@@ -264,7 +358,10 @@ const Sidebar = () => {
                 } else {
                   const next = !kanbanOpen;
                   setKanbanOpen(next);
-                  if (next) setHubOpen(false);
+                  if (next) {
+                    setHubOpen(false);
+                    setGeneratorOpen(false);
+                  }
                 }
               }}
               title={collapsed ? 'Kanban' : undefined}

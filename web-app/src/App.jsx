@@ -15,6 +15,7 @@ import { supabase } from './supabaseClient';
 // switches feel instant after first visit (the chunks get cached).
 const Analyzer = lazy(() => import('./pages/Analyzer'));
 const ContentGenerator = lazy(() => import('./pages/ContentGenerator'));
+const IdeaGenerator = lazy(() => import('./pages/IdeaGenerator'));
 const Kanban = lazy(() => import('./pages/Kanban'));
 const Transcriber = lazy(() => import('./pages/Transcriber'));
 const Notes = lazy(() => import('./pages/Notes'));
@@ -105,6 +106,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <ContentGenerator />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/ideas"
+            element={
+              <ProtectedRoute>
+                <IdeaGenerator />
               </ProtectedRoute>
             }
           />
