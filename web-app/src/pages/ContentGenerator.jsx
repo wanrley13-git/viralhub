@@ -1620,20 +1620,6 @@ const ContentGenerator = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══ BASE GRADIENT — sits at the bottom of the page, extends upward behind the prompt bar and button ═══ */}
-      <AnimatePresence>
-        {(selectedIdeas.length > 0 || (activeTab === 'developed' && selectedDeveloped.length > 0)) && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            aria-hidden
-            className="absolute bottom-0 left-0 right-0 h-[320px] bg-gradient-to-t from-black/50 to-black/0 pointer-events-none z-0"
-          />
-        )}
-      </AnimatePresence>
-
       {/* ═══ DEVELOP BUTTON (floating above prompt bar) ═══ */}
       <AnimatePresence>
         {selectedIdeas.length > 0 && (
@@ -1642,11 +1628,11 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="shrink-0 relative z-10 flex justify-center items-center px-6 h-[150px] pointer-events-none"
+            className="absolute inset-x-0 bottom-[180px] z-10 flex justify-center items-center px-6 pointer-events-none"
           >
             <button
               onClick={handleDevelop}
-              className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200 pointer-events-auto"
+              className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_60px_30px_rgba(0,0,0,0.5)] transition-colors duration-200 pointer-events-auto"
             >
               Criar conteúdo · {selectedIdeas.length}
             </button>
@@ -1662,11 +1648,11 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="shrink-0 relative z-10 flex justify-center items-center px-6 h-[150px] pointer-events-none"
+            className="absolute inset-x-0 bottom-[180px] z-10 flex justify-center items-center px-6 pointer-events-none"
           >
             <button
               onClick={() => setBulkSendPopupOpen(o => !o)}
-              className="relative z-10 flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200 pointer-events-auto"
+              className="relative z-10 flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_60px_30px_rgba(0,0,0,0.5)] transition-colors duration-200 pointer-events-auto"
             >
               <Send size={15} strokeWidth={2.5} />
               Enviar · {selectedDeveloped.length}
