@@ -1648,11 +1648,16 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="shrink-0 relative flex justify-center px-6 pt-10 pb-3 bg-gradient-to-t from-black/80 via-black/40 to-transparent pointer-events-none"
+            className="shrink-0 relative flex justify-center px-6 pt-10 pb-3 pointer-events-none"
           >
+            {/* Gradient backdrop — extends DOWN past the button, behind the prompt bar, fading to solid black at the base of the page */}
+            <div
+              aria-hidden
+              className="absolute inset-x-0 top-0 h-[280px] bg-gradient-to-t from-black via-black/70 to-transparent pointer-events-none"
+            />
             <button
               onClick={() => setBulkSendPopupOpen(o => !o)}
-              className="flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200 pointer-events-auto"
+              className="relative z-10 flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_8px_32px_rgba(37,99,235,0.35)] transition-colors duration-200 pointer-events-auto"
             >
               <Send size={15} strokeWidth={2.5} />
               Enviar · {selectedDeveloped.length}
