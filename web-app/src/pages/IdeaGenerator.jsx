@@ -4,11 +4,14 @@ import {
   BookOpen, Mic, Check, Trash2, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
   LayoutGrid, Grid3x3, Clock, Heart, Pencil, Eye, Download,
+  Send, Layout, StickyNote,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import { useSidebar } from '../contexts/SidebarContext';
+import { useProjects } from '../contexts/ProjectsContext';
+import { useNotes } from '../contexts/NotesContext';
 import { getAccessToken } from '../supabaseClient';
 import { resolveThumbnailUrl } from '../components/Thumbnail';
 import MarkdownRenderer from '../components/MarkdownRenderer';
@@ -66,7 +69,7 @@ const formatDateHeader = (iso) => {
 
 // ─── Idea card (reused across tabs) ───
 // React.memo so typing in the prompt bar doesn't re-render every card.
-const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, showDate = false, bgColor = null }) => (
+const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, onExpand, showDate = false, bgColor = null }) => (
   <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
@@ -84,8 +87,15 @@ const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSav
           : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
     }`}
   >
-    {/* Top-right corner: heart + selection checkbox side by side */}
+    {/* Top-right corner: expand + heart + selection checkbox */}
     <div className="absolute top-3 right-3 flex items-center gap-2">
+      <button
+        onClick={(e) => { e.stopPropagation(); onExpand?.(idea); }}
+        className="w-7 h-7 flex items-center justify-center rounded-full text-white/45 hover:text-white hover:bg-white/[0.08] transition-colors"
+        title="Expandir ideia"
+      >
+        <Eye size={13} strokeWidth={2} />
+      </button>
       <button
         onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
         className="w-7 h-7 flex items-center justify-center rounded-full transition-transform duration-200 active:scale-125 overflow-visible"
@@ -112,7 +122,7 @@ const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSav
     <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
       Ideia {String(index + 1).padStart(2, '0')}
     </p>
-    <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-20 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
+    <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-28 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
       {idea.title}
     </p>
     {idea.summary && (
@@ -133,6 +143,8 @@ const IdeaCard = memo(IdeaCardBase);
 
 const IdeaGenerator = () => {
   const { collapsed } = useSidebar();
+  const { projects, fetchProjects } = useProjects();
+  const { folders: noteFolders, createNote, updateNote } = useNotes();
 
   // Page tabs — persisted under ideaGenerator_activeTab
   const [activeTab, setActiveTab] = useState(() => {
@@ -221,6 +233,16 @@ const IdeaGenerator = () => {
   const [quantityEditing, setQuantityEditing] = useState(false);
   const [quantityInput, setQuantityInput] = useState('');
 
+  // Expand modal — read-only popup with the full idea title + summary.
+  const [expandedIdea, setExpandedIdea] = useState(null);
+
+  // Send flow state — destination modal for Kanban / direct send to Notes.
+  const [sendDest, setSendDest] = useState(null); // { ideas, mode: 'kanban' }
+  const [sendProjectId, setSendProjectId] = useState(null);
+  const [sendColumnId, setSendColumnId] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [bulkSendPopupOpen, setBulkSendPopupOpen] = useState(false);
+
   const textareaRef = useRef(null);
   const mentionRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -249,6 +271,7 @@ const IdeaGenerator = () => {
     fetchAnalyses();
     fetchKnowledgeBases();
     fetchTones();
+    fetchProjects();
     // fetchIdeas is triggered by the tab-based useEffect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -578,6 +601,166 @@ const IdeaGenerator = () => {
     }
   };
 
+  // ─── Collect selected idea objects across all loaded tabs ───
+  // Selection state stores only ids, but ideas can live in ideas /
+  // historyIdeas / savedIdeas depending on which tabs the user has
+  // visited. Walk all three lists, dedupe by id, and preserve the order
+  // the user selected them in.
+  const getSelectedIdeaObjects = () => {
+    const all = [...ideas, ...historyIdeas, ...savedIdeas];
+    const seen = new Set();
+    const result = [];
+    for (const id of selectedIdeas) {
+      if (seen.has(id)) continue;
+      const found = all.find((i) => i.id === id);
+      if (found) {
+        seen.add(id);
+        result.push(found);
+      }
+    }
+    return result;
+  };
+
+  // ─── Send selected ideas to Kanban / Notas ───
+  // Mirrors the pattern used in ContentGenerator.jsx so the two pages
+  // behave identically for the user: Kanban opens a destination modal
+  // (project + column), Notes creates notes directly in the default
+  // folder and shows a confirmation toast.
+  const openSendDest = (ideaOrIdeas, mode) => {
+    const ideasArr = Array.isArray(ideaOrIdeas) ? ideaOrIdeas : [ideaOrIdeas];
+    if (ideasArr.length === 0) return;
+    setSendDest({ ideas: ideasArr, mode });
+
+    // Restore last-used project/column (shared key with ContentGenerator,
+    // since both pages push into the same Kanban projects).
+    let lastProjectId = null;
+    let lastColumnId = null;
+    try {
+      const raw = localStorage.getItem('viralhub_send_kanban');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        lastProjectId = parsed.projectId ?? null;
+        lastColumnId = parsed.columnId ?? null;
+      }
+    } catch {}
+
+    const stillExists = lastProjectId != null && projects.some((p) => p.id === lastProjectId);
+    const projectId = stillExists ? lastProjectId : (projects[0]?.id ?? null);
+    setSendProjectId(projectId);
+
+    if (projectId) {
+      const project = projects.find((p) => p.id === projectId);
+      let cols = [];
+      try { cols = JSON.parse(project?.columns_json || '[]'); } catch {}
+      if (!Array.isArray(cols) || cols.length === 0) cols = [{ id: 'todo' }];
+      const validColumn = lastColumnId && cols.some((c) => c.id === lastColumnId)
+        ? lastColumnId
+        : cols[0].id || 'todo';
+      setSendColumnId(validColumn);
+    } else {
+      setSendColumnId('todo');
+    }
+  };
+
+  const closeSendDest = () => {
+    setSendDest(null);
+    setSending(false);
+  };
+
+  const getProjectColumns = (projectId) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (!project) return [];
+    try {
+      const cols = JSON.parse(project.columns_json || '[]');
+      return Array.isArray(cols) && cols.length > 0
+        ? cols
+        : [{ id: 'todo', title: 'Nova tarefa' }];
+    } catch {
+      return [{ id: 'todo', title: 'Nova tarefa' }];
+    }
+  };
+
+  const confirmSend = async () => {
+    if (!sendDest || !sendProjectId) return;
+    const { ideas: ideasToSend } = sendDest;
+    if (!ideasToSend || ideasToSend.length === 0) return;
+    setSending(true);
+    try {
+      const token = await getAccessToken();
+      const headers = { Authorization: `Bearer ${token}` };
+      const projectIdInt = parseInt(sendProjectId, 10);
+      const statusColumn = sendColumnId || 'todo';
+
+      for (const idea of ideasToSend) {
+        const payload = {
+          title: idea.title,
+          content_md: idea.developed_content || idea.summary || '',
+          tag: 'Ideia',
+          project_id: projectIdInt,
+          status: statusColumn,
+        };
+        await axios.post(`${API_URL}/tasks/`, payload, { headers });
+      }
+
+      // Persist last-used project/column for next send (shared key with
+      // ContentGenerator so both pages share the same "last used").
+      try {
+        localStorage.setItem(
+          'viralhub_send_kanban',
+          JSON.stringify({ projectId: projectIdInt, columnId: sendColumnId })
+        );
+      } catch {}
+
+      const count = ideasToSend.length;
+      setSuccessToast(
+        count === 1 ? 'Enviado para o Kanban' : `${count} ideias enviadas para o Kanban`
+      );
+      setTimeout(() => setSuccessToast(null), 3000);
+      setSelectedIdeas([]);
+      closeSendDest();
+    } catch (err) {
+      const msg = err.response?.data?.detail || err.message || 'Erro ao enviar.';
+      setErrorToast(`Falha ao enviar: ${msg}`);
+      setTimeout(() => setErrorToast(null), 5000);
+      setSending(false);
+    }
+  };
+
+  // Create one note per idea directly in the default folder via the
+  // shared NotesContext — identical to ContentGenerator's bulk-send.
+  const sendToNotes = (ideaOrIdeas) => {
+    const ideasArr = Array.isArray(ideaOrIdeas) ? ideaOrIdeas : [ideaOrIdeas];
+    if (ideasArr.length === 0) return;
+
+    const targetFolder =
+      noteFolders.find((f) => f.id === 'default') ||
+      noteFolders.find((f) => f.parentId === null) ||
+      noteFolders[0];
+
+    if (!targetFolder) {
+      setErrorToast('Nenhuma pasta de notas disponível.');
+      setTimeout(() => setErrorToast(null), 4000);
+      return;
+    }
+
+    for (const idea of ideasArr) {
+      const note = createNote(targetFolder.id);
+      updateNote(note.id, {
+        title: idea.title || 'Sem título',
+        content: idea.summary || '',
+      });
+    }
+
+    const count = ideasArr.length;
+    setSuccessToast(
+      count === 1 ? 'Nota criada com sucesso' : `${count} notas criadas com sucesso`
+    );
+    setTimeout(() => setSuccessToast(null), 3000);
+
+    setBulkSendPopupOpen(false);
+    setSelectedIdeas([]);
+  };
+
   // ─── Editable quantity ───
   const openQuantityEdit = () => {
     setQuantityInput(String(quantity));
@@ -610,15 +793,19 @@ const IdeaGenerator = () => {
     return () => document.removeEventListener('keydown', h);
   }, []);
 
-  // ESC: clear card selections
+  // ESC priority: expand modal first, then send modal, then clear selection
   useEffect(() => {
     const h = (e) => {
       if (e.key !== 'Escape') return;
+      if (expandedIdea) { setExpandedIdea(null); return; }
+      if (sendDest)     { closeSendDest();       return; }
+      if (bulkSendPopupOpen) { setBulkSendPopupOpen(false); return; }
       if (selectedIdeas.length > 0) setSelectedIdeas([]);
     };
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
-  }, [selectedIdeas]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [expandedIdea, sendDest, bulkSendPopupOpen, selectedIdeas]);
 
   const stepQuantity = (dir) => setQuantity(p => Math.min(MAX_QTY, Math.max(MIN_QTY, p + dir)));
 
@@ -860,6 +1047,7 @@ const IdeaGenerator = () => {
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
+                    onExpand={setExpandedIdea}
                   />
                 ))}
               </div>
@@ -911,6 +1099,7 @@ const IdeaGenerator = () => {
                             cs={cs}
                             onToggleSelect={toggleIdeaSelect}
                             onToggleSave={toggleSaveIdea}
+                            onExpand={setExpandedIdea}
                             bgColor="#121E1E"
                           />
                         ))}
@@ -945,6 +1134,7 @@ const IdeaGenerator = () => {
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
+                    onExpand={setExpandedIdea}
                     showDate
                     bgColor="#12121F"
                   />
@@ -967,6 +1157,238 @@ const IdeaGenerator = () => {
           </motion.div>
         </AnimatePresence>
       </div>
+
+      {/* ═══ EXPAND MODAL ═══ */}
+      <AnimatePresence>
+        {expandedIdea && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-[100] flex items-center justify-center p-6 backdrop-blur-md bg-black/60"
+            onClick={() => setExpandedIdea(null)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 12 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 12 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="glass-raised w-full max-w-3xl max-h-[88vh] rounded-3xl flex flex-col overflow-hidden shadow-modal"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="pt-6 px-7 pb-5 border-b border-white/[0.06] flex items-start justify-between gap-4 shrink-0">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 mb-2">
+                    Ideia
+                  </p>
+                  <h3 className="text-xl font-extrabold text-white leading-tight uppercase tracking-wide">
+                    {expandedIdea.title}
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setExpandedIdea(null)}
+                  className="p-2 bg-white/[0.05] hover:bg-white/[0.08] rounded-xl transition-colors text-gray-400 hover:text-white shrink-0"
+                  title="Fechar"
+                >
+                  <X size={16} strokeWidth={2.5} />
+                </button>
+              </div>
+
+              {/* Body — plain text summary, no markdown */}
+              <div className="flex-1 overflow-y-auto custom-scrollbar px-7 py-6">
+                {expandedIdea.summary ? (
+                  <p className="text-[15px] text-white/80 leading-relaxed whitespace-pre-wrap">
+                    {expandedIdea.summary}
+                  </p>
+                ) : (
+                  <p className="text-gray-500 text-sm italic text-center py-12">
+                    Sem resumo disponível para esta ideia.
+                  </p>
+                )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ SEND DESTINATION MODAL (Kanban) ═══ */}
+      <AnimatePresence>
+        {sendDest && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-[110] flex items-center justify-center p-6 backdrop-blur-md bg-black/60"
+            onClick={closeSendDest}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.96, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.96, y: 10 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              className="bg-[#16161a] border border-white/[0.08] rounded-2xl w-full max-w-md overflow-hidden shadow-[0_20px_64px_rgba(0,0,0,0.6)]"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* Header */}
+              <div className="px-6 pt-5 pb-4 border-b border-white/[0.06] flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <Layout size={16} strokeWidth={1.8} className="text-primary" />
+                  <h3 className="text-[15px] font-extrabold text-white tracking-tight">
+                    Enviar para o Kanban
+                  </h3>
+                </div>
+                <button
+                  onClick={closeSendDest}
+                  className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-colors"
+                >
+                  <X size={14} strokeWidth={2.5} />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="px-6 py-5 space-y-4">
+                <div className="p-3 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 mb-1">
+                    {sendDest.ideas.length === 1 ? 'Ideia' : `${sendDest.ideas.length} ideias`}
+                  </p>
+                  <p className="text-[13px] font-bold text-white line-clamp-2 uppercase tracking-wide">
+                    {sendDest.ideas[0].title}
+                    {sendDest.ideas.length > 1 && (
+                      <span className="text-white/40 normal-case tracking-normal font-semibold"> +{sendDest.ideas.length - 1} mais</span>
+                    )}
+                  </p>
+                </div>
+
+                {projects.length === 0 ? (
+                  <div className="p-4 rounded-xl bg-amber-500/[0.06] border border-amber-500/20 text-amber-400 text-[12px] font-medium">
+                    Você ainda não tem projetos. Crie um projeto no Kanban antes de enviar ideias.
+                  </div>
+                ) : (
+                  <>
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-widest text-white/50 mb-2">Projeto</label>
+                      <select
+                        value={sendProjectId || ''}
+                        onChange={(e) => {
+                          const pid = parseInt(e.target.value, 10);
+                          setSendProjectId(pid);
+                          const cols = getProjectColumns(pid);
+                          setSendColumnId(cols[0]?.id || 'todo');
+                        }}
+                        className="w-full bg-[#0e0e11] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-white outline-none focus:border-primary/40 transition-colors"
+                      >
+                        {projects.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-bold uppercase tracking-widest text-white/50 mb-2">Coluna</label>
+                      <select
+                        value={sendColumnId || ''}
+                        onChange={(e) => setSendColumnId(e.target.value)}
+                        className="w-full bg-[#0e0e11] border border-white/[0.08] rounded-xl px-3.5 py-2.5 text-[13px] text-white outline-none focus:border-primary/40 transition-colors"
+                      >
+                        {getProjectColumns(sendProjectId).map((col) => (
+                          <option key={col.id} value={col.id}>{col.title}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-white/[0.06] flex items-center justify-end gap-2.5 bg-black/20">
+                <button
+                  onClick={closeSendDest}
+                  className="px-4 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-gray-400 text-[12px] font-bold hover:bg-white/[0.06] transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={confirmSend}
+                  disabled={sending || projects.length === 0 || !sendProjectId}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-[12px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {sending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} strokeWidth={2.5} />}
+                  {sending ? 'Enviando...' : 'Enviar'}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* ═══ BULK SEND BUTTON (any tab with selection) ═══ */}
+      <AnimatePresence>
+        {selectedIdeas.length > 0 && !sendDest && (
+          <motion.div
+            initial={{ opacity: 0, y: 16 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 16 }}
+            transition={{ duration: 0.2, ease: 'easeOut' }}
+            className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center px-6 pointer-events-none"
+          >
+            <button
+              onClick={() => {
+                const picked = getSelectedIdeaObjects();
+                if (picked.length === 0) return;
+                setBulkSendPopupOpen((o) => !o);
+              }}
+              className="relative z-10 flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
+            >
+              <Send size={15} strokeWidth={2.5} />
+              Enviar · {selectedIdeas.length}
+            </button>
+
+            <AnimatePresence>
+              {bulkSendPopupOpen && (
+                <>
+                  <div
+                    className="fixed inset-0 z-[90] pointer-events-auto"
+                    onClick={() => setBulkSendPopupOpen(false)}
+                  />
+                  <motion.div
+                    initial={{ opacity: 0, y: 8, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: 8, scale: 0.96 }}
+                    transition={{ duration: 0.15, ease: 'easeOut' }}
+                    className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 z-[95] bg-[#16161a] border border-white/[0.08] rounded-2xl shadow-[0_20px_64px_rgba(0,0,0,0.6)] overflow-hidden min-w-[220px] pointer-events-auto"
+                  >
+                    <button
+                      onClick={() => {
+                        const picked = getSelectedIdeaObjects();
+                        setBulkSendPopupOpen(false);
+                        openSendDest(picked, 'kanban');
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-[13px] font-bold text-white hover:bg-white/[0.05] transition-colors"
+                    >
+                      <Layout size={14} strokeWidth={2} className="text-primary" />
+                      Enviar para Kanban
+                    </button>
+                    <div className="h-px bg-white/[0.06]" />
+                    <button
+                      onClick={() => {
+                        const picked = getSelectedIdeaObjects();
+                        sendToNotes(picked);
+                      }}
+                      className="w-full flex items-center gap-3 px-4 py-3 text-left text-[13px] font-bold text-white hover:bg-white/[0.05] transition-colors"
+                    >
+                      <StickyNote size={14} strokeWidth={2} className="text-primary" />
+                      Enviar para Notas
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* ═══ SUCCESS TOAST ═══ */}
       <AnimatePresence>
