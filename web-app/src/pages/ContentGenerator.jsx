@@ -1632,7 +1632,7 @@ const ContentGenerator = () => {
           >
             <button
               onClick={handleDevelop}
-              className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_60px_30px_rgba(0,0,0,0.5)] transition-colors duration-200 pointer-events-auto"
+              className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_80px_rgba(0,0,0,0.7)] transition-colors duration-200 pointer-events-auto"
             >
               Criar conteúdo · {selectedIdeas.length}
             </button>
@@ -1652,7 +1652,7 @@ const ContentGenerator = () => {
           >
             <button
               onClick={() => setBulkSendPopupOpen(o => !o)}
-              className="relative z-10 flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_60px_30px_rgba(0,0,0,0.5)] transition-colors duration-200 pointer-events-auto"
+              className="relative z-10 flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_80px_rgba(0,0,0,0.7)] transition-colors duration-200 pointer-events-auto"
             >
               <Send size={15} strokeWidth={2.5} />
               Enviar · {selectedDeveloped.length}
