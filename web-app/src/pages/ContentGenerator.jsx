@@ -1632,7 +1632,7 @@ const ContentGenerator = () => {
           >
             <button
               onClick={handleDevelop}
-              className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_80px_rgba(0,0,0,0.7)] transition-colors duration-200 pointer-events-auto"
+              className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
             >
               Criar conteúdo · {selectedIdeas.length}
             </button>
@@ -1652,7 +1652,7 @@ const ContentGenerator = () => {
           >
             <button
               onClick={() => setBulkSendPopupOpen(o => !o)}
-              className="relative z-10 flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_80px_rgba(0,0,0,0.7)] transition-colors duration-200 pointer-events-auto"
+              className="relative z-10 flex items-center gap-2.5 px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
             >
               <Send size={15} strokeWidth={2.5} />
               Enviar · {selectedDeveloped.length}
@@ -1697,7 +1697,7 @@ const ContentGenerator = () => {
 
       {/* ═══ FLOATING PROMPT BAR ═══ */}
       <div className="shrink-0 relative z-20 flex justify-center px-6 pb-7">
-        <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-8px_40px_rgba(0,0,0,0.35)]">
+        <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-4px_16px_rgba(0,0,0,0.15)]">
           {uploadedImages.length > 0 && (
             <div className="flex items-center gap-2 mb-3">
               {uploadedImages.map((file, i) => <ImageThumb key={i} file={file} onRemove={() => setUploadedImages(p => p.filter((_, j) => j !== i))} />)}
