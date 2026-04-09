@@ -217,11 +217,19 @@ async def download_videos_batch(
     Behavior:
       • Single link → no delay, no extra ceremony (equivalent to the old
         download_video). A rate-limit retry still fires as a safety net.
-      • Multi-link → a 4s polite delay between downloads to avoid
-        tripping Instagram/TikTok/YouTube rate limits.
-      • On rate-limit-looking errors, wait 10s and retry once.
+      • Multi-link → a progressive polite delay between downloads that
+        grows as the batch gets longer (4s for 1–10, 6s for 11–20, 8s
+        for 21–30, etc.) to avoid tripping Instagram/TikTok/YouTube
+        rate limits.
+      • Every 15 successful downloads, a 15s "cooldown" pause is
+        inserted on top of the normal delay — large Instagram batches
+        reliably trigger rate-limits around that threshold.
+      • On rate-limit-looking errors, up to 3 retries with exponential
+        backoff: 10s, 30s, 60s.
       • On definitive failure, record the error and CONTINUE with the
         remaining links — never abort the whole batch.
+      • Logs an ETA (average per-download time × remaining links) so
+        the frontend can show "restam ~Xm:YYs" while the batch runs.
 
     Returns a list of result dicts, one per input link:
         [{"link": str, "path": str | None, "error": str | None}, ...]
@@ -231,35 +239,80 @@ async def download_videos_batch(
     results: list[dict] = []
     total = len(links)
     is_batch = total > 1
-    INTER_DOWNLOAD_DELAY_S = 4      # 3–5s range as requested
-    RATE_LIMIT_BACKOFF_S = 10
+    BASE_DELAY_S = 4                   # baseline polite delay
+    DELAY_STEP_S = 2                   # +2s every DELAY_BUCKET downloads
+    DELAY_BUCKET = 10                  # grow delay every N downloads
+    COOLDOWN_EVERY = 15                # trigger extra pause every N successes
+    COOLDOWN_S = 15                    # length of the extra pause
+    RATE_LIMIT_BACKOFFS_S = [10, 30, 60]  # exponential-ish retries
+
+    success_count = 0
+    downloads_since_cooldown = 0
+    total_download_time_s = 0.0
 
     for idx, link in enumerate(links):
-        # Polite delay between downloads in a batch (never before the first)
+        # Polite delay between downloads in a batch (never before the first).
+        # Delay grows with batch depth: 4s for 1–10, 6s for 11–20, 8s for 21–30…
         if is_batch and idx > 0:
+            delay = BASE_DELAY_S + DELAY_STEP_S * (idx // DELAY_BUCKET)
             if progress_callback:
                 await progress_callback(
-                    f"Aguardando {INTER_DOWNLOAD_DELAY_S}s antes do próximo download ({idx+1}/{total})...",
+                    f"Aguardando {delay}s antes do próximo download ({idx+1}/{total})...",
                     5,
                 )
-            await asyncio.sleep(INTER_DOWNLOAD_DELAY_S)
+            await asyncio.sleep(delay)
+
+            # Extra cooldown every 15 successful downloads to give the
+            # platform a breather and reset rate-limit counters.
+            if downloads_since_cooldown >= COOLDOWN_EVERY:
+                if progress_callback:
+                    await progress_callback(
+                        f"Cooldown anti-rate-limit: pausando {COOLDOWN_S}s após {success_count} downloads bem-sucedidos...",
+                        5,
+                    )
+                await asyncio.sleep(COOLDOWN_S)
+                downloads_since_cooldown = 0
 
         # ── Attempt 1 ──
+        dl_start = time.monotonic()
         path, err = await _download_video_once(link, progress_callback)
 
-        # ── Attempt 2 (only if rate-limited) ──
-        if path is None and _is_rate_limit_error(err or ''):
+        # ── Progressive retries on rate-limit errors (up to 3 tries) ──
+        retry_idx = 0
+        while (
+            path is None
+            and _is_rate_limit_error(err or '')
+            and retry_idx < len(RATE_LIMIT_BACKOFFS_S)
+        ):
+            wait_s = RATE_LIMIT_BACKOFFS_S[retry_idx]
+            retry_idx += 1
             if progress_callback:
                 await progress_callback(
-                    f"Rate-limit detectado em {link}. Aguardando {RATE_LIMIT_BACKOFF_S}s para retry...",
+                    f"Rate-limit detectado em {link}. Retry {retry_idx}/{len(RATE_LIMIT_BACKOFFS_S)} em {wait_s}s...",
                     10,
                 )
-            await asyncio.sleep(RATE_LIMIT_BACKOFF_S)
+            await asyncio.sleep(wait_s)
             path, err = await _download_video_once(
-                link, progress_callback, attempt_label="retry"
+                link, progress_callback, attempt_label=f"retry {retry_idx}"
             )
 
         if path:
+            success_count += 1
+            downloads_since_cooldown += 1
+            total_download_time_s += time.monotonic() - dl_start
+            # ETA for remaining links, based on average per-download time
+            # plus the expected inter-download delay of the *next* slot.
+            remaining = total - (idx + 1)
+            if is_batch and remaining > 0 and progress_callback:
+                avg_dl = total_download_time_s / success_count
+                next_delay = BASE_DELAY_S + DELAY_STEP_S * ((idx + 1) // DELAY_BUCKET)
+                eta_s = int(remaining * (avg_dl + next_delay))
+                mins, secs = divmod(max(eta_s, 0), 60)
+                eta_label = f"{mins}m{secs:02d}s" if mins else f"{secs}s"
+                await progress_callback(
+                    f"Progresso do batch: {idx+1}/{total} • restam ~{eta_label}",
+                    min(20, 5 + int(15 * (idx + 1) / total)),
+                )
             results.append({"link": link, "path": path, "error": None})
         else:
             short, hint = _classify_download_error(err or 'erro desconhecido', link)

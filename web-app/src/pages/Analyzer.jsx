@@ -141,9 +141,35 @@ const Analyzer = () => {
     return () => document.removeEventListener('keydown', handleEsc);
   }, [selectedAnalysis, deleteConfirmOpen, selectedExports.length]);
 
+  // SSE connection with automatic reconnect.
+  //
+  // Background: Railway's HTTP/2 proxy kills long-lived SSE streams with
+  // ERR_HTTP2_PROTOCOL_ERROR when the backend is crunching through a
+  // 30–50 video batch (several minutes between state updates). The
+  // server now emits a 15s heartbeat AND we reconnect on any onerror
+  // that fires before the task hit a terminal state. Five failed
+  // reconnects in a row is treated as a hard give-up so we don't spin
+  // forever, but the backend task keeps running regardless — the user
+  // can just refresh to resume.
   useEffect(() => {
-    if (taskId) {
-      const eventSource = new EventSource(`${API_URL}/analyze/progress/${taskId}`);
+    if (!taskId) return;
+
+    const MAX_RECONNECTS = 5;
+    const RECONNECT_DELAY_MS = 3000;
+
+    let terminated = false;          // true once we hit completed/error OR cleanup runs
+    let reconnectAttempts = 0;
+    let eventSource = null;
+    let reconnectTimer = null;
+
+    const connect = () => {
+      eventSource = new EventSource(`${API_URL}/analyze/progress/${taskId}`);
+
+      // Successful open → reset the reconnect counter so a single
+      // hiccup doesn't burn the whole budget.
+      eventSource.onopen = () => {
+        reconnectAttempts = 0;
+      };
 
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
@@ -155,6 +181,7 @@ const Analyzer = () => {
         }
 
         if (data.status === 'completed') {
+          terminated = true;
           setLoading(false);
           setTaskId(null);
           eventSource.close();
@@ -165,6 +192,7 @@ const Analyzer = () => {
         }
 
         if (data.status === 'error') {
+          terminated = true;
           setError(data.logs[data.logs.length - 1] || "Erro desconhecido na análise.");
           setLoading(false);
           setTaskId(null);
@@ -173,14 +201,43 @@ const Analyzer = () => {
       };
 
       eventSource.onerror = () => {
-        setError("Erro na conexão com o servidor de progresso.");
-        setLoading(false);
-        setTaskId(null);
-        eventSource.close();
-      };
+        // Close whatever is here so we fully own reconnection timing
+        // instead of fighting the browser's native auto-retry.
+        try { eventSource.close(); } catch (_) {}
 
-      return () => eventSource.close();
-    }
+        // If we already saw a terminal state (or the component is
+        // being torn down), don't try to reconnect.
+        if (terminated) return;
+
+        if (reconnectAttempts >= MAX_RECONNECTS) {
+          setError("Conexão perdida. A análise pode ainda estar rodando no servidor. Recarregue a página para verificar.");
+          setLoading(false);
+          return;
+        }
+
+        reconnectAttempts += 1;
+        setStatusMessage(
+          `Conexão perdida. Reconectando (${reconnectAttempts}/${MAX_RECONNECTS}) em 3s...`
+        );
+        reconnectTimer = setTimeout(() => {
+          if (!terminated) connect();
+        }, RECONNECT_DELAY_MS);
+      };
+    };
+
+    connect();
+
+    return () => {
+      terminated = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      if (eventSource) {
+        try { eventSource.close(); } catch (_) {}
+        eventSource = null;
+      }
+    };
   }, [taskId]);
 
   // Keep the logs panel pinned to the bottom as new lines arrive. We

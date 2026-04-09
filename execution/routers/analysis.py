@@ -48,17 +48,43 @@ async def get_progress(task_id: str):
         raise HTTPException(status_code=404, detail="Tarefa não encontrada")
 
     async def event_generator():
+        # Keep the SSE alive through intermediaries like Railway's HTTP/2
+        # proxy by emitting a comment frame every 15s even when nothing
+        # changes — without it, long-running batch downloads (several
+        # minutes between state updates) get killed with
+        # ERR_HTTP2_PROTOCOL_ERROR. Also hard-cap the generator at 2h
+        # so a crashed background task can't keep a stream open forever.
+        HEARTBEAT_INTERVAL_S = 15
+        MAX_DURATION_S = 2 * 60 * 60
+        POLL_INTERVAL_S = 0.5
+
+        loop = asyncio.get_event_loop()
+        started_at = loop.time()
+        last_heartbeat = started_at
+
         while True:
+            now = loop.time()
+            if now - started_at > MAX_DURATION_S:
+                break
+
             task = tasks_progress.get(task_id)
             if not task:
                 break
-                
+
             yield f"data: {json.dumps(task)}\n\n"
-            
+
             if task.get("status") == "completed" or task.get("status") == "error":
                 break
-                
-            await asyncio.sleep(0.5)
+
+            await asyncio.sleep(POLL_INTERVAL_S)
+
+            # Emit an SSE comment line (ignored by the EventSource
+            # client but travels through the proxy as a real frame) so
+            # the connection never sits idle longer than 15s.
+            now2 = loop.time()
+            if now2 - last_heartbeat >= HEARTBEAT_INTERVAL_S:
+                yield ": heartbeat\n\n"
+                last_heartbeat = now2
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
