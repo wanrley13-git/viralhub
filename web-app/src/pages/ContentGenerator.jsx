@@ -1629,7 +1629,7 @@ const ContentGenerator = () => {
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2 }}
             aria-hidden
-            className="absolute bottom-0 left-0 right-0 h-[320px] bg-gradient-to-t from-black/50 to-transparent pointer-events-none z-0"
+            className="absolute bottom-0 left-0 right-0 h-[320px] bg-gradient-to-t from-black/50 to-black/0 pointer-events-none z-0"
           />
         )}
       </AnimatePresence>
