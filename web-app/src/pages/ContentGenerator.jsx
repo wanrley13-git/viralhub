@@ -76,10 +76,13 @@ const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSav
     animate={{ opacity: 1, y: 0 }}
     transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
     onClick={() => onToggleSelect(idea.id)}
-    style={bgColor ? { backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor } : undefined}
+    style={bgColor ? {
+      backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor,
+      ...(isSelected ? { borderColor: `color-mix(in srgb, ${bgColor} 92%, white)` } : {})
+    } : undefined}
     className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-colors duration-200 group flex flex-col ${
       isSelected
-        ? (bgColor ? 'border-primary' : 'bg-white/[0.06] border-primary')
+        ? (bgColor ? '' : 'bg-white/[0.06] border-primary')
         : bgColor
           ? 'border-white/[0.08] hover:border-primary/40'
           : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
