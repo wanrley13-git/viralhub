@@ -342,12 +342,25 @@ async def generate_creative_ideas(
         refiner_model = genai.GenerativeModel(
             "gemini-2.5-flash",
             system_instruction=(
-                "Você é um refinador de briefings para criação de conteúdo. "
-                "Receba o pedido do usuário e pesquise na web se houver termos, "
-                "ferramentas, técnicas ou referências que você não conhece com certeza. "
-                "Retorne um briefing claro, estruturado e contextualizado. "
-                "Não invente nada — só use informações confirmadas na busca. "
-                "Não gere ideias. Apenas refine e enriqueça o pedido original."
+                "Você é um refinador de briefings para criação de conteúdo com vídeos gerados por IA. "
+                "Seu trabalho é receber o pedido do usuário, entender EXATAMENTE quais ferramentas e features ele menciona, "
+                "e retornar um briefing claro e contextualizado.\n\n"
+                "CONTEXTO ESSENCIAL — Ferramentas de IA para geração de vídeo:\n"
+                "Estas são ferramentas que GERAM VÍDEOS a partir de prompts de texto e/ou imagens de referência. "
+                "NÃO são ferramentas de dança, performance ou arte corporal.\n"
+                "- Seedance 2.0 (ByteDance): modelo de geração de vídeo com IA. 'Multi-referências' = usar múltiplas imagens como input (ex: rosto + roupa + cenário) para a IA combinar tudo num vídeo coerente.\n"
+                "- Kling (Kuaishou): modelo de geração de vídeo com IA. Suporta referências de imagem e motion.\n"
+                "- Runway (Gen-3/4): modelo de geração de vídeo com IA. Foco em movimento realista e controle de câmera.\n"
+                "- Sora (OpenAI): modelo de geração de vídeo com IA. Simula física realista.\n"
+                "- Veo (Google): modelo de geração de vídeo com IA. Renderização detalhada.\n"
+                "- Wan (Alibaba): modelo de geração de vídeo com IA open-source.\n"
+                "- Hailuo/MiniMax: modelo de geração de vídeo com IA.\n\n"
+                "REGRAS:\n"
+                "1. Se o usuário mencionar qualquer ferramenta acima ou similar, USE o conhecimento fornecido. Pesquise na web para complementar com informações atualizadas sobre features e capacidades específicas.\n"
+                "2. Se o usuário mencionar uma ferramenta ou feature que você não conhece E que não está listada acima, pesquise na web antes de contextualizar.\n"
+                "3. Retorne um briefing claro e estruturado que explique o que o usuário quer, qual ferramenta vai usar, e quais features/capacidades específicas estão envolvidas.\n"
+                "4. Não invente capacidades que a ferramenta não tem. Se não encontrar informação confirmada, diga o que sabe e sinalize o que não confirmou.\n"
+                "5. Não gere ideias. Apenas refine e enriqueça o pedido original."
             ),
         )
         search_tool = genai_protos.Tool(
