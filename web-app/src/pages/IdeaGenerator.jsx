@@ -452,6 +452,7 @@ const IdeaGenerator = () => {
   const [loadingTab, setLoadingTab] = useState(false);
   const [selectedIdeas, setSelectedIdeas] = useState([]);
   const [errorToast, setErrorToast] = useState(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
   const [quantityEditing, setQuantityEditing] = useState(false);
   const [quantityInput, setQuantityInput] = useState('');
@@ -1370,6 +1371,50 @@ const IdeaGenerator = () => {
     });
   }, []);
 
+  // Drag & drop handler — extracts image files from the drop event and
+  // adds them to uploadedImages using the same read-as-dataUrl flow as
+  // handlePaste / handleImageUpload.
+  const handleDrop = useCallback(async (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const files = Array.from(e.dataTransfer?.files || []).filter(f => f.type.startsWith('image/'));
+    if (files.length === 0) return;
+    const reads = await Promise.all(
+      files.map((file) => new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          file,
+          previewUrl: URL.createObjectURL(file),
+          dataUrl: reader.result,
+        });
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      }))
+    );
+    const valid = reads.filter(Boolean);
+    if (valid.length === 0) return;
+    setUploadedImages((prev) => {
+      const remaining = Math.max(0, MAX_IMAGES - prev.length);
+      return [...prev, ...valid.slice(0, remaining)];
+    });
+  }, []);
+
+  const handleDragOver = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    // Only reset when leaving the container itself, not its children
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsDragging(false);
+    }
+  }, []);
+
   // Revoke any outstanding blob URLs when the component unmounts so we
   // don't leak object URLs across navigations.
   useEffect(() => {
@@ -2005,7 +2050,17 @@ const IdeaGenerator = () => {
       <div className="shrink-0 relative z-20 flex justify-center px-6 pb-7 bg-transparent">
         {/* Fade gradient — sits right above the prompt bar's top edge */}
         <div aria-hidden className="absolute left-0 right-0 bottom-full h-[60px] bg-gradient-to-t from-[#09090b]/80 to-transparent pointer-events-none" />
-        <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-4px_16px_rgba(0,0,0,0.15)]">
+        <div
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          className={`w-full max-w-[800px] backdrop-blur-xl rounded-3xl px-6 pt-5 pb-5 shadow-[0_-4px_16px_rgba(0,0,0,0.15)] transition-all duration-200 ${
+            isDragging
+              ? 'bg-primary/[0.04] border-[1.5px] border-dashed border-primary/40'
+              : 'bg-white/[0.03] border border-white/[0.06]'
+          }`}
+        >
           {uploadedImages.length > 0 && (
             <div className="flex items-center gap-2 mb-3">
               {uploadedImages.map((img, i) => (
