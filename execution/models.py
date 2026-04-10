@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -202,7 +202,7 @@ class NoteFolder(Base):
     name = Column(String, default="Nova Pasta")
     icon = Column(String, default="folder")
     parent_id = Column(Integer, ForeignKey("note_folders.id"), nullable=True)
-    order_index = Column(Integer, default=0)
+    order_index = Column(BigInteger, default=0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("Profile")
@@ -219,7 +219,7 @@ class Note(Base):
     folder_id = Column(Integer, ForeignKey("note_folders.id"), nullable=True)
     title = Column(String, default="Sem título")
     content_md = Column(Text, default="")
-    order_index = Column(Integer, default=0)
+    order_index = Column(BigInteger, default=0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
 

@@ -185,19 +185,19 @@ export const NotesProvider = ({ children }) => {
           ...(defaultFolder
             ? [{ temp_id: 'default', name: defaultFolder.name || 'Geral', icon: defaultFolder.icon || 'folder', temp_parent_id: null, order_index: 0 }]
             : [{ temp_id: 'default', name: 'Geral', icon: 'folder', temp_parent_id: null, order_index: 0 }]),
-          ...foldersToImport.map((f) => ({
+          ...foldersToImport.map((f, i) => ({
             temp_id: String(f.id),
             name: f.name,
             icon: f.icon || 'folder',
             temp_parent_id: f.parentId ? String(f.parentId) : null,
-            order_index: f.order ?? 0,
+            order_index: i + 1,
           })),
         ],
-        notes: ln.map((n) => ({
+        notes: ln.map((n, i) => ({
           temp_folder_id: n.folderId ? String(n.folderId) : 'default',
           title: n.title || 'Sem título',
           content_md: n.content || '',
-          order_index: n.order ?? 0,
+          order_index: i,
         })),
       };
 
@@ -254,7 +254,7 @@ export const NotesProvider = ({ children }) => {
         name,
         icon: 'folder',
         parent_id: parentId,
-        order_index: Date.now(),
+        order_index: folders.length,
       }, { headers });
       const folder = normalizeFolder(res.data);
       setFolders((prev) => [...prev, folder]);
@@ -387,7 +387,7 @@ export const NotesProvider = ({ children }) => {
         folder_id: folderId,
         title: 'Sem título',
         content_md: '',
-        order_index: Date.now(),
+        order_index: notes.filter((n) => n.folderId === folderId).length,
       }, { headers });
       const note = normalizeNote(res.data);
       setNotes((prev) => [...prev, note]);
