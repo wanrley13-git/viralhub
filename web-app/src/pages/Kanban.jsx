@@ -9,6 +9,7 @@ import CalendarView from '../components/CalendarView';
 import TaskEditor from '../components/TaskEditor';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useSidebar } from '../contexts/SidebarContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { getAccessToken } from '../supabaseClient';
 import { resolveThumbnailUrl } from '../components/Thumbnail';
@@ -44,6 +45,7 @@ const PROJECT_ACCENT_HEX = [
 // ─── Project List View ───
 const ProjectListView = ({ collapsed }) => {
   const { projects, loaded, fetchProjects, removeProject, updateProject } = useProjects();
+  const { activeWorkspaceId } = useWorkspace();
   const [creating, setCreating] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState('');
@@ -51,7 +53,7 @@ const ProjectListView = ({ collapsed }) => {
   const navigate = useNavigate();
   const loading = !loaded;
 
-  useEffect(() => { fetchProjects(); }, []);
+  useEffect(() => { fetchProjects(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [activeWorkspaceId]);
 
   const handleCreate = async () => {
     setCreating(true);
@@ -241,6 +243,7 @@ const ProjectListView = ({ collapsed }) => {
 
 // ─── Board View (inside a project) ───
 const BoardView = ({ projectId, collapsed }) => {
+  const { activeWorkspaceId } = useWorkspace();
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -269,9 +272,14 @@ const BoardView = ({ projectId, collapsed }) => {
   }, [projectId]);
 
   useEffect(() => {
+    // Clear stale data when workspace or project changes
+    setProject(null);
+    setTasks([]);
+
     fetchProject();
     fetchTasks();
-  }, [projectId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, activeWorkspaceId]);
 
   useEffect(() => {
     const handleEsc = (e) => {

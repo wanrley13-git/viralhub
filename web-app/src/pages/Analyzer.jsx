@@ -9,6 +9,7 @@ import {
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import { useSidebar } from '../contexts/SidebarContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { getAccessToken } from '../supabaseClient';
 import Thumbnail from '../components/Thumbnail';
 import useToast from '../hooks/useToast';
@@ -68,6 +69,7 @@ const groupAnalysesByDate = (list) => {
 
 const Analyzer = () => {
   const { collapsed } = useSidebar();
+  const { activeWorkspaceId } = useWorkspace();
   const { toast, ToastContainer } = useToast();
   // === Estados de Upload & Análise ===
   const [activeTab, setActiveTab] = useState('upload');
@@ -102,6 +104,11 @@ const Analyzer = () => {
   const [cardSize, setCardSize] = useState(2); // 0=small(6cols), 1=medium(5cols), 2=large(4cols)
 
   useEffect(() => {
+    // Clear stale data from previous workspace before refetching
+    setAnalyses([]);
+    setSelectedAnalysis(null);
+    setSelectedExports([]);
+
     fetchHistory();
     // Resume progress listener if there's an active analysis for this user
     (async () => {
@@ -125,7 +132,8 @@ const Analyzer = () => {
         // Silent — endpoint might not exist yet or no active task
       }
     })();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspaceId]);
 
   // ESC priority:
   //   1. Close delete confirmation if open

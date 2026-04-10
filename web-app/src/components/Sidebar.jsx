@@ -361,12 +361,12 @@ const Sidebar = () => {
   useEffect(() => {
     fetchProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     if (isKanbanActive) fetchProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isKanbanActive]);
+  }, [isKanbanActive, activeWorkspaceId]);
 
   // Close switcher on outside click
   useEffect(() => {

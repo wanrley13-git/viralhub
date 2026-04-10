@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { ChevronLeft, ChevronRight, Plus, X, Trash2 } from 'lucide-react';
 import axios from 'axios';
 import { getAccessToken } from '../supabaseClient';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -276,6 +277,7 @@ function NoteEditor({ note, initialDate, initialTime, projectId, onSave, onDelet
 
 // ── MAIN ──
 export default function CalendarView({ tasks, projectId, onEditTask }) {
+  const { activeWorkspaceId } = useWorkspace();
   const [view, setView] = useState('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [notes, setNotes] = useState([]);
@@ -293,7 +295,11 @@ export default function CalendarView({ tasks, projectId, onEditTask }) {
     } catch (err) { console.error('Erro ao buscar notas:', err); }
   };
 
-  useEffect(() => { fetchNotes(); }, [projectId]);
+  useEffect(() => {
+    setNotes([]);
+    fetchNotes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId, activeWorkspaceId]);
 
   const saveNote = async (data, noteId) => {
     const token = await getAccessToken();

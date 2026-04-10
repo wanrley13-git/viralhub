@@ -10,6 +10,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import { useSidebar } from '../contexts/SidebarContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { useNotes } from '../contexts/NotesContext';
 import { getAccessToken } from '../supabaseClient';
@@ -215,6 +216,7 @@ const IdeaCard = memo(IdeaCardBase);
 
 const IdeaGenerator = () => {
   const { collapsed } = useSidebar();
+  const { activeWorkspaceId } = useWorkspace();
   const { projects, fetchProjects } = useProjects();
   const { folders: noteFolders, createNote, updateNote } = useNotes();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -494,15 +496,24 @@ const IdeaGenerator = () => {
     maxFiles: 10,
   });
 
-  // ─── Fetch auxiliary data on mount ───
+  // ─── Fetch auxiliary data on mount & workspace switch ───
   useEffect(() => {
+    // Clear stale data from previous workspace
+    setIdeas([]);
+    setHistoryIdeas([]);
+    setSavedIdeas([]);
+    setDevelopedIdeas([]);
+    setAnalyses([]);
+    setKbAllBases([]);
+    setTones([]);
+
     fetchAnalyses();
     fetchKnowledgeBases();
     fetchTones();
     fetchProjects();
     // fetchIdeas is triggered by the tab-based useEffect
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeWorkspaceId]);
 
   const fetchIdeas = async () => {
     try {
@@ -542,7 +553,7 @@ const IdeaGenerator = () => {
     finally { setLoadingTab(false); }
   };
 
-  // Fetch data when tab changes
+  // Fetch data when tab changes or workspace switches
   useEffect(() => {
     setSelectedIdeas([]);
     if (activeTab === 'history') fetchHistory();
@@ -558,7 +569,8 @@ const IdeaGenerator = () => {
         fetchIdeas();
       }
     }
-  }, [activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, activeWorkspaceId]);
 
   // Toggle bookmark/save on a specific idea.
   // The backend route lives under /content/ideas/{id}/save and is served by

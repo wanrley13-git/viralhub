@@ -9,6 +9,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import axios from 'axios';
 import { useSidebar } from '../contexts/SidebarContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useProjects } from '../contexts/ProjectsContext';
 import { useNotes } from '../contexts/NotesContext';
 import { getAccessToken } from '../supabaseClient';
@@ -207,6 +208,7 @@ const IdeaCard = memo(IdeaCardBase);
 
 const ContentGenerator = () => {
   const { collapsed } = useSidebar();
+  const { activeWorkspaceId } = useWorkspace();
   const { projects, fetchProjects } = useProjects();
   const { folders: noteFolders, createNote, updateNote } = useNotes();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -461,15 +463,24 @@ const ContentGenerator = () => {
     maxFiles: 10,
   });
 
-  // ─── Fetch data on mount ───
+  // ─── Fetch data on mount & workspace switch ───
   useEffect(() => {
+    // Clear stale data from previous workspace
+    setIdeas([]);
+    setHistoryIdeas([]);
+    setSavedIdeas([]);
+    setDevelopedIdeas([]);
+    setAnalyses([]);
+    setKbAllBases([]);
+    setTones([]);
+
     fetchAnalyses();
     fetchKnowledgeBases();
     fetchTones();
     fetchProjects();
     // fetchIdeas is triggered by the tab-based useEffect
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [activeWorkspaceId]);
 
   // Close the notes folder picker whenever the developed-viewing modal closes,
   // otherwise the picker would pop up already-open on the next modal view.
@@ -520,7 +531,7 @@ const ContentGenerator = () => {
     finally { setLoadingTab(false); }
   };
 
-  // Fetch data when tab changes
+  // Fetch data when tab changes or workspace switches
   useEffect(() => {
     setSelectedIdeas([]); // Clear selection on tab switch
     setSelectedDeveloped([]);
@@ -529,7 +540,8 @@ const ContentGenerator = () => {
     else if (activeTab === 'saved') fetchSaved();
     else if (activeTab === 'ideas') fetchIdeas();
     else if (activeTab === 'developed') fetchDeveloped();
-  }, [activeTab]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, activeWorkspaceId]);
 
   // Toggle bookmark/save on a specific idea.
   // useCallback keeps the reference stable so memo'd IdeaCards don't

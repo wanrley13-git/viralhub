@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useSidebar } from '../contexts/SidebarContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { getAccessToken } from '../supabaseClient';
 import Thumbnail from '../components/Thumbnail';
 import useConfirm from '../hooks/useConfirm';
@@ -17,6 +18,7 @@ const API_URL = import.meta.env.VITE_API_URL;
 
 const Transcriber = () => {
   const { collapsed } = useSidebar();
+  const { activeWorkspaceId } = useWorkspace();
   const { confirm, ConfirmDialog } = useConfirm();
   const { toast, ToastContainer } = useToast();
 
@@ -42,8 +44,14 @@ const Transcriber = () => {
   const [cardSize, setCardSize] = useState(2);
 
   useEffect(() => {
+    // Clear stale data from previous workspace before refetching
+    setTranscriptions([]);
+    setSelectedTranscription(null);
+    setSelectedExports([]);
+
     fetchHistory();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeWorkspaceId]);
 
   useEffect(() => {
     const handleEsc = (e) => {
