@@ -6,6 +6,9 @@
  */
 import axios from 'axios';
 
+// eslint-disable-next-line no-console
+console.log('[axiosSetup] Interceptor carregado');
+
 const LS_KEY = 'activeWorkspaceId';
 
 axios.interceptors.request.use((config) => {
