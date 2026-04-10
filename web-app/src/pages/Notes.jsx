@@ -452,7 +452,7 @@ const FolderTreeItem = ({ folder, depth = 0 }) => {
 
 // —— Note Item in tree ——
 const NoteItem = ({ note, depth }) => {
-  const { activeNoteId, setActiveNoteId, deleteNote, updateNote, selectedFolderId, setSelectedFolderId, reorderNote } = useNotes();
+  const { activeNoteId, selectNote, deleteNote, updateNote, selectedFolderId, setSelectedFolderId, reorderNote } = useNotes();
   const isActive = activeNoteId === note.id;
   const [showMenu, setShowMenu] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -517,7 +517,7 @@ const NoteItem = ({ note, depth }) => {
             : "text-gray-500 hover:text-gray-300 hover:bg-white/[0.04]"
       )}
       style={{ paddingLeft: `${(depth + 1) * 16 + 8}px` }}
-      onClick={() => { setActiveNoteId(note.id); setSelectedFolderId(null); }}
+      onClick={() => { selectNote(note.id); setSelectedFolderId(null); }}
     >
       <GripVertical size={12} className="shrink-0 text-gray-700 opacity-0 group-hover:opacity-100 cursor-grab transition-opacity" />
       <FileText size={15} strokeWidth={1.5} className={cn("shrink-0", isActive ? "text-primary" : "text-gray-600")} />
@@ -605,7 +605,7 @@ const NoteLinkSuggestions = ({ query, notes, onSelect, position }) => {
 // Note Editor (reuses TaskEditor markdown system)
 // ═══════════════════════════════════════════════
 const NoteEditor = ({ note }) => {
-  const { updateNote, notes, findNoteByTitle, setActiveNoteId } = useNotes();
+  const { updateNote, notes, findNoteByTitle, selectNote } = useNotes();
   const [viewMode, setViewMode] = useState('edit');
   const [title, setTitle] = useState(note.title);
   const [activeFormats, setActiveFormats] = useState({});
@@ -652,12 +652,12 @@ const NoteEditor = ({ note }) => {
       if (link) {
         e.preventDefault();
         const targetNote = findNoteByTitle(link.textContent);
-        if (targetNote) setActiveNoteId(targetNote.id);
+        if (targetNote) selectNote(targetNote.id);
       }
     };
     editor.addEventListener('click', handleClick);
     return () => editor.removeEventListener('click', handleClick);
-  }, [note.id, findNoteByTitle, setActiveNoteId]);
+  }, [note.id, findNoteByTitle, selectNote]);
 
   // Auto-save (300ms debounce)
   const triggerAutoSave = useCallback(() => {
@@ -1526,7 +1526,7 @@ const NoteEditor = ({ note }) => {
 const Notes = () => {
   const { collapsed } = useSidebar();
   const {
-    folders, activeNote, activeNoteId, setActiveNoteId,
+    folders, activeNote, activeNoteId, setActiveNoteId, selectNote,
     selectedFolderId, setSelectedFolderId,
     searchTerm, setSearchTerm, searchNotes,
     createFolder, createNote, getChildFolders,
@@ -1618,7 +1618,7 @@ const Notes = () => {
                   return (
                     <button
                       key={note.id}
-                      onClick={() => { setActiveNoteId(note.id); setSearchTerm(''); }}
+                      onClick={() => { selectNote(note.id); setSearchTerm(''); }}
                       className={cn(
                         "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left transition-all",
                         activeNoteId === note.id

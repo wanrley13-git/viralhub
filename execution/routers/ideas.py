@@ -81,13 +81,13 @@ class DevelopRequest(BaseModel):
     base_id: Optional[int] = None
 
 
-def _serialize(idea: ContentIdea) -> IdeaOut:
+def _serialize(idea: ContentIdea, include_developed: bool = False) -> IdeaOut:
     return IdeaOut(
         id=idea.id,
         title=idea.title,
         summary=idea.summary,
         status=idea.status or "idea",
-        developed_content=idea.developed_content,
+        developed_content=idea.developed_content if include_developed else None,
         is_saved=bool(idea.is_saved),
         is_dismissed=bool(idea.is_dismissed),
         batch_id=idea.batch_id,
@@ -267,7 +267,7 @@ async def _toggle_save_impl(
     idea.is_saved = 0 if idea.is_saved else 1
     await db.commit()
     await db.refresh(idea)
-    return _serialize(idea)
+    return _serialize(idea, include_developed=True)
 
 
 # NOTE on route precedence:
@@ -704,7 +704,7 @@ async def develop_creative_idea(
         await db.commit()
         await db.refresh(idea)
 
-        return _serialize(idea)
+        return _serialize(idea, include_developed=True)
 
     except Exception as e:
         logger.error(f"Erro em develop_creative_idea: {e}", exc_info=True)

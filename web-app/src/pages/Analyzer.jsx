@@ -379,15 +379,25 @@ const Analyzer = () => {
   // Concatenate the selected analyses into a single markdown file and
   // trigger a download. Everything happens client-side — no backend
   // round-trip — so it's instant even for dozens of reports.
-  const handleExportMarkdown = () => {
+  const handleExportMarkdown = async () => {
     if (selectedExports.length === 0) return;
     setExporting(true);
     try {
-      // Preserve the order in which reports are displayed on screen
-      // (most recent first) rather than click-order, so the exported
-      // file feels chronological.
-      const idSet = new Set(selectedExports);
-      const picked = (analyses || []).filter(a => idSet.has(a.id));
+      const token = await getAccessToken();
+      const cfg = { headers: { Authorization: `Bearer ${token}` } };
+
+      // Fetch full report_md for each selected analysis
+      const picked = await Promise.all(
+        selectedExports.map(async (id) => {
+          try {
+            const res = await axios.get(`${API_URL}/analyze/${id}`, cfg);
+            return res.data;
+          } catch {
+            const fallback = (analyses || []).find(a => a.id === id);
+            return fallback || { id, title: `Análise #${id}`, report_md: '' };
+          }
+        })
+      );
 
       const today = new Date().toLocaleDateString('pt-BR', {
         day: '2-digit', month: 'long', year: 'numeric'
@@ -468,7 +478,7 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
 
   const filteredAnalyses = (analyses || []).filter(a =>
     (a.title && a.title.toLowerCase().includes(searchTerm.toLowerCase())) ||
-    (a.report_md && a.report_md.toLowerCase().includes(searchTerm.toLowerCase()))
+    (a.report_preview && a.report_preview.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   // Bucketed by calendar day for the grouped render below
@@ -817,14 +827,22 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
                             initial={{ opacity: 0, y: 16 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ duration: 0.4, delay: Math.min(gIdx * 0.04 + idx * 0.04, 0.5), ease: [0.16, 1, 0.3, 1] }}
-                            onClick={() => {
+                            onClick={async () => {
                               // Implicit bulk mode: once anything is selected,
                               // clicking a card toggles selection. Otherwise the
                               // card opens the reading modal as usual.
                               if (hasSelection) {
                                 toggleCardSelect(analysis.id);
                               } else {
-                                setSelectedAnalysis(analysis);
+                                try {
+                                  const token = await getAccessToken();
+                                  const res = await axios.get(`${API_URL}/analyze/${analysis.id}`, {
+                                    headers: { Authorization: `Bearer ${token}` },
+                                  });
+                                  setSelectedAnalysis(res.data);
+                                } catch {
+                                  setSelectedAnalysis(analysis);
+                                }
                               }
                             }}
                             className={`glass lift rounded-3xl p-5 transition-all cursor-pointer relative overflow-hidden group ${
@@ -875,7 +893,7 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
 
                             {/* Preview */}
                             <div className="text-[14px] text-gray-400 line-clamp-2 leading-relaxed">
-                              {analysis.report_md.substring(0, 120)}...
+                              {(analysis.report_preview || '').substring(0, 120)}...
                             </div>
                           </motion.div>
                         );

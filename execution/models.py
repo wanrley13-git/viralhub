@@ -49,8 +49,8 @@ class Workspace(Base):
 class WorkspaceMember(Base):
     __tablename__ = "workspace_members"
     id = Column(Integer, primary_key=True, index=True)
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False)
-    user_id = Column(Integer, ForeignKey("profiles.id"), nullable=False)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), nullable=False, index=True)
     role = Column(String, default="member")       # "owner", "member"
     permissions = Column(Text, default=_DEFAULT_PERMISSIONS)
     invited_by = Column(Integer, ForeignKey("profiles.id"), nullable=True)
@@ -63,8 +63,8 @@ class WorkspaceMember(Base):
 class Analysis(Base) :
     __tablename__ = "analyses"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"))
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
     title = Column(String)
     report_md = Column(Text)
     thumbnail_url = Column(String, nullable=True)
@@ -76,8 +76,8 @@ class Analysis(Base) :
 class Transcription(Base):
     __tablename__ = "transcriptions"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"))
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
     title = Column(String)
     summary = Column(Text, nullable=True)
     transcription_md = Column(Text)
@@ -90,8 +90,8 @@ class Transcription(Base):
 class Tone(Base):
     __tablename__ = "tones"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"))
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
     name = Column(String, default="Novo Tom")
     tone_md = Column(Text, nullable=True)
     thumbnail_url = Column(String, nullable=True)
@@ -104,8 +104,8 @@ class Tone(Base):
 class Project(Base):
     __tablename__ = "projects"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"))
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
     name = Column(String, default="Novo Projeto")
     columns_json = Column(Text, nullable=True)  # JSON das colunas do board
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -117,9 +117,9 @@ class Project(Base):
 class ContentTask(Base):
     __tablename__ = "tasks"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"))
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     title = Column(String)
     content_md = Column(Text)
     tag = Column(String) # Reels, Carousel, Post, etc.
@@ -138,9 +138,9 @@ class ContentTask(Base):
 class CalendarNote(Base):
     __tablename__ = "calendar_notes"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"))
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
-    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     title = Column(String)
     description = Column(Text, nullable=True)
     scheduled_date = Column(String)       # YYYY-MM-DD
@@ -157,8 +157,8 @@ class CalendarNote(Base):
 class KnowledgeBase(Base):
     __tablename__ = "knowledge_bases"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"))
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
     name = Column(String, default="Nova Base")
     selected_ids = Column(Text, default="[]")  # JSON list of analysis IDs
     compiled_md = Column(Text, nullable=True)   # The distilled document
@@ -171,8 +171,8 @@ class KnowledgeBase(Base):
 class ContentIdea(Base):
     __tablename__ = "content_ideas"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"))
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
     title = Column(String)
     summary = Column(Text, nullable=True)
     prompt_used = Column(Text, nullable=True)
@@ -197,8 +197,8 @@ class ContentIdea(Base):
 class NoteFolder(Base):
     __tablename__ = "note_folders"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"), nullable=False)
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
     name = Column(String, default="Nova Pasta")
     icon = Column(String, default="folder")
     parent_id = Column(Integer, ForeignKey("note_folders.id"), nullable=True)
@@ -214,9 +214,9 @@ class NoteFolder(Base):
 class Note(Base):
     __tablename__ = "notes"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"), nullable=False)
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
-    folder_id = Column(Integer, ForeignKey("note_folders.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), nullable=False, index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
+    folder_id = Column(Integer, ForeignKey("note_folders.id"), nullable=True, index=True)
     title = Column(String, default="Sem título")
     content_md = Column(Text, default="")
     order_index = Column(BigInteger, default=0)
@@ -231,8 +231,8 @@ class Note(Base):
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
     id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("profiles.id"))
-    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
     title = Column(String, default="Novo Chat")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
@@ -243,7 +243,7 @@ class ChatSession(Base):
 class ChatMessage(Base):
     __tablename__ = "chat_messages"
     id = Column(Integer, primary_key=True, index=True)
-    session_id = Column(Integer, ForeignKey("chat_sessions.id"))
+    session_id = Column(Integer, ForeignKey("chat_sessions.id"), index=True)
     role = Column(String) # 'user' ou 'model'
     content = Column(Text)
     has_suggestion = Column(Integer, default=0) # 0 False, 1 True

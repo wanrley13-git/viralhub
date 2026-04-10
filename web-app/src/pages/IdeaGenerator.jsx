@@ -462,6 +462,18 @@ const IdeaGenerator = () => {
   // Expand modal — read-only popup with the full idea title + summary.
   const [expandedIdea, setExpandedIdea] = useState(null);
 
+  const openIdeaDetail = useCallback(async (idea) => {
+    setExpandedIdea(idea);
+    if (idea.developed_content || idea.status !== 'developed') return;
+    try {
+      const token = await getAccessToken();
+      const res = await axios.get(`${API_URL}/content/ideas/detail/${idea.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setExpandedIdea(res.data);
+    } catch { /* fallback to summary */ }
+  }, []);
+
   // Send flow state — destination modal for Kanban / direct send to Notes.
   const [sendDest, setSendDest] = useState(null); // { ideas, mode: 'kanban' }
   const [sendProjectId, setSendProjectId] = useState(null);
@@ -1623,7 +1635,7 @@ const IdeaGenerator = () => {
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
-                    onExpand={setExpandedIdea}
+                    onExpand={openIdeaDetail}
                   />
                 ))}
               </div>
@@ -1675,7 +1687,7 @@ const IdeaGenerator = () => {
                             cs={cs}
                             onToggleSelect={toggleIdeaSelect}
                             onToggleSave={toggleSaveIdea}
-                            onExpand={setExpandedIdea}
+                            onExpand={openIdeaDetail}
                             bgColor="#121E1E"
                           />
                         ))}
@@ -1710,7 +1722,7 @@ const IdeaGenerator = () => {
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
-                    onExpand={setExpandedIdea}
+                    onExpand={openIdeaDetail}
                     showDate
                     bgColor="#12121F"
                   />
@@ -1758,7 +1770,7 @@ const IdeaGenerator = () => {
                       cs={cs}
                       onToggleSelect={toggleIdeaSelect}
                       onToggleSave={toggleSaveIdea}
-                      onExpand={setExpandedIdea}
+                      onExpand={openIdeaDetail}
                       bgColor="#121E13"
                     />
                   )

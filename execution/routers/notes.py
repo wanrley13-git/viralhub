@@ -94,18 +94,20 @@ def serialize_folder(f: NoteFolder) -> dict:
     }
 
 
-def serialize_note(n: Note) -> dict:
-    return {
+def serialize_note(n: Note, include_content: bool = False) -> dict:
+    d = {
         "id": n.id,
         "user_id": n.user_id,
         "workspace_id": n.workspace_id,
         "folder_id": n.folder_id,
         "title": n.title,
-        "content_md": n.content_md,
         "order_index": n.order_index,
         "created_at": n.created_at.isoformat() if n.created_at else None,
         "updated_at": n.updated_at.isoformat() if n.updated_at else None,
     }
+    if include_content:
+        d["content_md"] = n.content_md
+    return d
 
 
 # ──────────────────────────── folders ────────────────────────────
@@ -273,7 +275,27 @@ async def create_note(
     db.add(note)
     await db.commit()
     await db.refresh(note)
-    return serialize_note(note)
+    return serialize_note(note, include_content=True)
+
+
+@router.get("/{note_id}")
+async def get_note(
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "notes")
+    result = await db.execute(
+        select(Note).filter(
+            Note.id == note_id,
+            *workspace_filters(Note, ws, current_user.id),
+        )
+    )
+    note = result.scalars().first()
+    if not note:
+        raise HTTPException(status_code=404, detail="Nota não encontrada.")
+    return serialize_note(note, include_content=True)
 
 
 @router.patch("/{note_id}")
@@ -307,7 +329,7 @@ async def update_note(
 
     await db.commit()
     await db.refresh(note)
-    return serialize_note(note)
+    return serialize_note(note, include_content=True)
 
 
 @router.delete("/{note_id}")

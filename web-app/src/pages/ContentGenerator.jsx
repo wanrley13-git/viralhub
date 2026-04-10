@@ -422,6 +422,18 @@ const ContentGenerator = () => {
   const [expandedDeveloped, setExpandedDeveloped] = useState({}); // legacy, kept to avoid refactor
   const [developedViewing, setDevelopedViewing] = useState(null); // idea being shown in modal
 
+  const openIdeaDetail = useCallback(async (idea) => {
+    setDevelopedViewing(idea);
+    if (idea.developed_content || idea.status !== 'developed') return;
+    try {
+      const token = await getAccessToken();
+      const res = await axios.get(`${API_URL}/content/ideas/detail/${idea.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDevelopedViewing(res.data);
+    } catch { /* fallback to summary */ }
+  }, []);
+
   // "Enviar" flow state — destination modal opens from the big viewing modal
   const [sendDest, setSendDest] = useState(null);           // { idea, mode: 'kanban' | 'calendar' }
   const [sendProjectId, setSendProjectId] = useState(null);
@@ -1809,7 +1821,7 @@ const ContentGenerator = () => {
                       initial={{ opacity: 0, y: 16 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.2, delay: Math.min(i * 0.02, 0.2), ease: 'easeOut' }}
-                      onClick={() => isReady && setDevelopedViewing(idea)}
+                      onClick={() => isReady && openIdeaDetail(idea)}
                       style={!hasFailed ? { backgroundColor: isSelected ? 'color-mix(in srgb, #121E13 92%, white)' : '#121E13' } : undefined}
                       className={`group relative ${cs.pad} rounded-2xl border transition-all duration-300 flex flex-col ${
                         isDeveloping

@@ -60,13 +60,13 @@ class DevelopRequest(BaseModel):
     base_id: Optional[int] = None
 
 
-def _serialize(idea: ContentIdea) -> IdeaOut:
+def _serialize(idea: ContentIdea, include_developed: bool = False) -> IdeaOut:
     return IdeaOut(
         id=idea.id,
         title=idea.title,
         summary=idea.summary,
         status=idea.status or "idea",
-        developed_content=idea.developed_content,
+        developed_content=idea.developed_content if include_developed else None,
         is_saved=bool(idea.is_saved),
         is_dismissed=bool(idea.is_dismissed),
         batch_id=idea.batch_id,
@@ -174,6 +174,25 @@ async def list_ideas(
     return [_serialize(i) for i in ideas]
 
 
+@router.get("/ideas/detail/{idea_id}")
+async def get_idea_detail(
+    idea_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+):
+    result = await db.execute(
+        select(ContentIdea).where(
+            ContentIdea.id == idea_id,
+            *workspace_filters(ContentIdea, ws, current_user.id),
+        )
+    )
+    idea = result.scalars().first()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Ideia não encontrada.")
+    return _serialize(idea, include_developed=True)
+
+
 async def _toggle_save_impl(
     idea_id: int,
     db: AsyncSession,
@@ -195,7 +214,7 @@ async def _toggle_save_impl(
         idea.is_saved = 0 if idea.is_saved else 1
         await db.commit()
         await db.refresh(idea)
-        return _serialize(idea)
+        return _serialize(idea, include_developed=True)
     except HTTPException:
         raise
     except Exception as e:
@@ -436,7 +455,7 @@ async def develop_content(
         await db.commit()
         await db.refresh(idea)
 
-        return _serialize(idea)
+        return _serialize(idea, include_developed=True)
 
     except Exception as e:
         logger.error(f"Erro em develop_content: {e}", exc_info=True)

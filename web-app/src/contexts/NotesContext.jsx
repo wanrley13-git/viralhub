@@ -40,7 +40,7 @@ const normalizeNote = (n) => ({
   id: n.id,
   folderId: n.folder_id ?? null,
   title: n.title,
-  content: n.content_md ?? '',
+  content: n.content_md !== undefined ? (n.content_md ?? '') : undefined,
   order: n.order_index ?? 0,
   createdAt: n.created_at ? new Date(n.created_at).getTime() : Date.now(),
   updatedAt: n.updated_at ? new Date(n.updated_at).getTime() : Date.now(),
@@ -508,6 +508,26 @@ export const NotesProvider = ({ children }) => {
     });
   }, [activeWorkspaceId, folders]);
 
+  // ── fetch note content on demand ────────────────────────────
+
+  const selectNote = useCallback(async (noteId) => {
+    setActiveNoteId(noteId);
+    if (!noteId || fallbackRef.current) return;
+
+    const existing = notes.find((n) => n.id === noteId);
+    if (existing && existing.content !== undefined) return;
+
+    try {
+      const headers = await authHeaders();
+      if (!headers) return;
+      const res = await axios.get(`${API_URL}/notes/${noteId}`, { headers });
+      const content = res.data.content_md ?? '';
+      setNotes((prev) => prev.map((n) => (n.id === noteId ? { ...n, content } : n)));
+    } catch (err) {
+      console.error('Fetch note content error:', err);
+    }
+  }, [notes]);
+
   // ── derived / helpers ───────────────────────────────────────
 
   const activeNote = notes.find((n) => n.id === activeNoteId) || null;
@@ -548,6 +568,7 @@ export const NotesProvider = ({ children }) => {
     activeNote,
     activeNoteId,
     setActiveNoteId,
+    selectNote,
     selectedFolderId,
     setSelectedFolderId,
     renamingFolderId,
@@ -569,7 +590,7 @@ export const NotesProvider = ({ children }) => {
     searchNotes,
     findNoteByTitle,
   }), [
-    folders, notes, loading, activeNote, activeNoteId, selectedFolderId,
+    folders, notes, loading, activeNote, activeNoteId, selectNote, selectedFolderId,
     renamingFolderId, searchTerm,
     createFolder, renameFolder, setFolderIcon, deleteFolder, moveFolder,
     createNote, updateNote, deleteNote, moveNote, reorderNote,

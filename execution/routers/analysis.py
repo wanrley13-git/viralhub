@@ -359,7 +359,39 @@ async def get_history(
         .filter(*workspace_filters(Analysis, ws, current_user.id))
         .order_by(Analysis.created_at.desc())
     )
-    return result.scalars().all()
+    return [
+        {
+            "id": a.id,
+            "user_id": a.user_id,
+            "workspace_id": a.workspace_id,
+            "title": a.title,
+            "report_preview": (a.report_md or "")[:500],
+            "thumbnail_url": a.thumbnail_url,
+            "created_at": a.created_at,
+        }
+        for a in result.scalars().all()
+    ]
+
+
+@router.get("/{analysis_id}")
+async def get_analysis(
+    analysis_id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "analyses")
+    result = await db.execute(
+        select(Analysis).filter(
+            Analysis.id == analysis_id,
+            *workspace_filters(Analysis, ws, current_user.id),
+        )
+    )
+    analysis = result.scalars().first()
+    if not analysis:
+        raise HTTPException(status_code=404, detail="Análise não encontrada")
+    return analysis
+
 
 @router.delete("/{id}")
 async def delete_analysis(
