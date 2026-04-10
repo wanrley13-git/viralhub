@@ -1123,15 +1123,14 @@ const ContentGenerator = () => {
   // Creates one note per idea using the same Notes context that the Notes page
   // uses, so the notes show up instantly in /notes. Pass an explicit folderId to
   // target a specific folder; otherwise falls back to "Geral" / first root folder.
-  const sendToNotes = (ideaOrIdeas, folderId) => {
+  const sendToNotes = async (ideaOrIdeas, folderId) => {
     const ideasArr = Array.isArray(ideaOrIdeas) ? ideaOrIdeas : [ideaOrIdeas];
     if (ideasArr.length === 0) return;
 
-    // Target folder: explicit param, else default "Geral", else first root folder.
+    // Target folder: explicit param, else first root folder.
     let targetFolder = folderId ? noteFolders.find((f) => f.id === folderId) : null;
     if (!targetFolder) {
       targetFolder =
-        noteFolders.find((f) => f.id === 'default') ||
         noteFolders.find((f) => f.parentId === null) ||
         noteFolders[0];
     }
@@ -1143,11 +1142,13 @@ const ContentGenerator = () => {
     }
 
     for (const idea of ideasArr) {
-      const note = createNote(targetFolder.id);
-      updateNote(note.id, {
-        title: idea.title || 'Sem título',
-        content: idea.developed_content || idea.summary || '',
-      });
+      const note = await createNote(targetFolder.id);
+      if (note) {
+        await updateNote(note.id, {
+          title: idea.title || 'Sem título',
+          content: idea.developed_content || idea.summary || '',
+        });
+      }
     }
 
     const count = ideasArr.length;

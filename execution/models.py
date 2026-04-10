@@ -194,6 +194,40 @@ class ContentIdea(Base):
     workspace = relationship("Workspace")
 
 
+class NoteFolder(Base):
+    __tablename__ = "note_folders"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), nullable=False)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    name = Column(String, default="Nova Pasta")
+    icon = Column(String, default="folder")
+    parent_id = Column(Integer, ForeignKey("note_folders.id"), nullable=True)
+    order_index = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    owner = relationship("Profile")
+    workspace = relationship("Workspace")
+    parent = relationship("NoteFolder", remote_side="NoteFolder.id")
+    notes = relationship("Note", back_populates="folder", cascade="all, delete-orphan")
+
+
+class Note(Base):
+    __tablename__ = "notes"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("profiles.id"), nullable=False)
+    workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True)
+    folder_id = Column(Integer, ForeignKey("note_folders.id"), nullable=True)
+    title = Column(String, default="Sem título")
+    content_md = Column(Text, default="")
+    order_index = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    owner = relationship("Profile")
+    workspace = relationship("Workspace")
+    folder = relationship("NoteFolder", back_populates="notes")
+
+
 class ChatSession(Base):
     __tablename__ = "chat_sessions"
     id = Column(Integer, primary_key=True, index=True)

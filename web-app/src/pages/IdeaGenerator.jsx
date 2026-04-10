@@ -1186,12 +1186,11 @@ const IdeaGenerator = () => {
 
   // Create one note per idea directly in the default folder via the
   // shared NotesContext — identical to ContentGenerator's bulk-send.
-  const sendToNotes = (ideaOrIdeas) => {
+  const sendToNotes = async (ideaOrIdeas) => {
     const ideasArr = Array.isArray(ideaOrIdeas) ? ideaOrIdeas : [ideaOrIdeas];
     if (ideasArr.length === 0) return;
 
     const targetFolder =
-      noteFolders.find((f) => f.id === 'default') ||
       noteFolders.find((f) => f.parentId === null) ||
       noteFolders[0];
 
@@ -1202,11 +1201,13 @@ const IdeaGenerator = () => {
     }
 
     for (const idea of ideasArr) {
-      const note = createNote(targetFolder.id);
-      updateNote(note.id, {
-        title: idea.title || 'Sem título',
-        content: idea.summary || '',
-      });
+      const note = await createNote(targetFolder.id);
+      if (note) {
+        await updateNote(note.id, {
+          title: idea.title || 'Sem título',
+          content: idea.summary || '',
+        });
+      }
     }
 
     const count = ideasArr.length;
