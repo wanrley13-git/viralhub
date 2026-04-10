@@ -1988,7 +1988,7 @@ const IdeaGenerator = () => {
       {/* ═══ FLOATING PROMPT BAR ═══ */}
       <div className="shrink-0 relative z-20 flex justify-center px-6 pb-7 bg-transparent">
         {/* Fade gradient — sits right above the prompt bar's top edge */}
-        <div aria-hidden className="absolute left-0 right-0 bottom-full h-[200px] bg-gradient-to-t from-[#09090b] to-transparent pointer-events-none" />
+        <div aria-hidden className="absolute left-0 right-0 bottom-full h-[60px] bg-gradient-to-t from-[#09090b]/80 to-transparent pointer-events-none" />
         <div className="w-full max-w-[800px] bg-white/[0.03] backdrop-blur-xl border border-white/[0.06] rounded-3xl px-6 pt-5 pb-5 shadow-[0_-4px_16px_rgba(0,0,0,0.15)]">
           {uploadedImages.length > 0 && (
             <div className="flex items-center gap-2 mb-3">
