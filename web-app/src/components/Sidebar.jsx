@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import axios from 'axios';
+import { AnimatePresence, motion } from 'framer-motion';
 import {
   TrendingUp,
   Sparkles,
@@ -16,11 +17,21 @@ import {
   Plus,
   BookOpen,
   Lightbulb,
+  User,
+  Users,
+  Check,
+  X,
+  Trash2,
+  Mail,
+  Shield,
+  Loader2,
+  ChevronLeft,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useSidebar } from '../contexts/SidebarContext';
 import { useProjects } from '../contexts/ProjectsContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { supabase, getAccessToken } from '../supabaseClient';
 
 function cn(...inputs) {
@@ -36,11 +47,294 @@ const SIDEBAR_PROJECT_COLORS = [
 
 const MAX_SIDEBAR_PROJECTS = 3;
 
+const PERMISSION_LABELS = {
+  analyses: 'Análises',
+  transcriptions: 'Transcrições',
+  content: 'Conteúdo',
+  ideas: 'Ideias',
+  kanban: 'Kanban',
+  notes: 'Notas',
+  calendar: 'Calendário',
+  knowledge: 'Bases',
+  tones: 'Tons',
+};
+
+// ────────────────────── Workspace Management Panel ──────────────────────
+const WorkspaceManagePanel = ({ workspaceId, onClose }) => {
+  const { fetchWorkspaces } = useWorkspace();
+  const [detail, setDetail] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviting, setInviting] = useState(false);
+  const [error, setError] = useState(null);
+  const [wsName, setWsName] = useState('');
+  const [editingName, setEditingName] = useState(false);
+
+  const fetchDetail = useCallback(async () => {
+    try {
+      const token = await getAccessToken();
+      const res = await axios.get(`${API_URL}/workspaces/${workspaceId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDetail(res.data);
+      setWsName(res.data.name);
+    } catch {
+      setError('Erro ao carregar workspace.');
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => { fetchDetail(); }, [fetchDetail]);
+
+  const saveName = async () => {
+    if (!wsName.trim() || wsName === detail?.name) { setEditingName(false); return; }
+    try {
+      const token = await getAccessToken();
+      await axios.patch(`${API_URL}/workspaces/${workspaceId}`, { name: wsName.trim() }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setDetail((d) => ({ ...d, name: wsName.trim() }));
+      fetchWorkspaces();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Erro ao renomear.');
+    }
+    setEditingName(false);
+  };
+
+  const handleInvite = async () => {
+    if (!inviteEmail.trim()) return;
+    setInviting(true);
+    setError(null);
+    try {
+      const token = await getAccessToken();
+      await axios.post(`${API_URL}/workspaces/${workspaceId}/invite`, { email: inviteEmail.trim() }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      setInviteEmail('');
+      fetchDetail();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Erro ao convidar.');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const removeMember = async (userId) => {
+    try {
+      const token = await getAccessToken();
+      await axios.delete(`${API_URL}/workspaces/${workspaceId}/members/${userId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchDetail();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Erro ao remover membro.');
+    }
+  };
+
+  const togglePerm = async (userId, key, current) => {
+    const member = detail?.members?.find((m) => m.user_id === userId);
+    if (!member) return;
+    let perms = {};
+    try { perms = JSON.parse(member.permissions || '{}'); } catch {}
+    perms[key] = !current;
+    try {
+      const token = await getAccessToken();
+      await axios.patch(`${API_URL}/workspaces/${workspaceId}/members/${userId}`, { permissions: perms }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchDetail();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Erro ao atualizar permissões.');
+    }
+  };
+
+  const deleteWorkspace = async () => {
+    if (!window.confirm('Tem certeza que deseja deletar este workspace? Os dados (análises, etc.) NÃO serão deletados.')) return;
+    try {
+      const token = await getAccessToken();
+      await axios.delete(`${API_URL}/workspaces/${workspaceId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      fetchWorkspaces();
+      onClose();
+    } catch (err) {
+      setError(err.response?.data?.detail || 'Erro ao deletar workspace.');
+    }
+  };
+
+  const isOwner = detail?.members?.find((m) => m.role === 'owner');
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-12">
+        <Loader2 size={20} className="animate-spin text-gray-500" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Header */}
+      <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06]">
+        <button onClick={onClose} className="p-1 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-all">
+          <ChevronLeft size={16} />
+        </button>
+        <span className="text-[13px] font-bold text-white truncate flex-1">Gerenciar Workspace</span>
+      </div>
+
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-4 py-4 space-y-5">
+        {/* Error */}
+        <AnimatePresence>
+          {error && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="text-[11px] text-red-400 bg-red-400/10 border border-red-400/20 rounded-xl px-3 py-2 flex items-center gap-2"
+            >
+              <span className="flex-1">{error}</span>
+              <button onClick={() => setError(null)}><X size={12} /></button>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Name */}
+        <div>
+          <p className="data-label mb-2">Nome</p>
+          {editingName ? (
+            <div className="flex gap-1.5">
+              <input
+                value={wsName}
+                onChange={(e) => setWsName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveName(); if (e.key === 'Escape') { setEditingName(false); setWsName(detail?.name || ''); } }}
+                autoFocus
+                className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-xl px-3 py-2 text-[13px] text-white outline-none focus:border-primary/30"
+              />
+              <button onClick={saveName} className="p-2 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition-colors"><Check size={14} /></button>
+              <button onClick={() => { setEditingName(false); setWsName(detail?.name || ''); }} className="p-2 rounded-xl bg-white/[0.04] text-gray-500 hover:text-white transition-colors"><X size={14} /></button>
+            </div>
+          ) : (
+            <button
+              onClick={() => isOwner && setEditingName(true)}
+              className={cn(
+                "w-full text-left px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06] text-[13px] text-white",
+                isOwner ? "hover:border-white/[0.12] cursor-pointer" : "cursor-default"
+              )}
+            >
+              {detail?.name}
+            </button>
+          )}
+        </div>
+
+        {/* Invite */}
+        {isOwner && (
+          <div>
+            <p className="data-label mb-2">Convidar membro</p>
+            <div className="flex gap-1.5">
+              <div className="relative flex-1">
+                <Mail size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-600" />
+                <input
+                  type="email"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') handleInvite(); }}
+                  placeholder="email@exemplo.com"
+                  className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl pl-9 pr-3 py-2 text-[13px] text-white placeholder-gray-600 outline-none focus:border-primary/30"
+                />
+              </div>
+              <button
+                onClick={handleInvite}
+                disabled={inviting || !inviteEmail.trim()}
+                className="px-3 py-2 rounded-xl bg-primary/10 text-primary text-[12px] font-bold hover:bg-primary/20 transition-colors disabled:opacity-40"
+              >
+                {inviting ? <Loader2 size={14} className="animate-spin" /> : 'Convidar'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Members */}
+        <div>
+          <p className="data-label mb-2">Membros ({detail?.members?.length || 0})</p>
+          <div className="space-y-2">
+            {detail?.members?.map((m) => {
+              let perms = {};
+              try { perms = JSON.parse(m.permissions || '{}'); } catch {}
+              return (
+                <div key={m.id} className="bg-white/[0.02] border border-white/[0.05] rounded-xl p-3">
+                  <div className="flex items-center gap-2.5 mb-2">
+                    <div className={cn(
+                      "w-7 h-7 rounded-lg flex items-center justify-center shrink-0",
+                      m.role === 'owner' ? "bg-primary/15 text-primary" : "bg-white/[0.06] text-gray-500"
+                    )}>
+                      {m.role === 'owner' ? <Shield size={13} /> : <User size={13} />}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] text-white font-semibold truncate">{m.email || `User #${m.user_id}`}</p>
+                      <p className="text-[10px] text-gray-600 font-medium uppercase tracking-wider">{m.role}</p>
+                    </div>
+                    {isOwner && m.role !== 'owner' && (
+                      <button
+                        onClick={() => removeMember(m.user_id)}
+                        className="p-1.5 rounded-lg text-red-400/40 hover:text-red-400 hover:bg-red-400/10 transition-all"
+                        title="Remover membro"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Permission toggles — only for non-owner members, only if viewer is owner */}
+                  {isOwner && m.role !== 'owner' && (
+                    <div className="grid grid-cols-3 gap-1 mt-2">
+                      {Object.entries(PERMISSION_LABELS).map(([key, label]) => {
+                        const on = perms[key] !== false;
+                        return (
+                          <button
+                            key={key}
+                            onClick={() => togglePerm(m.user_id, key, on)}
+                            className={cn(
+                              "px-2 py-1 rounded-lg text-[10px] font-bold transition-all duration-150 border",
+                              on
+                                ? "bg-primary/10 border-primary/20 text-primary"
+                                : "bg-white/[0.02] border-white/[0.05] text-gray-600"
+                            )}
+                          >
+                            {label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Delete workspace */}
+        {isOwner && !detail?.is_personal && (
+          <button
+            onClick={deleteWorkspace}
+            className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-red-500/5 border border-red-500/10 text-red-400/60 hover:text-red-400 hover:border-red-500/20 text-[12px] font-bold transition-all"
+          >
+            <Trash2 size={13} />
+            Deletar workspace
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ────────────────────────── Main Sidebar ────────────────────────────
 const Sidebar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { collapsed, toggle } = useSidebar();
   const { projects, fetchProjects, addProject: addProjectToCtx } = useProjects();
+  const { workspaces, activeWorkspaceId, setActiveWorkspaceId, activeWorkspace, fetchWorkspaces } = useWorkspace();
 
   const isHubActive = location.pathname === '/' || location.pathname === '/transcriber';
   const isKanbanActive = location.pathname.startsWith('/kanban');
@@ -50,6 +344,13 @@ const Sidebar = () => {
   const [kanbanOpen, setKanbanOpen] = useState(isKanbanActive);
   const [generatorOpen, setGeneratorOpen] = useState(isGeneratorActive);
 
+  // Workspace switcher
+  const [wsSwitcherOpen, setWsSwitcherOpen] = useState(false);
+  const [wsManageId, setWsManageId] = useState(null); // non-null → show manage panel
+  const [wsCreating, setWsCreating] = useState(false);
+  const [wsNewName, setWsNewName] = useState('');
+  const switcherRef = useRef(null);
+
   // Auto-collapse submenus based on current route
   useEffect(() => {
     setHubOpen(isHubActive);
@@ -57,10 +358,6 @@ const Sidebar = () => {
     setGeneratorOpen(isGeneratorActive);
   }, [location.pathname]);
 
-  // Fetch projects once on mount, and again only when entering a kanban
-  // route (where fresh data actually matters). Previously this was running
-  // on every route change which caused a fetch and a full sidebar
-  // re-render on every click.
   useEffect(() => {
     fetchProjects();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -71,9 +368,36 @@ const Sidebar = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isKanbanActive]);
 
+  // Close switcher on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (switcherRef.current && !switcherRef.current.contains(e.target)) {
+        setWsSwitcherOpen(false);
+      }
+    };
+    if (wsSwitcherOpen) document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [wsSwitcherOpen]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate('/login');
+  };
+
+  const handleCreateWorkspace = async () => {
+    const name = wsNewName.trim() || 'Novo Workspace';
+    try {
+      const token = await getAccessToken();
+      const res = await axios.post(`${API_URL}/workspaces/`, { name }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      await fetchWorkspaces();
+      setActiveWorkspaceId(res.data.id);
+      setWsCreating(false);
+      setWsNewName('');
+    } catch (err) {
+      console.error('Erro criando workspace:', err);
+    }
   };
 
   const hubSubItems = [
@@ -100,6 +424,22 @@ const Sidebar = () => {
       navigate(`/kanban/${res.data.id}`);
     } catch (err) { console.error(err); }
   };
+
+  // ─── Manage panel (replaces entire sidebar content) ───
+  if (wsManageId && !collapsed) {
+    return (
+      <div
+        className={cn(
+          "h-screen bg-surface/80 backdrop-blur-xl border-r border-border-subtle flex flex-col fixed left-0 top-0 z-50 transition-all duration-300 ease-in-out w-[260px]"
+        )}
+      >
+        <WorkspaceManagePanel
+          workspaceId={wsManageId}
+          onClose={() => setWsManageId(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div
@@ -140,9 +480,125 @@ const Sidebar = () => {
       {/* Divider */}
       <div className={cn("h-px bg-gradient-to-r from-transparent via-white/6 to-transparent", collapsed ? "mx-3" : "mx-5")} />
 
+      {/* ─── Workspace Switcher ─── */}
+      {!collapsed && (
+        <div className="px-4 pt-4 pb-1" ref={switcherRef}>
+          <div className="relative">
+            <button
+              onClick={() => setWsSwitcherOpen((v) => !v)}
+              className={cn(
+                "w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl transition-all duration-200 group",
+                wsSwitcherOpen
+                  ? "bg-white/[0.06] border border-white/[0.1]"
+                  : "bg-white/[0.02] border border-white/[0.05] hover:bg-white/[0.04] hover:border-white/[0.08]"
+              )}
+            >
+              <div className={cn(
+                "w-7 h-7 rounded-lg flex items-center justify-center shrink-0",
+                activeWorkspace?.is_personal
+                  ? "bg-primary/15 text-primary"
+                  : "bg-violet-500/15 text-violet-400"
+              )}>
+                {activeWorkspace?.is_personal ? <User size={13} strokeWidth={2} /> : <Users size={13} strokeWidth={2} />}
+              </div>
+              <span className="flex-1 text-[12px] font-bold text-white truncate text-left">
+                {activeWorkspace?.name || 'Workspace'}
+              </span>
+              <ChevronDown size={13} className={cn(
+                "text-gray-600 transition-transform duration-200 shrink-0",
+                wsSwitcherOpen && "rotate-180"
+              )} />
+            </button>
+
+            {/* Dropdown */}
+            <AnimatePresence>
+              {wsSwitcherOpen && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4, scale: 0.97 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -4, scale: 0.97 }}
+                  transition={{ duration: 0.12, ease: 'easeOut' }}
+                  className="absolute left-0 right-0 top-full mt-1.5 bg-[#141418] border border-white/[0.08] rounded-xl shadow-[0_16px_48px_rgba(0,0,0,0.5)] overflow-hidden z-50"
+                >
+                  <div className="py-1 max-h-[240px] overflow-y-auto custom-scrollbar">
+                    {workspaces.map((ws) => (
+                      <button
+                        key={ws.id}
+                        onClick={() => {
+                          setActiveWorkspaceId(ws.id);
+                          setWsSwitcherOpen(false);
+                        }}
+                        className={cn(
+                          "w-full flex items-center gap-2.5 px-3 py-2.5 text-left transition-colors group/item",
+                          ws.id === activeWorkspaceId
+                            ? "bg-white/[0.05]"
+                            : "hover:bg-white/[0.03]"
+                        )}
+                      >
+                        <div className={cn(
+                          "w-6 h-6 rounded-md flex items-center justify-center shrink-0",
+                          ws.is_personal ? "bg-primary/12 text-primary" : "bg-violet-500/12 text-violet-400"
+                        )}>
+                          {ws.is_personal ? <User size={11} strokeWidth={2} /> : <Users size={11} strokeWidth={2} />}
+                        </div>
+                        <span className="flex-1 text-[12px] font-semibold text-gray-300 truncate">{ws.name}</span>
+                        {ws.id === activeWorkspaceId && (
+                          <Check size={13} className="text-primary shrink-0" />
+                        )}
+                        {!ws.is_personal && (
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setWsManageId(ws.id);
+                              setWsSwitcherOpen(false);
+                            }}
+                            className="p-1 rounded-md text-gray-600 hover:text-white hover:bg-white/[0.06] opacity-0 group-hover/item:opacity-100 transition-all"
+                            title="Gerenciar"
+                          >
+                            <Settings size={11} />
+                          </button>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="border-t border-white/[0.06]">
+                    {wsCreating ? (
+                      <div className="flex items-center gap-1.5 px-3 py-2">
+                        <input
+                          value={wsNewName}
+                          onChange={(e) => setWsNewName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleCreateWorkspace();
+                            if (e.key === 'Escape') { setWsCreating(false); setWsNewName(''); }
+                          }}
+                          autoFocus
+                          placeholder="Nome do workspace"
+                          className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-2.5 py-1.5 text-[12px] text-white placeholder-gray-600 outline-none focus:border-primary/30"
+                        />
+                        <button onClick={handleCreateWorkspace} className="p-1.5 rounded-lg bg-primary/10 text-primary hover:bg-primary/20 transition-colors"><Check size={12} /></button>
+                        <button onClick={() => { setWsCreating(false); setWsNewName(''); }} className="p-1.5 rounded-lg bg-white/[0.04] text-gray-500 hover:text-white transition-colors"><X size={12} /></button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setWsCreating(true)}
+                        className="w-full flex items-center gap-2.5 px-3 py-2.5 text-gray-500 hover:text-white hover:bg-white/[0.03] transition-colors"
+                      >
+                        <Plus size={13} strokeWidth={2} />
+                        <span className="text-[12px] font-semibold">Novo workspace</span>
+                      </button>
+                    )}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      )}
+
       {/* Navigation */}
-      <div className={cn("flex-1 pt-6 overflow-y-auto overflow-x-hidden custom-scrollbar", collapsed ? "px-2" : "px-4")}>
-        {!collapsed && <p className="data-label px-3 mb-4">Workspace</p>}
+      <div className={cn("flex-1 pt-4 overflow-y-auto overflow-x-hidden custom-scrollbar", collapsed ? "px-2" : "px-4")}>
+        {!collapsed && <p className="data-label px-3 mb-4">Menu</p>}
         <nav className={cn("stagger-children", collapsed ? "space-y-2" : "space-y-1")}>
           {/* Hub Analítico com submenu */}
           <div>

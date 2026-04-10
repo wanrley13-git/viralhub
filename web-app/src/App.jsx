@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import { SidebarProvider } from './contexts/SidebarContext';
 import { ProjectsProvider } from './contexts/ProjectsContext';
 import { NotesProvider } from './contexts/NotesContext';
+import { WorkspaceProvider } from './contexts/WorkspaceContext';
 import { supabase } from './supabaseClient';
 
 // Route-level code splitting. Each of these pages is large (500-1700 LOC)
@@ -76,6 +77,7 @@ function App() {
     <SidebarProvider>
       <ProjectsProvider>
       <NotesProvider>
+      <WorkspaceProvider>
       <Router>
         <Routes>
           {/* Rotas Públicas */}
@@ -154,6 +156,7 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
+      </WorkspaceProvider>
       </NotesProvider>
       </ProjectsProvider>
     </SidebarProvider>
