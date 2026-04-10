@@ -24,6 +24,7 @@ from routers.uploads import router as uploads_router
 from routers.calendar import router as calendar_router
 from routers.content import router as content_router
 from routers.ideas import router as ideas_router
+from routers.workspaces import router as workspaces_router
 
 app = FastAPI(title="ViralAnalyst Content Hub API")
 
@@ -63,6 +64,7 @@ app.include_router(content_router)
 # unchanged even after the new IdeaGenerator router mounts creative-scoped
 # handlers at the same /content/ideas/* paths.
 app.include_router(ideas_router)
+app.include_router(workspaces_router)
 
 @app.on_event("startup")
 async def on_startup():
