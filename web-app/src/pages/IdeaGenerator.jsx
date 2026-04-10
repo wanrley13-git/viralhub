@@ -1717,7 +1717,7 @@ const IdeaGenerator = () => {
               {/* Body — markdown for developed ideas, plain text for others */}
               <div className="flex-1 overflow-y-auto custom-scrollbar px-7 py-6">
                 {expandedIdea.developed_content ? (
-                  <MarkdownRenderer content={expandedIdea.developed_content} />
+                  <MarkdownRenderer>{expandedIdea.developed_content}</MarkdownRenderer>
                 ) : expandedIdea.summary ? (
                   <p className="text-[15px] text-white/80 leading-relaxed whitespace-pre-wrap">
                     {expandedIdea.summary}

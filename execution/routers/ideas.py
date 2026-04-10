@@ -667,6 +667,8 @@ async def develop_creative_idea(
         if not content_md:
             raise ValueError("Resposta vazia do modelo.")
 
+        logger.info(f"developed_content length: {len(content_md)}")
+
         # Persist
         idea.developed_content = content_md
         idea.status = "developed"
