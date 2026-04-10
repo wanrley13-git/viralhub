@@ -18,6 +18,7 @@ const MIGRATED_KEY = 'viralhub_notes_migrated_to_api';
 
 const authHeaders = async () => {
   const token = await getAccessToken();
+  if (!token) return null;
   return { Authorization: `Bearer ${token}` };
 };
 
@@ -90,6 +91,7 @@ export const NotesProvider = ({ children }) => {
     if (!activeWorkspaceId) return;
     try {
       const headers = await authHeaders();
+      if (!headers) return; // not authenticated yet
       const [fRes, nRes] = await Promise.all([
         axios.get(`${API_URL}/notes/folders`, { headers }),
         axios.get(`${API_URL}/notes/`, { headers }),
@@ -97,7 +99,7 @@ export const NotesProvider = ({ children }) => {
       setFolders(fRes.data.map(normalizeFolder));
       setNotes(nRes.data.map(normalizeNote));
     } catch (err) {
-      console.error('Notes fetch error:', err);
+      console.error('Notes fetch error:', err?.response?.status, err?.message);
     } finally {
       setLoading(false);
     }
@@ -118,6 +120,7 @@ export const NotesProvider = ({ children }) => {
 
     try {
       const headers = await authHeaders();
+      if (!headers) return false; // not authenticated yet
       const { folders: lf = [], notes: ln = [] } = legacy.data;
 
       // Skip the built-in "default" folder (id === 'default') — we'll
