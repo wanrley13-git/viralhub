@@ -10,6 +10,7 @@ Provides:
 """
 
 import json
+import logging
 from dataclasses import dataclass
 from typing import List
 
@@ -21,6 +22,8 @@ from sqlalchemy.future import select
 from database import get_db
 from models import User, Workspace, WorkspaceMember
 from auth import get_current_user_dual as get_current_user
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -41,6 +44,7 @@ async def resolve_workspace(
     when the header is absent (backwards-compatible)."""
 
     header_val = request.headers.get("X-Workspace-Id")
+    logger.info("resolve_workspace: header=%s, user=%s", header_val, current_user.id)
 
     if header_val:
         try:
@@ -71,6 +75,7 @@ async def resolve_workspace(
             perms = json.loads(member.permissions or "{}")
         except Exception:
             pass
+        logger.info("resolve_workspace: resolved=%s (header)", ws.id)
         return WorkspaceInfo(
             id=ws.id,
             is_personal=bool(ws.is_personal),
@@ -102,6 +107,7 @@ async def resolve_workspace(
         perms = json.loads(member.permissions or "{}")
     except Exception:
         pass
+    logger.info("resolve_workspace: resolved=%s (fallback personal)", ws.id)
     return WorkspaceInfo(
         id=ws.id,
         is_personal=True,

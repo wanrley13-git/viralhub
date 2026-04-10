@@ -8,8 +8,10 @@ from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 
+import datetime
+
 from database import get_db
-from models import User, Profile
+from models import User, Profile, Workspace, WorkspaceMember, _DEFAULT_PERMISSIONS
 
 load_dotenv(os.path.join(os.path.dirname(__file__), '.env'), override=True)
 
@@ -55,12 +57,30 @@ async def get_current_user(
         profile = result.scalars().first()
         if profile:
             return profile
-        # Auto-create profile for new Supabase users
+        # Auto-create profile + personal workspace for new Supabase users
         email = payload.get("email")
         if not email:
             raise credentials_exception
         new_profile = Profile(supabase_id=supabase_id, email=email)
         db.add(new_profile)
+        await db.flush()  # get new_profile.id before creating workspace
+
+        ws = Workspace(
+            name="Meu Workspace",
+            owner_id=new_profile.id,
+            is_personal=1,
+            created_at=datetime.datetime.utcnow(),
+        )
+        db.add(ws)
+        await db.flush()
+
+        db.add(WorkspaceMember(
+            workspace_id=ws.id,
+            user_id=new_profile.id,
+            role="owner",
+            permissions=_DEFAULT_PERMISSIONS,
+            joined_at=datetime.datetime.utcnow(),
+        ))
         await db.commit()
         await db.refresh(new_profile)
         return new_profile

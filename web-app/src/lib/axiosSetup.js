@@ -12,9 +12,10 @@ axios.interceptors.request.use((config) => {
   try {
     const wsId = localStorage.getItem(LS_KEY);
     if (wsId) {
-      config.headers = config.headers || {};
-      config.headers['X-Workspace-Id'] = wsId;
+      config.headers.set('X-Workspace-Id', wsId);
     }
+    // eslint-disable-next-line no-console
+    console.debug('[axiosSetup] X-Workspace-Id:', wsId, '→', config.url);
   } catch {
     // localStorage may throw in private mode — silently ignore
   }
