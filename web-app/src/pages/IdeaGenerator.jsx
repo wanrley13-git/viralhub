@@ -470,6 +470,10 @@ const IdeaGenerator = () => {
   const mentionRef = useRef(null);
   const fileInputRef = useRef(null);
 
+  // Guard: skip the next fetchIdeas triggered by the tab-change useEffect
+  // so that handleGenerate's setIdeas is not overwritten by a refetch race.
+  const skipNextFetchIdeasRef = useRef(false);
+
   // Derived
   const selectedRefs = segments.filter(s => s.type === 'ref').map(s => s.analysis);
   const activeText = segments[segments.length - 1].value;
@@ -543,7 +547,16 @@ const IdeaGenerator = () => {
     if (activeTab === 'history') fetchHistory();
     else if (activeTab === 'saved') fetchSaved();
     else if (activeTab === 'developed') fetchDeveloped();
-    else if (activeTab === 'ideas') fetchIdeas();
+    else if (activeTab === 'ideas') {
+      // After handleGenerate we already set the ideas state locally — skip
+      // the refetch so the just-generated cards aren't overwritten by a
+      // potentially stale server response arriving a few ms later.
+      if (skipNextFetchIdeasRef.current) {
+        skipNextFetchIdeasRef.current = false;
+      } else {
+        fetchIdeas();
+      }
+    }
   }, [activeTab]);
 
   // Toggle bookmark/save on a specific idea.
@@ -912,6 +925,9 @@ const IdeaGenerator = () => {
         timeout: 180000,
       });
 
+      // Mark the flag BEFORE setActiveTab so the tab-change useEffect
+      // won't refetch and overwrite the ideas we're about to set.
+      skipNextFetchIdeasRef.current = true;
       setIdeas(prev => [...res.data, ...prev]);
       setSelectedIdeas([]);
       setActiveTab('ideas');

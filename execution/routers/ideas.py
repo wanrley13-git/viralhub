@@ -222,7 +222,11 @@ async def list_creative_ideas(
 
     if tab == "ideas":
         query = query.where(
-            or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None))
+            or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None)),
+            or_(
+                ContentIdea.status == "idea",
+                ContentIdea.status.is_(None),
+            ),
         )
     elif tab == "saved":
         query = query.where(ContentIdea.is_saved == 1)
