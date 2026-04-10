@@ -4,7 +4,7 @@ import {
   BookOpen, Mic, Check, Trash2, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
   LayoutGrid, Grid3x3, Clock, Heart, Pencil, Eye, Download,
-  Send, Layout, StickyNote,
+  Send, Layout, StickyNote, FileText, Film,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -32,11 +32,17 @@ const StarFilled = ({ size = 14, className = '' }) => (
   </svg>
 );
 
-// Only three tabs — no "Desenvolvidos" on IdeaGenerator.
-const TABS = [
+const TABS_BASE = [
   { id: 'ideas',   label: 'Ideias',    icon: Lightbulb, pill: true  },
   { id: 'history', label: 'Histórico', icon: Clock,     pill: false },
   { id: 'saved',   label: 'Favoritos', icon: Heart,     pill: false },
+];
+
+const TABS_ROTEIRIST = [
+  { id: 'ideas',     label: 'Ideias',         icon: Lightbulb, pill: true  },
+  { id: 'developed', label: 'Desenvolvidos',  icon: FileText,  pill: true  },
+  { id: 'history',   label: 'Histórico',      icon: Clock,     pill: false },
+  { id: 'saved',     label: 'Favoritos',      icon: Heart,     pill: false },
 ];
 
 const MIN_QTY = 1;
@@ -214,14 +220,33 @@ const IdeaGenerator = () => {
   const { confirm, ConfirmDialog } = useConfirm();
   const { toast, ToastContainer } = useToast();
 
+  // Roteirist mode toggle — persisted in localStorage
+  const [roteiristMode, setRoteiristMode] = useState(() => {
+    try {
+      return localStorage.getItem('ideaGenerator_roteiristMode') === 'true';
+    } catch {}
+    return false;
+  });
+  useEffect(() => {
+    try { localStorage.setItem('ideaGenerator_roteiristMode', String(roteiristMode)); } catch {}
+  }, [roteiristMode]);
+
+  const TABS = roteiristMode ? TABS_ROTEIRIST : TABS_BASE;
+  const validTabIds = TABS.map(t => t.id);
+
   // Page tabs — persisted under ideaGenerator_activeTab
   const [activeTab, setActiveTab] = useState(() => {
     try {
       const saved = localStorage.getItem('ideaGenerator_activeTab');
-      if (saved && ['ideas', 'history', 'saved'].includes(saved)) return saved;
+      if (saved && ['ideas', 'history', 'saved', 'developed'].includes(saved)) return saved;
     } catch {}
     return 'ideas';
   });
+
+  // When roteirist mode is turned off, if user is on 'developed' tab, fall back
+  useEffect(() => {
+    if (!roteiristMode && activeTab === 'developed') setActiveTab('ideas');
+  }, [roteiristMode]);
 
   useEffect(() => {
     try { localStorage.setItem('ideaGenerator_activeTab', activeTab); } catch {}
@@ -420,6 +445,8 @@ const IdeaGenerator = () => {
   const [ideas, setIdeas] = useState([]);
   const [historyIdeas, setHistoryIdeas] = useState([]);
   const [savedIdeas, setSavedIdeas] = useState([]);
+  const [developedIdeas, setDevelopedIdeas] = useState([]);
+  const [developingIds, setDevelopingIds] = useState(new Set());
 
   const [successToast, setSuccessToast] = useState(null);
   const [loadingTab, setLoadingTab] = useState(false);
@@ -500,11 +527,22 @@ const IdeaGenerator = () => {
     finally { setLoadingTab(false); }
   };
 
+  const fetchDeveloped = async () => {
+    setLoadingTab(true);
+    try {
+      const token = await getAccessToken();
+      const res = await axios.get(`${API_URL}/content/ideas/list?tab=developed`, { headers: { Authorization: `Bearer ${token}` } });
+      setDevelopedIdeas(res.data);
+    } catch (err) { console.error('Erro buscando desenvolvidos:', err); }
+    finally { setLoadingTab(false); }
+  };
+
   // Fetch data when tab changes
   useEffect(() => {
     setSelectedIdeas([]);
     if (activeTab === 'history') fetchHistory();
     else if (activeTab === 'saved') fetchSaved();
+    else if (activeTab === 'developed') fetchDeveloped();
     else if (activeTab === 'ideas') fetchIdeas();
   }, [activeTab]);
 
@@ -532,6 +570,7 @@ const IdeaGenerator = () => {
       setIdeas(updater);
       setHistoryIdeas(updater);
       setSavedIdeas(updater);
+      setDevelopedIdeas(updater);
     } catch (err) {
       setErrorToast('Erro ao salvar ideia.');
       setTimeout(() => setErrorToast(null), 4000);
@@ -865,6 +904,7 @@ const IdeaGenerator = () => {
       if (selectedBaseId != null) formData.append('base_id', String(selectedBaseId));
       formData.append('reference_ids', JSON.stringify(selectedRefs.map(r => r.id)));
       formData.append('quantity', String(quantity));
+      formData.append('mode', roteiristMode ? 'roteirista' : 'ideias');
       uploadedImages.forEach(img => formData.append('images', img.file));
 
       const res = await axios.post(`${API_URL}/content/ideas/generate`, formData, {
@@ -932,13 +972,71 @@ const IdeaGenerator = () => {
     }
   };
 
+  // ─── Develop selected ideas (roteirist mode) ───
+  const handleDevelop = useCallback(async () => {
+    const picked = getSelectedIdeaObjects();
+    if (picked.length === 0) return;
+
+    // Immediately move selected ideas to "developing" status in local state
+    const ids = picked.map(i => i.id);
+    const devUpdater = (list) => list.map(i => ids.includes(i.id) ? { ...i, status: 'developing' } : i);
+    setIdeas(devUpdater);
+    setDevelopingIds(prev => new Set([...prev, ...ids]));
+    setSelectedIdeas([]);
+
+    // Add them to developedIdeas immediately so the tab shows skeletons
+    setDevelopedIdeas(prev => {
+      const existing = new Set(prev.map(i => i.id));
+      const newOnes = picked.filter(i => !existing.has(i.id)).map(i => ({ ...i, status: 'developing' }));
+      return [...newOnes, ...prev];
+    });
+
+    const token = await getAccessToken();
+    const headers = { Authorization: `Bearer ${token}` };
+
+    // Fire all develop requests in parallel
+    const promises = picked.map(async (idea) => {
+      try {
+        const res = await axios.post(
+          `${API_URL}/content/ideas/develop`,
+          {
+            idea_id: idea.id,
+            title: idea.title,
+            summary: idea.summary || '',
+            tone_id: selectedToneId,
+            base_id: selectedBaseId,
+          },
+          { headers, timeout: 200000 }
+        );
+        const updated = res.data;
+        // Update in all lists
+        const u = (list) => list.map(i => i.id === idea.id ? { ...i, ...updated } : i);
+        setIdeas(u);
+        setDevelopedIdeas(u);
+        setHistoryIdeas(u);
+        setDevelopingIds(prev => { const next = new Set(prev); next.delete(idea.id); return next; });
+      } catch (err) {
+        // Revert status on failure
+        const revert = (list) => list.map(i => i.id === idea.id ? { ...i, status: 'idea' } : i);
+        setIdeas(revert);
+        setDevelopedIdeas(prev => prev.filter(i => i.id !== idea.id || i.status === 'developed'));
+        setDevelopingIds(prev => { const next = new Set(prev); next.delete(idea.id); return next; });
+        const msg = formatApiError(err, 'Erro ao desenvolver roteiro.');
+        setErrorToast(msg);
+        setTimeout(() => setErrorToast(null), 5000);
+      }
+    });
+
+    await Promise.allSettled(promises);
+  }, [selectedIdeas, ideas, historyIdeas, savedIdeas, developedIdeas, selectedToneId, selectedBaseId]);
+
   // ─── Collect selected idea objects across all loaded tabs ───
   // Selection state stores only ids, but ideas can live in ideas /
   // historyIdeas / savedIdeas depending on which tabs the user has
   // visited. Walk all three lists, dedupe by id, and preserve the order
   // the user selected them in.
   const getSelectedIdeaObjects = () => {
-    const all = [...ideas, ...historyIdeas, ...savedIdeas];
+    const all = [...ideas, ...historyIdeas, ...savedIdeas, ...developedIdeas];
     const seen = new Set();
     const result = [];
     for (const id of selectedIdeas) {
@@ -1310,25 +1408,27 @@ const IdeaGenerator = () => {
           {/* Clear button + confirmation popup — always visible, disabled on Favoritos */}
           <div className="relative">
             <button
-              onClick={() => { if (activeTab !== 'saved') setClearConfirmOpen(!clearConfirmOpen); }}
-              disabled={activeTab === 'saved'}
+              onClick={() => { if (activeTab !== 'saved' && activeTab !== 'developed') setClearConfirmOpen(!clearConfirmOpen); }}
+              disabled={activeTab === 'saved' || activeTab === 'developed'}
               className={`p-2 rounded-lg bg-white/[0.03] border border-white/[0.06] transition-colors ${
-                activeTab === 'saved'
+                activeTab === 'saved' || activeTab === 'developed'
                   ? 'opacity-30 cursor-not-allowed text-gray-500'
                   : 'text-gray-400 hover:text-red-400 hover:bg-red-400/[0.08] hover:border-red-400/20'
               }`}
               title={
                 activeTab === 'saved'
                   ? 'Favoritos não podem ser limpos aqui'
-                  : activeTab === 'history'
-                    ? 'Limpar histórico (preserva favoritos)'
-                    : 'Limpar'
+                  : activeTab === 'developed'
+                    ? 'Desenvolvidos não podem ser limpos aqui'
+                    : activeTab === 'history'
+                      ? 'Limpar histórico (preserva favoritos)'
+                      : 'Limpar'
               }
             >
               <Trash2 size={14} strokeWidth={1.5} fill="currentColor" />
             </button>
             <AnimatePresence>
-              {clearConfirmOpen && activeTab !== 'saved' && (
+              {clearConfirmOpen && activeTab !== 'saved' && activeTab !== 'developed' && (
                 <>
                   <div className="fixed inset-0 z-30" onClick={() => setClearConfirmOpen(false)} />
                   <motion.div
@@ -1385,8 +1485,8 @@ const IdeaGenerator = () => {
         <AnimatePresence mode="wait">
           <motion.div key={activeTab} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="h-full">
 
-            {/* Loading spinner for history/saved */}
-            {(activeTab === 'history' || activeTab === 'saved') && loadingTab && (
+            {/* Loading spinner for history/saved/developed */}
+            {(activeTab === 'history' || activeTab === 'saved' || activeTab === 'developed') && loadingTab && (
               <div className="h-full flex items-center justify-center">
                 <Loader2 size={24} className="animate-spin text-gray-600" />
               </div>
@@ -1524,6 +1624,54 @@ const IdeaGenerator = () => {
               </div>
             )}
 
+            {/* DESENVOLVIDOS tab (roteirist mode only) */}
+            {activeTab === 'developed' && !loadingTab && developedIdeas.length > 0 && (
+              <div className={`grid gap-3 ${gridCols === 4 ? 'grid-cols-4' : gridCols === 5 ? 'grid-cols-5' : 'grid-cols-6'}`}>
+                {developedIdeas.map((idea, i) => (
+                  idea.status === 'developing' ? (
+                    <div key={idea.id} className={`bg-[#121E13] border border-white/[0.08] rounded-2xl ${cs.pad} animate-pulse flex flex-col gap-2.5`} style={{ animationDelay: `${i * 40}ms` }}>
+                      <div className="h-3 bg-white/[0.04] rounded w-16" />
+                      <div className="h-5 bg-white/[0.06] rounded w-full" />
+                      <div className="h-5 bg-white/[0.05] rounded w-3/4" />
+                      <div className="mt-2 pt-2 space-y-2">
+                        <div className="h-3.5 bg-white/[0.03] rounded w-full" />
+                        <div className="h-3.5 bg-white/[0.03] rounded w-5/6" />
+                        <div className="h-3.5 bg-white/[0.03] rounded w-4/6" />
+                      </div>
+                      <div className="flex items-center gap-2 mt-3">
+                        <Loader2 size={11} className="animate-spin text-emerald-500/60" />
+                        <span className="text-[10px] font-bold uppercase tracking-widest text-emerald-500/50">Desenvolvendo roteiro…</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <IdeaCard
+                      key={idea.id}
+                      idea={idea}
+                      index={i}
+                      isSelected={selectedIdeas.includes(idea.id)}
+                      cs={cs}
+                      onToggleSelect={toggleIdeaSelect}
+                      onToggleSave={toggleSaveIdea}
+                      onExpand={setExpandedIdea}
+                      bgColor="#121E13"
+                    />
+                  )
+                ))}
+              </div>
+            )}
+
+            {activeTab === 'developed' && !loadingTab && developedIdeas.length === 0 && (
+              <div className="h-full flex flex-col items-center justify-center gap-4 text-center">
+                <div className="w-20 h-20 rounded-3xl bg-emerald-500/[0.05] border border-emerald-500/15 flex items-center justify-center">
+                  <FileText size={32} strokeWidth={1.2} className="text-emerald-500/60" />
+                </div>
+                <div>
+                  <p className="text-[15px] font-semibold text-gray-400">Nenhum roteiro desenvolvido</p>
+                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Selecione ideias e clique em "Criar conteúdo" para desenvolver roteiros completos</p>
+                </div>
+              </div>
+            )}
+
           </motion.div>
         </AnimatePresence>
       </div>
@@ -1544,14 +1692,14 @@ const IdeaGenerator = () => {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 12 }}
               transition={{ duration: 0.25, ease: 'easeOut' }}
-              className="glass-raised w-full max-w-3xl max-h-[88vh] rounded-3xl flex flex-col overflow-hidden shadow-modal"
+              className={`glass-raised w-full ${expandedIdea.developed_content ? 'max-w-5xl' : 'max-w-3xl'} max-h-[88vh] rounded-3xl flex flex-col overflow-hidden shadow-modal`}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
               <div className="pt-6 px-7 pb-5 border-b border-white/[0.06] flex items-start justify-between gap-4 shrink-0">
                 <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-primary/70 mb-2">
-                    Ideia
+                  <p className={`text-[10px] font-bold uppercase tracking-widest mb-2 ${expandedIdea.developed_content ? 'text-emerald-500/70' : 'text-primary/70'}`}>
+                    {expandedIdea.developed_content ? 'Roteiro' : 'Ideia'}
                   </p>
                   <h3 className="text-xl font-extrabold text-white leading-tight uppercase tracking-wide">
                     {expandedIdea.title}
@@ -1566,9 +1714,11 @@ const IdeaGenerator = () => {
                 </button>
               </div>
 
-              {/* Body — plain text summary, no markdown */}
+              {/* Body — markdown for developed ideas, plain text for others */}
               <div className="flex-1 overflow-y-auto custom-scrollbar px-7 py-6">
-                {expandedIdea.summary ? (
+                {expandedIdea.developed_content ? (
+                  <MarkdownRenderer content={expandedIdea.developed_content} />
+                ) : expandedIdea.summary ? (
                   <p className="text-[15px] text-white/80 leading-relaxed whitespace-pre-wrap">
                     {expandedIdea.summary}
                   </p>
@@ -1694,7 +1844,7 @@ const IdeaGenerator = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══ BULK SEND BUTTON (any tab with selection) ═══ */}
+      {/* ═══ BULK ACTION BUTTONS (any tab with selection) ═══ */}
       <AnimatePresence>
         {selectedIdeas.length > 0 && !sendDest && (
           <motion.div
@@ -1702,8 +1852,20 @@ const IdeaGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center px-6 pointer-events-none"
+            className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center gap-3 px-6 pointer-events-none"
           >
+            {/* Criar conteúdo — only in roteirist mode */}
+            {roteiristMode && (
+              <button
+                onClick={handleDevelop}
+                className="relative z-10 flex items-center gap-2.5 px-10 py-4 rounded-full text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
+                style={{ background: 'linear-gradient(135deg, #166534, #15803d)' }}
+              >
+                <FileText size={15} strokeWidth={2.5} />
+                Criar conteúdo · {selectedIdeas.length}
+              </button>
+            )}
+
             <button
               onClick={() => {
                 const picked = getSelectedIdeaObjects();
@@ -1932,6 +2094,31 @@ const IdeaGenerator = () => {
                 className="px-2.5 py-2 text-gray-500 hover:text-white disabled:opacity-30 transition-colors rounded-r-xl"
               ><Plus size={14} strokeWidth={2} /></button>
             </div>
+
+            {/* Roteirist mode toggle */}
+            <button
+              type="button"
+              onClick={() => setRoteiristMode(v => !v)}
+              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 select-none shrink-0"
+              style={{
+                color: roteiristMode ? '#22C55E' : '#6b7280',
+                background: roteiristMode ? 'rgba(34,197,94,0.08)' : 'transparent',
+              }}
+              title={roteiristMode ? 'Modo Roteirista ativado — ideias com história + desenvolvimento de roteiro' : 'Ativar Modo Roteirista'}
+            >
+              <Film size={13} strokeWidth={2} />
+              <span className="tracking-wide">Roteirista</span>
+              <div
+                className="relative w-[34px] h-[18px] rounded-full transition-colors duration-200 shrink-0"
+                style={{ backgroundColor: roteiristMode ? '#22C55E' : '#3f3f46' }}
+              >
+                <div
+                  className="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-transform duration-200"
+                  style={{ transform: roteiristMode ? 'translateX(18px)' : 'translateX(2px)' }}
+                />
+              </div>
+            </button>
+
             <div className="flex-1" />
             <button onClick={handleGenerate} disabled={!hasContent || generating} className="btn-primary flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none">
               {generating ? <><Loader2 size={14} className="animate-spin" /> Gerando...</> : <><StarFilled size={14} /> Gerar</>}

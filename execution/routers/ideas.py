@@ -5,9 +5,12 @@ mirrors the shape of routers/content.py so the frontend stays simple, but
 it filters every query by ``idea_type == 'creative'`` so ContentGenerator
 and IdeaGenerator never see each other's rows.
 
-Generation uses a different system prompt (``agente-criativo-prompt.md``)
-and runs FASE 2 of that agent to produce provocative one-liners, not the
-full Viral Content Machine briefings from routers/content.py.
+Supports two generation modes:
+- **ideias** (default): uses "Modo ideias (agente de ideias rápidas).md"
+  to produce fast, provocative one-liners (title + summary).
+- **roteirista**: uses "Modo Roteirista (agente de roteiros).md" FASE 1
+  to produce story-driven ideas, and FASE 2 (via ``/develop``) to expand
+  a selected idea into a full cinematic screenplay in Markdown.
 """
 
 import os
@@ -59,6 +62,7 @@ class IdeaOut(BaseModel):
     title: str
     summary: Optional[str] = None
     status: str
+    developed_content: Optional[str] = None
     is_saved: bool = False
     is_dismissed: bool = False
     batch_id: Optional[str] = None
@@ -68,12 +72,21 @@ class IdeaOut(BaseModel):
         from_attributes = True
 
 
+class DevelopRequest(BaseModel):
+    idea_id: int
+    title: str
+    summary: Optional[str] = ""
+    tone_id: Optional[int] = None
+    base_id: Optional[int] = None
+
+
 def _serialize(idea: ContentIdea) -> IdeaOut:
     return IdeaOut(
         id=idea.id,
         title=idea.title,
         summary=idea.summary,
         status=idea.status or "idea",
+        developed_content=idea.developed_content,
         is_saved=bool(idea.is_saved),
         is_dismissed=bool(idea.is_dismissed),
         batch_id=idea.batch_id,
@@ -131,6 +144,26 @@ def _load_creative_directive() -> str:
     return _CREATIVE_DIRECTIVE_CACHE
 
 
+_ROTEIRIST_DIRECTIVE_CACHE = None
+
+
+def _load_roteirist_directive() -> str:
+    global _ROTEIRIST_DIRECTIVE_CACHE
+    if _ROTEIRIST_DIRECTIVE_CACHE is not None:
+        return _ROTEIRIST_DIRECTIVE_CACHE
+    path = _find_directive_file("Modo Roteirista (agente de roteiros).md")
+    if not path:
+        _ROTEIRIST_DIRECTIVE_CACHE = ""
+        return _ROTEIRIST_DIRECTIVE_CACHE
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            _ROTEIRIST_DIRECTIVE_CACHE = f.read()
+    except Exception as e:
+        logger.error(f"Erro ao ler diretiva roteirista {path}: {e}")
+        _ROTEIRIST_DIRECTIVE_CACHE = ""
+    return _ROTEIRIST_DIRECTIVE_CACHE
+
+
 def _build_creative_system_prompt(base_text: str, tone_text: str) -> str:
     """Inject base/tone into the creative directive as ARQUIVO 1 / ARQUIVO 2."""
     directive = _load_creative_directive()
@@ -153,10 +186,32 @@ def _build_creative_system_prompt(base_text: str, tone_text: str) -> str:
     return directive + injection
 
 
+def _build_roteirist_system_prompt(base_text: str, tone_text: str) -> str:
+    """Inject base/tone into the roteirist directive as ARQUIVO 1 / ARQUIVO 2."""
+    directive = _load_roteirist_directive()
+    injection = f"""
+
+---
+
+## ARQUIVO 1 — DATABASE DE VIRAIS
+
+{base_text if base_text else "Nenhuma base de conhecimento selecionada."}
+
+---
+
+## ARQUIVO 2 — TOM DO USUÁRIO
+
+{tone_text if tone_text else "Nenhum tom fornecido. Use tom direto, provocador e com personalidade forte."}
+
+---
+"""
+    return directive + injection
+
+
 # ──────────────────────────── endpoints ────────────────────────────
 @router.get("/list", response_model=List[IdeaOut])
 async def list_creative_ideas(
-    tab: str = Query("ideas", regex="^(ideas|history|saved)$"),
+    tab: str = Query("ideas", regex="^(ideas|history|saved|developed)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
@@ -171,6 +226,10 @@ async def list_creative_ideas(
         )
     elif tab == "saved":
         query = query.where(ContentIdea.is_saved == 1)
+    elif tab == "developed":
+        query = query.where(
+            or_(ContentIdea.status == "developed", ContentIdea.status == "developing")
+        )
     # history: no extra filter
 
     query = query.order_by(desc(ContentIdea.created_at))
@@ -271,6 +330,7 @@ async def generate_creative_ideas(
     # the form parser passes one UploadFile instead of wrapping it.
     # The plain `List[UploadFile]` with `File(default=[])` correctly
     # collects 0..N files under the same field name.
+    mode: str = Form("ideias"),
     images: List[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -279,7 +339,12 @@ async def generate_creative_ideas(
     ints (so the frontend can send it as a single form field); `images`
     is an optional list of uploaded files piped into Gemini as visual
     context. When no images are sent the call behaves exactly like the
-    old JSON-only version."""
+    old JSON-only version.
+
+    The ``mode`` field selects the generation agent:
+    - ``ideias`` (default): fast creative one-liners.
+    - ``roteirista``: story-driven ideas via FASE 1 of the roteirist agent.
+    """
     if not prompt.strip():
         raise HTTPException(status_code=400, detail="O prompt não pode estar vazio.")
 
@@ -354,8 +419,12 @@ async def generate_creative_ideas(
         for t in result.scalars().all():
             references_text += f"\n\n### Transcrição: {t.title}\n{t.summary or ''}"
 
-    # ── Build system prompt from the creative directive ──
-    system_prompt = _build_creative_system_prompt(base_text, tone_text)
+    # ── Build system prompt from the selected directive ──
+    is_roteirist = mode == "roteirista"
+    if is_roteirist:
+        system_prompt = _build_roteirist_system_prompt(base_text, tone_text)
+    else:
+        system_prompt = _build_creative_system_prompt(base_text, tone_text)
     if references_text:
         system_prompt += (
             "\n\n## REFERÊNCIAS DE VÍDEOS\n"
@@ -434,16 +503,26 @@ async def generate_creative_ideas(
     logger.info(f"Prompt original: {prompt}")
     logger.info(f"Prompt refinado: {refined_prompt}")
 
-    # ── Step 2: Build the user_message for the creative agent with the
+    # ── Step 2: Build the user_message for the agent with the
     # refined briefing substituting the raw prompt ──
-    user_message = (
-        "Com base no briefing a seguir, gere as ideias criativas. "
-        f"Gere exatamente {quantity} ideias. "
-        "Para cada ideia, retorne um título provocativo e uma frase explicativa. "
-        "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
-        'Formato: [{"title": "...", "summary": "..."}, ...]'
-        f"\n\nBriefing: {refined_prompt}"
-    )
+    if is_roteirist:
+        user_message = (
+            "Com base no briefing a seguir, execute a FASE 1 — GERAÇÃO DE IDEIAS COM HISTÓRIA. "
+            f"Gere exatamente {quantity} ideias. "
+            "Cada ideia deve ter título evocativo e resumo com arco narrativo (setup, virada, payoff). "
+            "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
+            'Formato: [{"title": "...", "summary": "..."}, ...]'
+            f"\n\nBriefing: {refined_prompt}"
+        )
+    else:
+        user_message = (
+            "Com base no briefing a seguir, gere as ideias criativas. "
+            f"Gere exatamente {quantity} ideias. "
+            "Para cada ideia, retorne um título provocativo e uma frase explicativa. "
+            "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
+            'Formato: [{"title": "...", "summary": "..."}, ...]'
+            f"\n\nBriefing: {refined_prompt}"
+        )
 
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 
@@ -504,3 +583,99 @@ async def generate_creative_ideas(
     except Exception as e:
         logger.error(f"Erro na geração criativa: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Erro na geração: {str(e)}")
+
+
+@router.post("/develop", response_model=IdeaOut)
+async def develop_creative_idea(
+    request: DevelopRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Run FASE 2 of the roteirist agent over a selected creative idea and
+    store the generated screenplay markdown on the idea row."""
+    # Fetch the idea and verify ownership + type
+    result = await db.execute(
+        select(ContentIdea).where(
+            ContentIdea.id == request.idea_id,
+            ContentIdea.user_id == current_user.id,
+            ContentIdea.idea_type == IDEA_TYPE,
+        )
+    )
+    idea = result.scalars().first()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Ideia não encontrada.")
+
+    # Mark as developing
+    idea.status = "developing"
+    await db.commit()
+
+    # Gather context
+    tone_text = ""
+    base_text = ""
+
+    tone_id = request.tone_id or idea.tone_id
+    base_id = request.base_id or idea.base_id
+
+    if tone_id:
+        r = await db.execute(
+            select(Tone).where(Tone.id == tone_id, Tone.user_id == current_user.id)
+        )
+        tone = r.scalars().first()
+        if tone and tone.tone_md:
+            tone_text = tone.tone_md
+
+    if base_id:
+        r = await db.execute(
+            select(KnowledgeBase).where(
+                KnowledgeBase.id == base_id,
+                KnowledgeBase.user_id == current_user.id,
+            )
+        )
+        kb = r.scalars().first()
+        if kb and kb.compiled_md:
+            base_text = kb.compiled_md
+
+    # Build prompts — always use the roteirist directive for develop
+    system_prompt = _build_roteirist_system_prompt(base_text, tone_text)
+
+    title = request.title or idea.title or ""
+    summary = request.summary or idea.summary or ""
+    user_message = (
+        "Desenvolva o roteiro completo para a seguinte ideia, "
+        "executando a FASE 2 — DESENVOLVIMENTO DE ROTEIRO:\n\n"
+        f"Título: {title}\n\n"
+        f"Resumo: {summary}"
+    )
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY não configurada.")
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
+
+    try:
+        response = await asyncio.to_thread(
+            model.generate_content,
+            user_message,
+            request_options={"timeout": 180},
+        )
+        content_md = (getattr(response, "text", None) or "").strip()
+
+        if not content_md:
+            raise ValueError("Resposta vazia do modelo.")
+
+        # Persist
+        idea.developed_content = content_md
+        idea.status = "developed"
+        await db.commit()
+        await db.refresh(idea)
+
+        return _serialize(idea)
+
+    except Exception as e:
+        logger.error(f"Erro em develop_creative_idea: {e}", exc_info=True)
+        # Roll back status so user can retry
+        idea.status = "idea"
+        await db.commit()
+        raise HTTPException(status_code=500, detail=f"Erro ao desenvolver roteiro: {str(e)}")
