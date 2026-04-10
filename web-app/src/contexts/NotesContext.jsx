@@ -48,6 +48,33 @@ export const NotesProvider = ({ children }) => {
     try { return localStorage.getItem(keys.folder) || null; } catch { return null; }
   });
 
+  // One-time migration: move notes from the legacy unscoped key into the
+  // first workspace that loads. Runs only once per browser — after moving
+  // the data the legacy key is deleted so subsequent workspace switches
+  // won't duplicate notes.
+  useEffect(() => {
+    if (!activeWorkspaceId) return;
+    const LEGACY_KEY = 'viralhub_notes';
+    try {
+      const raw = localStorage.getItem(LEGACY_KEY);
+      if (!raw) return;
+      const legacy = JSON.parse(raw);
+      // Only migrate if the legacy store has actual notes
+      if (!legacy.notes || legacy.notes.length === 0) {
+        localStorage.removeItem(LEGACY_KEY);
+        return;
+      }
+      const scopedKey = storageKeys(activeWorkspaceId).data;
+      // Only write if the scoped key is empty (avoid overwriting)
+      if (!localStorage.getItem(scopedKey)) {
+        localStorage.setItem(scopedKey, raw);
+      }
+      localStorage.removeItem(LEGACY_KEY);
+      localStorage.removeItem('viralhub_notes_active_id');
+      localStorage.removeItem('viralhub_notes_folder_id');
+    } catch {}
+  }, [activeWorkspaceId]);
+
   // Reload data when workspace changes
   useEffect(() => {
     setData(loadData(keys.data));
