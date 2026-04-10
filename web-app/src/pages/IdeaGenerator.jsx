@@ -1009,16 +1009,16 @@ const IdeaGenerator = () => {
           { headers, timeout: 200000 }
         );
         const updated = res.data;
-        // Update in all lists
+        // Remove from ideas tab (it now lives in Desenvolvidos)
+        setIdeas(prev => prev.filter(i => i.id !== idea.id));
+        // Update in developed + history lists with full response data
         const u = (list) => list.map(i => i.id === idea.id ? { ...i, ...updated } : i);
-        setIdeas(u);
         setDevelopedIdeas(u);
         setHistoryIdeas(u);
         setDevelopingIds(prev => { const next = new Set(prev); next.delete(idea.id); return next; });
       } catch (err) {
-        // Revert status on failure
-        const revert = (list) => list.map(i => i.id === idea.id ? { ...i, status: 'idea' } : i);
-        setIdeas(revert);
+        // Revert status on failure — put back in ideas tab, remove skeleton from developed
+        setIdeas(prev => prev.map(i => i.id === idea.id ? { ...i, status: 'idea' } : i));
         setDevelopedIdeas(prev => prev.filter(i => i.id !== idea.id || i.status === 'developed'));
         setDevelopingIds(prev => { const next = new Set(prev); next.delete(idea.id); return next; });
         const msg = formatApiError(err, 'Erro ao desenvolver roteiro.');
@@ -1667,7 +1667,7 @@ const IdeaGenerator = () => {
                 </div>
                 <div>
                   <p className="text-[15px] font-semibold text-gray-400">Nenhum roteiro desenvolvido</p>
-                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Selecione ideias e clique em "Criar conteúdo" para desenvolver roteiros completos</p>
+                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Selecione ideias e clique em "Roteirizar" para desenvolver roteiros completos</p>
                 </div>
               </div>
             )}
@@ -1854,7 +1854,7 @@ const IdeaGenerator = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center gap-3 px-6 pointer-events-none"
           >
-            {/* Criar conteúdo — only in roteirist mode */}
+            {/* Roteirizar — only in roteirist mode */}
             {roteiristMode && (
               <button
                 onClick={handleDevelop}
@@ -1862,7 +1862,7 @@ const IdeaGenerator = () => {
                 style={{ background: 'linear-gradient(135deg, #166534, #15803d)' }}
               >
                 <FileText size={15} strokeWidth={2.5} />
-                Criar conteúdo · {selectedIdeas.length}
+                Roteirizar · {selectedIdeas.length}
               </button>
             )}
 
