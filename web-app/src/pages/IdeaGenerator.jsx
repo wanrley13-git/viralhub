@@ -18,6 +18,7 @@ import { resolveThumbnailUrl } from '../components/Thumbnail';
 import MarkdownRenderer from '../components/MarkdownRenderer';
 import useConfirm from '../hooks/useConfirm';
 import useToast from '../hooks/useToast';
+import useRealtimeSync from '../hooks/useRealtimeSync';
 
 // Hard cap mirrored from execution/routers/knowledge.py (MAX_VIDEOS_PER_KB).
 const MAX_VIDEOS_PER_KB = 50;
@@ -216,7 +217,7 @@ const IdeaCard = memo(IdeaCardBase);
 
 const IdeaGenerator = () => {
   const { collapsed } = useSidebar();
-  const { activeWorkspaceId } = useWorkspace();
+  const { activeWorkspaceId, activeWorkspace, currentUserId } = useWorkspace();
   const { projects, fetchProjects } = useProjects();
   const { folders: noteFolders, createNote, updateNote } = useNotes();
   const { confirm, ConfirmDialog } = useConfirm();
@@ -526,6 +527,18 @@ const IdeaGenerator = () => {
     // fetchIdeas is triggered by the tab-based useEffect
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWorkspaceId]);
+
+  // ── realtime sync (team workspaces — creative ideas only) ──
+  useRealtimeSync({
+    table: 'content_ideas',
+    workspaceId: activeWorkspaceId,
+    currentUserId,
+    isPersonal: activeWorkspace?.is_personal ?? true,
+    filter: (row) => row.idea_type === 'creative',
+    onInsert: (row) => setIdeas((prev) => [row, ...prev]),
+    onUpdate: (row) => setIdeas((prev) => prev.map((i) => (i.id === row.id ? { ...i, ...row } : i))),
+    onDelete: (row) => setIdeas((prev) => prev.filter((i) => i.id !== row.id)),
+  });
 
   const fetchIdeas = async () => {
     try {

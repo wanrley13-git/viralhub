@@ -1,11 +1,14 @@
 import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import axios from 'axios';
 import { getAccessToken } from '../supabaseClient';
+import { useWorkspace } from './WorkspaceContext';
+import useRealtimeSync from '../hooks/useRealtimeSync';
 
 const API_URL = import.meta.env.VITE_API_URL;
 const ProjectsContext = createContext();
 
 export const ProjectsProvider = ({ children }) => {
+  const { activeWorkspaceId, activeWorkspace, currentUserId } = useWorkspace();
   const [projects, setProjects] = useState([]);
   const [loaded, setLoaded] = useState(false);
 
@@ -34,6 +37,17 @@ export const ProjectsProvider = ({ children }) => {
   const updateProject = useCallback((id, updates) => {
     setProjects(prev => prev.map(p => p.id === id ? { ...p, ...updates } : p));
   }, []);
+
+  // ── realtime sync (team workspaces) ──
+  useRealtimeSync({
+    table: 'projects',
+    workspaceId: activeWorkspaceId,
+    currentUserId,
+    isPersonal: activeWorkspace?.is_personal ?? true,
+    onInsert: (row) => setProjects((prev) => [row, ...prev]),
+    onUpdate: (row) => setProjects((prev) => prev.map((p) => (p.id === row.id ? { ...p, ...row } : p))),
+    onDelete: (row) => setProjects((prev) => prev.filter((p) => p.id !== row.id)),
+  });
 
   // Memoise so consumers re-render only when the fields they read change.
   const value = useMemo(

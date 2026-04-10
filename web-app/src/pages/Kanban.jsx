@@ -14,6 +14,7 @@ import { useProjects } from '../contexts/ProjectsContext';
 import { getAccessToken } from '../supabaseClient';
 import { resolveThumbnailUrl } from '../components/Thumbnail';
 import useConfirm from '../hooks/useConfirm';
+import useRealtimeSync from '../hooks/useRealtimeSync';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -243,7 +244,7 @@ const ProjectListView = ({ collapsed }) => {
 
 // ─── Board View (inside a project) ───
 const BoardView = ({ projectId, collapsed }) => {
-  const { activeWorkspaceId } = useWorkspace();
+  const { activeWorkspaceId, activeWorkspace, currentUserId } = useWorkspace();
   const [project, setProject] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -280,6 +281,18 @@ const BoardView = ({ projectId, collapsed }) => {
     fetchTasks();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, activeWorkspaceId]);
+
+  // ── realtime sync for tasks (team workspaces) ──
+  useRealtimeSync({
+    table: 'tasks',
+    workspaceId: activeWorkspaceId,
+    currentUserId,
+    isPersonal: activeWorkspace?.is_personal ?? true,
+    filter: (row) => row.project_id === projectId,
+    onInsert: (row) => setTasks((prev) => [...prev, row]),
+    onUpdate: (row) => setTasks((prev) => prev.map((t) => (t.id === row.id ? { ...t, ...row } : t))),
+    onDelete: (row) => setTasks((prev) => prev.filter((t) => t.id !== row.id)),
+  });
 
   useEffect(() => {
     const handleEsc = (e) => {

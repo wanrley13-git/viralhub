@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Plus, X, Trash2 } from 'lucide-react';
 import axios from 'axios';
 import { getAccessToken } from '../supabaseClient';
 import { useWorkspace } from '../contexts/WorkspaceContext';
+import useRealtimeSync from '../hooks/useRealtimeSync';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -277,7 +278,7 @@ function NoteEditor({ note, initialDate, initialTime, projectId, onSave, onDelet
 
 // ── MAIN ──
 export default function CalendarView({ tasks, projectId, onEditTask }) {
-  const { activeWorkspaceId } = useWorkspace();
+  const { activeWorkspaceId, activeWorkspace, currentUserId } = useWorkspace();
   const [view, setView] = useState('month');
   const [currentDate, setCurrentDate] = useState(new Date());
   const [notes, setNotes] = useState([]);
@@ -300,6 +301,18 @@ export default function CalendarView({ tasks, projectId, onEditTask }) {
     fetchNotes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId, activeWorkspaceId]);
+
+  // ── realtime sync (team workspaces) ──
+  useRealtimeSync({
+    table: 'calendar_notes',
+    workspaceId: activeWorkspaceId,
+    currentUserId,
+    isPersonal: activeWorkspace?.is_personal ?? true,
+    filter: (row) => (projectId ? row.project_id === projectId : true),
+    onInsert: (row) => setNotes((prev) => [...prev, row]),
+    onUpdate: (row) => setNotes((prev) => prev.map((n) => (n.id === row.id ? { ...n, ...row } : n))),
+    onDelete: (row) => setNotes((prev) => prev.filter((n) => n.id !== row.id)),
+  });
 
   const saveNote = async (data, noteId) => {
     const token = await getAccessToken();

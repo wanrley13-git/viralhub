@@ -13,6 +13,7 @@ import { createContext, useContext, useState, useCallback, useEffect, useMemo, u
 import axios from 'axios';
 import { useWorkspace } from './WorkspaceContext';
 import { getAccessToken } from '../supabaseClient';
+import useRealtimeSync from '../hooks/useRealtimeSync';
 
 const API_URL = import.meta.env.VITE_API_URL;
 const NotesContext = createContext();
@@ -106,7 +107,8 @@ const cleanupLegacyKeys = () => {
 // ── provider ───────────────────────────────────────────────────
 
 export const NotesProvider = ({ children }) => {
-  const { activeWorkspaceId } = useWorkspace();
+  const { activeWorkspaceId, activeWorkspace, currentUserId } = useWorkspace();
+  const isPersonal = activeWorkspace?.is_personal ?? true;
 
   const [folders, setFolders] = useState([]);
   const [notes, setNotes] = useState([]);
@@ -226,6 +228,28 @@ export const NotesProvider = ({ children }) => {
       await fetchAll();
     })();
   }, [activeWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── realtime sync (team workspaces only) ────────────────────
+
+  useRealtimeSync({
+    table: 'note_folders',
+    workspaceId: activeWorkspaceId,
+    currentUserId,
+    isPersonal,
+    onInsert: (row) => setFolders((prev) => [...prev, normalizeFolder(row)]),
+    onUpdate: (row) => setFolders((prev) => prev.map((f) => (f.id === row.id ? normalizeFolder(row) : f))),
+    onDelete: (row) => setFolders((prev) => prev.filter((f) => f.id !== row.id)),
+  });
+
+  useRealtimeSync({
+    table: 'notes',
+    workspaceId: activeWorkspaceId,
+    currentUserId,
+    isPersonal,
+    onInsert: (row) => setNotes((prev) => [...prev, normalizeNote(row)]),
+    onUpdate: (row) => setNotes((prev) => prev.map((n) => (n.id === row.id ? { ...n, ...normalizeNote(row) } : n))),
+    onDelete: (row) => setNotes((prev) => prev.filter((n) => n.id !== row.id)),
+  });
 
   // ── folder CRUD ─────────────────────────────────────────────
 

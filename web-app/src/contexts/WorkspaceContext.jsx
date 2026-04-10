@@ -67,16 +67,23 @@ export const WorkspaceProvider = ({ children }) => {
     [workspaces, activeWorkspaceId],
   );
 
+  // Numeric profile ID — derived from the personal workspace's owner_id
+  const currentUserId = useMemo(() => {
+    const personal = workspaces.find((w) => w.is_personal);
+    return personal?.owner_id ?? null;
+  }, [workspaces]);
+
   const value = useMemo(
     () => ({
       workspaces,
       activeWorkspaceId,
       setActiveWorkspaceId,
       activeWorkspace,
+      currentUserId,
       fetchWorkspaces,
       loading,
     }),
-    [workspaces, activeWorkspaceId, setActiveWorkspaceId, activeWorkspace, fetchWorkspaces, loading],
+    [workspaces, activeWorkspaceId, setActiveWorkspaceId, activeWorkspace, currentUserId, fetchWorkspaces, loading],
   );
 
   return (

@@ -13,6 +13,7 @@ import { useWorkspace } from '../contexts/WorkspaceContext';
 import { getAccessToken } from '../supabaseClient';
 import Thumbnail from '../components/Thumbnail';
 import useToast from '../hooks/useToast';
+import useRealtimeSync from '../hooks/useRealtimeSync';
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -69,7 +70,7 @@ const groupAnalysesByDate = (list) => {
 
 const Analyzer = () => {
   const { collapsed } = useSidebar();
-  const { activeWorkspaceId } = useWorkspace();
+  const { activeWorkspaceId, activeWorkspace, currentUserId } = useWorkspace();
   const { toast, ToastContainer } = useToast();
   // === Estados de Upload & Análise ===
   const [activeTab, setActiveTab] = useState('upload');
@@ -157,6 +158,16 @@ const Analyzer = () => {
     document.addEventListener('keydown', handleEsc);
     return () => document.removeEventListener('keydown', handleEsc);
   }, [selectedAnalysis, deleteConfirmOpen, selectedExports.length]);
+
+  // ── realtime sync (team workspaces) ────────────────────────
+  useRealtimeSync({
+    table: 'analyses',
+    workspaceId: activeWorkspaceId,
+    currentUserId,
+    isPersonal: activeWorkspace?.is_personal ?? true,
+    onInsert: (row) => setAnalyses((prev) => [row, ...prev]),
+    onDelete: (row) => setAnalyses((prev) => prev.filter((a) => a.id !== row.id)),
+  });
 
   // SSE connection with automatic reconnect.
   //
