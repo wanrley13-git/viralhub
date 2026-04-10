@@ -1,10 +1,7 @@
-import { createContext, useContext, useState, useCallback, useEffect, useMemo } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useWorkspace } from './WorkspaceContext';
 
 const NotesContext = createContext();
-
-const STORAGE_KEY = 'viralhub_notes';
-const ACTIVE_KEY = 'viralhub_notes_active_id';
-const FOLDER_KEY = 'viralhub_notes_folder_id';
 
 const generateId = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
@@ -15,48 +12,74 @@ const DEFAULT_DATA = {
   notes: [],
 };
 
-const loadData = () => {
+/** Build workspace-scoped localStorage keys. */
+const storageKeys = (wsId) => {
+  const suffix = wsId ? `_ws_${wsId}` : '';
+  return {
+    data: `viralhub_notes${suffix}`,
+    active: `viralhub_notes_active_id${suffix}`,
+    folder: `viralhub_notes_folder_id${suffix}`,
+  };
+};
+
+const loadData = (key) => {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(key);
     if (raw) return JSON.parse(raw);
   } catch (e) { console.error('Error loading notes:', e); }
   return DEFAULT_DATA;
 };
 
-const saveData = (data) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+const saveData = (key, data) => {
+  localStorage.setItem(key, JSON.stringify(data));
 };
 
 export const NotesProvider = ({ children }) => {
-  const [data, setData] = useState(loadData);
+  const { activeWorkspaceId } = useWorkspace();
+  const keys = storageKeys(activeWorkspaceId);
+  const keysRef = useRef(keys);
+  keysRef.current = keys;
+
+  const [data, setData] = useState(() => loadData(keys.data));
   const [activeNoteId, setActiveNoteId] = useState(() => {
-    try { return localStorage.getItem(ACTIVE_KEY) || null; } catch { return null; }
+    try { return localStorage.getItem(keys.active) || null; } catch { return null; }
   });
   const [selectedFolderId, setSelectedFolderId] = useState(() => {
-    try { return localStorage.getItem(FOLDER_KEY) || null; } catch { return null; }
+    try { return localStorage.getItem(keys.folder) || null; } catch { return null; }
   });
+
+  // Reload data when workspace changes
+  useEffect(() => {
+    setData(loadData(keys.data));
+    setActiveNoteId(() => {
+      try { return localStorage.getItem(keys.active) || null; } catch { return null; }
+    });
+    setSelectedFolderId(() => {
+      try { return localStorage.getItem(keys.folder) || null; } catch { return null; }
+    });
+  }, [activeWorkspaceId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [renamingFolderId, setRenamingFolderId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
 
   // Persist last-open note/folder across sessions
   useEffect(() => {
     try {
-      if (activeNoteId) localStorage.setItem(ACTIVE_KEY, activeNoteId);
-      else localStorage.removeItem(ACTIVE_KEY);
+      if (activeNoteId) localStorage.setItem(keysRef.current.active, activeNoteId);
+      else localStorage.removeItem(keysRef.current.active);
     } catch {}
   }, [activeNoteId]);
 
   useEffect(() => {
     try {
-      if (selectedFolderId) localStorage.setItem(FOLDER_KEY, selectedFolderId);
-      else localStorage.removeItem(FOLDER_KEY);
+      if (selectedFolderId) localStorage.setItem(keysRef.current.folder, selectedFolderId);
+      else localStorage.removeItem(keysRef.current.folder);
     } catch {}
   }, [selectedFolderId]);
 
   const persist = useCallback((updater) => {
     setData((prev) => {
       const next = typeof updater === 'function' ? updater(prev) : updater;
-      saveData(next);
+      saveData(keysRef.current.data, next);
       return next;
     });
   }, []);

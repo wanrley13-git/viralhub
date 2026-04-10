@@ -77,8 +77,8 @@ function App() {
   return (
     <SidebarProvider>
       <ProjectsProvider>
-      <NotesProvider>
       <WorkspaceProvider>
+      <NotesProvider>
       <Router>
         <Routes>
           {/* Rotas Públicas */}
@@ -157,8 +157,8 @@ function App() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Router>
-      </WorkspaceProvider>
       </NotesProvider>
+      </WorkspaceProvider>
       </ProjectsProvider>
     </SidebarProvider>
   );
