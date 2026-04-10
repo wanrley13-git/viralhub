@@ -13,6 +13,7 @@ from sqlalchemy.future import select
 from database import get_db
 from models import User, Transcription
 from auth import get_current_user_dual as get_current_user
+from workspace_utils import resolve_workspace, check_permission, workspace_filters, WorkspaceInfo
 from transcriber import (
     get_youtube_title,
     download_youtube_video,
@@ -48,7 +49,7 @@ async def get_progress(task_id: str):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-async def run_transcription_task(task_id: str, links: List[str], user_id: int, db_factory):
+async def run_transcription_task(task_id: str, links: List[str], user_id: int, workspace_id: int, db_factory):
     try:
         tasks_progress[task_id]["logs"].append("Iniciando pipeline de transcrição...")
 
@@ -84,6 +85,7 @@ async def run_transcription_task(task_id: str, links: List[str], user_id: int, d
             async for db in db_factory():
                 new_transcription = Transcription(
                     user_id=user_id,
+                    workspace_id=workspace_id,
                     title=title,
                     summary=summary,
                     transcription_md=transcription,
@@ -107,21 +109,25 @@ async def transcribe_links(
     request: TranscribeRequest,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
+    check_permission(ws, "transcriptions")
     task_id = str(uuid.uuid4())
     tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None}
-    background_tasks.add_task(run_transcription_task, task_id, request.links, current_user.id, get_db)
+    background_tasks.add_task(run_transcription_task, task_id, request.links, current_user.id, ws.id, get_db)
     return {"taskId": task_id}
 
 
 @router.get("/history")
 async def get_history(
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "transcriptions")
     result = await db.execute(
         select(Transcription)
-        .filter(Transcription.user_id == current_user.id)
+        .filter(*workspace_filters(Transcription, ws, current_user.id))
         .order_by(Transcription.created_at.desc())
     )
     return result.scalars().all()
@@ -131,10 +137,12 @@ async def get_history(
 async def delete_transcription(
     id: int,
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "transcriptions")
     result = await db.execute(
-        select(Transcription).filter(Transcription.id == id, Transcription.user_id == current_user.id)
+        select(Transcription).filter(Transcription.id == id, *workspace_filters(Transcription, ws, current_user.id))
     )
     t = result.scalars().first()
     if not t:
@@ -152,12 +160,14 @@ class ExportRequest(BaseModel):
 async def export_transcriptions(
     request: ExportRequest,
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "transcriptions")
     result = await db.execute(
         select(Transcription).filter(
             Transcription.id.in_(request.transcription_ids),
-            Transcription.user_id == current_user.id,
+            *workspace_filters(Transcription, ws, current_user.id),
         )
     )
     items = result.scalars().all()

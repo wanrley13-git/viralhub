@@ -8,6 +8,7 @@ from sqlalchemy import update, delete
 from database import get_db
 from models import User, ContentTask
 from auth import get_current_user_dual as get_current_user
+from workspace_utils import resolve_workspace, check_permission, workspace_filters, WorkspaceInfo
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
@@ -52,9 +53,16 @@ def _serialize_task(t):
     }
 
 @router.post("/")
-async def create_task(task_in: TaskCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_task(
+    task_in: TaskCreate,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "kanban")
     new_task = ContentTask(
         user_id=current_user.id,
+        workspace_id=ws.id,
         project_id=task_in.project_id,
         title=task_in.title,
         content_md=task_in.content_md,
@@ -71,8 +79,14 @@ async def create_task(task_in: TaskCreate, current_user: User = Depends(get_curr
     return _serialize_task(new_task)
 
 @router.get("/")
-async def get_tasks(project_id: int = None, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    query = select(ContentTask).filter(ContentTask.user_id == current_user.id)
+async def get_tasks(
+    project_id: int = None,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "kanban")
+    query = select(ContentTask).filter(*workspace_filters(ContentTask, ws, current_user.id))
     if project_id is not None:
         query = query.filter(ContentTask.project_id == project_id)
     result = await db.execute(query.order_by(ContentTask.created_at.desc()))
@@ -80,13 +94,21 @@ async def get_tasks(project_id: int = None, current_user: User = Depends(get_cur
     return [_serialize_task(t) for t in tasks]
 
 @router.patch("/{task_id}")
-async def update_task(task_id: int, task_up: TaskUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # Verifica se a tarefa pertence ao usuário
-    result = await db.execute(select(ContentTask).filter(ContentTask.id == task_id, ContentTask.user_id == current_user.id))
+async def update_task(
+    task_id: int,
+    task_up: TaskUpdate,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "kanban")
+    result = await db.execute(
+        select(ContentTask).filter(ContentTask.id == task_id, *workspace_filters(ContentTask, ws, current_user.id))
+    )
     task = result.scalars().first()
     if not task:
         raise HTTPException(status_code=404, detail="Tarefa não encontrada")
-    
+
     update_data = task_up.dict(exclude_unset=True)
     for key, value in update_data.items():
         setattr(task, key, value)
@@ -96,12 +118,20 @@ async def update_task(task_id: int, task_up: TaskUpdate, current_user: User = De
     return _serialize_task(task)
 
 @router.delete("/{task_id}")
-async def delete_task(task_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ContentTask).filter(ContentTask.id == task_id, ContentTask.user_id == current_user.id))
+async def delete_task(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "kanban")
+    result = await db.execute(
+        select(ContentTask).filter(ContentTask.id == task_id, *workspace_filters(ContentTask, ws, current_user.id))
+    )
     task = result.scalars().first()
     if not task:
         raise HTTPException(status_code=404, detail="Tarefa não encontrada")
-    
+
     await db.delete(task)
     await db.commit()
     return {"message": "Tarefa excluída"}

@@ -15,6 +15,7 @@ from sqlalchemy.future import select
 from database import get_db
 from models import User, Analysis
 from auth import get_current_user_dual as get_current_user
+from workspace_utils import resolve_workspace, check_permission, workspace_filters, WorkspaceInfo
 from analyzer import (
     download_video,
     download_videos_batch,
@@ -107,7 +108,7 @@ async def get_progress(task_id: str):
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: bool, user_id: int, db_factory):
+async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: bool, user_id: int, workspace_id: int, db_factory):
     try:
         tasks_progress[task_id]["logs"].append("Iniciando pipeline de análise...")
 
@@ -200,6 +201,7 @@ async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: b
             async for db in db_factory():
                 new_analysis = Analysis(
                     user_id=user_id,
+                    workspace_id=workspace_id,
                     title=ai_title,
                     report_md=report_md,
                     thumbnail_url=thumb_url
@@ -257,8 +259,10 @@ async def get_active_task(current_user: User = Depends(get_current_user)):
 async def analyze_links(
     request: AnalyzeLinksRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
+    check_permission(ws, "analyses")
     # Hard cap on links per request — anything above this reliably
     # trips Instagram/TikTok rate-limits even with the backoff logic.
     if len(request.links) > MAX_LINKS_PER_ANALYSIS:
@@ -275,7 +279,7 @@ async def analyze_links(
     task_id = str(uuid.uuid4())
     tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None, "user_id": current_user.id}
 
-    background_tasks.add_task(run_analysis_task, task_id, request.links, True, current_user.id, get_db)
+    background_tasks.add_task(run_analysis_task, task_id, request.links, True, current_user.id, ws.id, get_db)
     return {"taskId": task_id}
 
 
@@ -301,8 +305,10 @@ async def cancel_analysis(task_id: str, current_user: User = Depends(get_current
 async def analyze_files(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
+    check_permission(ws, "analyses")
     if len(files) > MAX_FILES_PER_ANALYSIS:
         raise HTTPException(
             status_code=400,
@@ -315,6 +321,7 @@ async def analyze_files(
 
     task_id = str(uuid.uuid4())
     tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None, "user_id": current_user.id}
+    ws_id = ws.id
 
     local_paths = []
     for file in files:
@@ -333,7 +340,7 @@ async def analyze_files(
                 else:
                     final_files.append(p)
 
-            await run_analysis_task(task_id, final_files, False, current_user.id, get_db)
+            await run_analysis_task(task_id, final_files, False, current_user.id, ws_id, get_db)
         finally:
             cleanup_temp_files(local_paths)
 
@@ -341,17 +348,34 @@ async def analyze_files(
     return {"taskId": task_id}
 
 @router.get("/history")
-async def get_history(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Analysis).filter(Analysis.user_id == current_user.id).order_by(Analysis.created_at.desc()))
+async def get_history(
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "analyses")
+    result = await db.execute(
+        select(Analysis)
+        .filter(*workspace_filters(Analysis, ws, current_user.id))
+        .order_by(Analysis.created_at.desc())
+    )
     return result.scalars().all()
 
 @router.delete("/{id}")
-async def delete_analysis(id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Analysis).filter(Analysis.id == id, Analysis.user_id == current_user.id))
+async def delete_analysis(
+    id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "analyses")
+    result = await db.execute(
+        select(Analysis).filter(Analysis.id == id, *workspace_filters(Analysis, ws, current_user.id))
+    )
     analysis = result.scalars().first()
     if not analysis:
         raise HTTPException(status_code=404, detail="Análise não encontrada")
-    
+
     await db.delete(analysis)
     await db.commit()
     return {"message": "Análise removida com sucesso"}
@@ -360,8 +384,16 @@ class ExportRequest(BaseModel):
     analysis_ids: List[int]
 
 @router.post("/export")
-async def export_analyses(request: ExportRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(Analysis).filter(Analysis.id.in_(request.analysis_ids), Analysis.user_id == current_user.id))
+async def export_analyses(
+    request: ExportRequest,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "analyses")
+    result = await db.execute(
+        select(Analysis).filter(Analysis.id.in_(request.analysis_ids), *workspace_filters(Analysis, ws, current_user.id))
+    )
     analyses = result.scalars().all()
     
     if not analyses:

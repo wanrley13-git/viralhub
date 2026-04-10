@@ -7,6 +7,7 @@ from sqlalchemy.future import select
 from database import get_db
 from models import User, CalendarNote
 from auth import get_current_user_dual as get_current_user
+from workspace_utils import resolve_workspace, check_permission, workspace_filters, WorkspaceInfo
 
 router = APIRouter(prefix="/calendar", tags=["calendar"])
 
@@ -47,9 +48,16 @@ def _serialize(n):
 
 
 @router.post("/notes")
-async def create_note(body: NoteCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_note(
+    body: NoteCreate,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "calendar")
     note = CalendarNote(
         user_id=current_user.id,
+        workspace_id=ws.id,
         project_id=body.project_id,
         title=body.title,
         description=body.description,
@@ -65,8 +73,14 @@ async def create_note(body: NoteCreate, current_user: User = Depends(get_current
 
 
 @router.get("/notes")
-async def list_notes(project_id: int = None, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    query = select(CalendarNote).filter(CalendarNote.user_id == current_user.id)
+async def list_notes(
+    project_id: int = None,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "calendar")
+    query = select(CalendarNote).filter(*workspace_filters(CalendarNote, ws, current_user.id))
     if project_id is not None:
         query = query.filter(CalendarNote.project_id == project_id)
     result = await db.execute(query.order_by(CalendarNote.scheduled_date, CalendarNote.start_time))
@@ -74,8 +88,17 @@ async def list_notes(project_id: int = None, current_user: User = Depends(get_cu
 
 
 @router.patch("/notes/{note_id}")
-async def update_note(note_id: int, body: NoteUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(CalendarNote).filter(CalendarNote.id == note_id, CalendarNote.user_id == current_user.id))
+async def update_note(
+    note_id: int,
+    body: NoteUpdate,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "calendar")
+    result = await db.execute(
+        select(CalendarNote).filter(CalendarNote.id == note_id, *workspace_filters(CalendarNote, ws, current_user.id))
+    )
     note = result.scalars().first()
     if not note:
         raise HTTPException(status_code=404, detail="Nota não encontrada")
@@ -87,8 +110,16 @@ async def update_note(note_id: int, body: NoteUpdate, current_user: User = Depen
 
 
 @router.delete("/notes/{note_id}")
-async def delete_note(note_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(CalendarNote).filter(CalendarNote.id == note_id, CalendarNote.user_id == current_user.id))
+async def delete_note(
+    note_id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "calendar")
+    result = await db.execute(
+        select(CalendarNote).filter(CalendarNote.id == note_id, *workspace_filters(CalendarNote, ws, current_user.id))
+    )
     note = result.scalars().first()
     if not note:
         raise HTTPException(status_code=404, detail="Nota não encontrada")

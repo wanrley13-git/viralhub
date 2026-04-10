@@ -13,6 +13,7 @@ from sqlalchemy.future import select
 from database import get_db
 from models import User, Tone
 from auth import get_current_user_dual as get_current_user
+from workspace_utils import resolve_workspace, check_permission, workspace_filters, WorkspaceInfo
 from analyzer import (
     download_video,
     extract_zip,
@@ -51,7 +52,7 @@ async def get_progress(task_id: str):
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
-async def run_tone_task(task_id: str, video_paths: List[str], name: str, notes: str, user_id: int, db_factory):
+async def run_tone_task(task_id: str, video_paths: List[str], name: str, notes: str, user_id: int, workspace_id: int, db_factory):
     try:
         tasks_progress[task_id]["logs"].append("Iniciando análise de tom...")
 
@@ -75,6 +76,7 @@ async def run_tone_task(task_id: str, video_paths: List[str], name: str, notes: 
         async for db in db_factory():
             new_tone = Tone(
                 user_id=user_id,
+                workspace_id=workspace_id,
                 name=name,
                 tone_md=tone_md,
                 thumbnail_url=thumb_url,
@@ -100,9 +102,12 @@ async def tone_from_links(
     request: ToneLinksRequest,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
+    check_permission(ws, "tones")
     task_id = str(uuid.uuid4())
     tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None}
+    ws_id = ws.id
 
     async def download_and_process():
         local_files = []
@@ -116,7 +121,7 @@ async def tone_from_links(
             if fp:
                 local_files.append(fp)
 
-        await run_tone_task(task_id, local_files, request.name, request.notes, current_user.id, get_db)
+        await run_tone_task(task_id, local_files, request.name, request.notes, current_user.id, ws_id, get_db)
 
     background_tasks.add_task(download_and_process)
     return {"taskId": task_id}
@@ -129,9 +134,12 @@ async def tone_from_files(
     name: str = Form("Novo Tom"),
     notes: str = Form(""),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
+    check_permission(ws, "tones")
     task_id = str(uuid.uuid4())
     tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None}
+    ws_id = ws.id
 
     local_paths = []
     for file in files:
@@ -149,7 +157,7 @@ async def tone_from_files(
                     final_files.extend(extracted)
                 else:
                     final_files.append(p)
-            await run_tone_task(task_id, final_files, name, notes, current_user.id, get_db)
+            await run_tone_task(task_id, final_files, name, notes, current_user.id, ws_id, get_db)
         finally:
             cleanup_temp_files(local_paths)
 
@@ -160,10 +168,12 @@ async def tone_from_files(
 @router.get("/")
 async def list_tones(
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "tones")
     result = await db.execute(
-        select(Tone).filter(Tone.user_id == current_user.id).order_by(Tone.created_at.desc())
+        select(Tone).filter(*workspace_filters(Tone, ws, current_user.id)).order_by(Tone.created_at.desc())
     )
     return result.scalars().all()
 
@@ -172,10 +182,12 @@ async def list_tones(
 async def delete_tone(
     id: int,
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "tones")
     result = await db.execute(
-        select(Tone).filter(Tone.id == id, Tone.user_id == current_user.id)
+        select(Tone).filter(Tone.id == id, *workspace_filters(Tone, ws, current_user.id))
     )
     tone = result.scalars().first()
     if not tone:

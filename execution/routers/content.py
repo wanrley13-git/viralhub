@@ -16,6 +16,7 @@ from dotenv import load_dotenv
 from database import get_db
 from models import User, Analysis, Transcription, KnowledgeBase, Tone, ContentIdea
 from auth import get_current_user_dual as get_current_user
+from workspace_utils import resolve_workspace, check_permission, workspace_filters, WorkspaceInfo
 
 load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
 
@@ -149,8 +150,10 @@ async def list_ideas(
     tab: str = Query("ideas", regex="^(ideas|history|saved|developed)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
-    query = select(ContentIdea).where(ContentIdea.user_id == current_user.id)
+    check_permission(ws, "content")
+    query = select(ContentIdea).where(*workspace_filters(ContentIdea, ws, current_user.id))
 
     if tab == "ideas":
         # Active ideas (not dismissed)
@@ -175,13 +178,14 @@ async def _toggle_save_impl(
     idea_id: int,
     db: AsyncSession,
     current_user: User,
+    ws: WorkspaceInfo,
 ):
     logger.info(f"toggle_save called: idea_id={idea_id} user_id={current_user.id}")
     try:
         result = await db.execute(
             select(ContentIdea).where(
                 ContentIdea.id == idea_id,
-                ContentIdea.user_id == current_user.id,
+                *workspace_filters(ContentIdea, ws, current_user.id),
             )
         )
         idea = result.scalars().first()
@@ -204,8 +208,10 @@ async def toggle_save_patch(
     idea_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
-    return await _toggle_save_impl(idea_id, db, current_user)
+    check_permission(ws, "content")
+    return await _toggle_save_impl(idea_id, db, current_user, ws)
 
 
 # POST alias for clients/proxies that don't support PATCH
@@ -214,8 +220,10 @@ async def toggle_save_post(
     idea_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
-    return await _toggle_save_impl(idea_id, db, current_user)
+    check_permission(ws, "content")
+    return await _toggle_save_impl(idea_id, db, current_user, ws)
 
 
 @router.delete("/ideas")
@@ -223,6 +231,7 @@ async def clear_ideas(
     scope: str = Query("active", regex="^(active|history)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
     """Clear ideas with two modes:
     - scope=active (default): soft-dismiss current ideas view. Saved ideas stay
@@ -230,10 +239,11 @@ async def clear_ideas(
     - scope=history: hard-delete ALL ideas that are not favorited. Favorites
       are preserved. Clears history + ideias view in one shot.
     """
+    check_permission(ws, "content")
     if scope == "active":
         result = await db.execute(
             select(ContentIdea).where(
-                ContentIdea.user_id == current_user.id,
+                *workspace_filters(ContentIdea, ws, current_user.id),
                 or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None)),
             )
         )
@@ -246,7 +256,7 @@ async def clear_ideas(
     # scope == "history": hard-delete non-favorited
     result = await db.execute(
         select(ContentIdea).where(
-            ContentIdea.user_id == current_user.id,
+            *workspace_filters(ContentIdea, ws, current_user.id),
             or_(ContentIdea.is_saved == 0, ContentIdea.is_saved.is_(None)),
         )
     )
@@ -273,6 +283,7 @@ async def clear_creative_ideas_scoped(
     scope: str = Query("active", regex="^(active|history)$"),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
     """Clear creative ideas (idea_type='creative') for the current user.
 
@@ -282,11 +293,12 @@ async def clear_creative_ideas_scoped(
     - scope=history: hard-delete all non-favorited creative ideas (keeps
       is_saved=1 rows intact).
     """
+    check_permission(ws, "ideas")
     CREATIVE_TYPE = "creative"
     if scope == "active":
         result = await db.execute(
             select(ContentIdea).where(
-                ContentIdea.user_id == current_user.id,
+                *workspace_filters(ContentIdea, ws, current_user.id),
                 ContentIdea.idea_type == CREATIVE_TYPE,
                 or_(ContentIdea.is_dismissed == 0, ContentIdea.is_dismissed.is_(None)),
             )
@@ -300,7 +312,7 @@ async def clear_creative_ideas_scoped(
     # scope == "history": hard-delete non-favorited creative ideas
     result = await db.execute(
         select(ContentIdea).where(
-            ContentIdea.user_id == current_user.id,
+            *workspace_filters(ContentIdea, ws, current_user.id),
             ContentIdea.idea_type == CREATIVE_TYPE,
             or_(ContentIdea.is_saved == 0, ContentIdea.is_saved.is_(None)),
         )
@@ -318,9 +330,11 @@ async def delete_idea(
     idea_id: int,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
+    check_permission(ws, "content")
     result = await db.execute(
-        select(ContentIdea).where(ContentIdea.id == idea_id, ContentIdea.user_id == current_user.id)
+        select(ContentIdea).where(ContentIdea.id == idea_id, *workspace_filters(ContentIdea, ws, current_user.id))
     )
     idea = result.scalars().first()
     if not idea:
@@ -335,14 +349,16 @@ async def develop_content(
     request: DevelopRequest,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
     """Run MODO 4 of Viral Content Machine over a selected idea and store the
     generated markdown on the idea row."""
-    # Fetch the idea and verify ownership
+    check_permission(ws, "content")
+    # Fetch the idea and verify ownership / workspace access
     result = await db.execute(
         select(ContentIdea).where(
             ContentIdea.id == request.idea_id,
-            ContentIdea.user_id == current_user.id,
+            *workspace_filters(ContentIdea, ws, current_user.id),
         )
     )
     idea = result.scalars().first()
@@ -362,7 +378,7 @@ async def develop_content(
 
     if tone_id:
         r = await db.execute(
-            select(Tone).where(Tone.id == tone_id, Tone.user_id == current_user.id)
+            select(Tone).where(Tone.id == tone_id, *workspace_filters(Tone, ws, current_user.id))
         )
         tone = r.scalars().first()
         if tone and tone.tone_md:
@@ -372,7 +388,7 @@ async def develop_content(
         r = await db.execute(
             select(KnowledgeBase).where(
                 KnowledgeBase.id == base_id,
-                KnowledgeBase.user_id == current_user.id,
+                *workspace_filters(KnowledgeBase, ws, current_user.id),
             )
         )
         kb = r.scalars().first()
@@ -447,12 +463,14 @@ async def generate_content(
     images: List[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
     """Multipart endpoint. `reference_ids` is a JSON-stringified array of
     ints (so the frontend can send it as a single form field); `images`
     is an optional list of uploaded files piped into Gemini as visual
     context. When no images are sent the call behaves exactly like the
     old JSON-only version."""
+    check_permission(ws, "content")
     if not prompt.strip():
         raise HTTPException(status_code=400, detail="O prompt não pode estar vazio.")
 
@@ -491,7 +509,7 @@ async def generate_content(
 
     if tone_id:
         result = await db.execute(
-            select(Tone).where(Tone.id == tone_id, Tone.user_id == current_user.id)
+            select(Tone).where(Tone.id == tone_id, *workspace_filters(Tone, ws, current_user.id))
         )
         tone = result.scalars().first()
         if tone and tone.tone_md:
@@ -501,7 +519,7 @@ async def generate_content(
         result = await db.execute(
             select(KnowledgeBase).where(
                 KnowledgeBase.id == base_id,
-                KnowledgeBase.user_id == current_user.id,
+                *workspace_filters(KnowledgeBase, ws, current_user.id),
             )
         )
         kb = result.scalars().first()
@@ -512,7 +530,7 @@ async def generate_content(
         result = await db.execute(
             select(Analysis).where(
                 Analysis.id.in_(parsed_ref_ids),
-                Analysis.user_id == current_user.id,
+                *workspace_filters(Analysis, ws, current_user.id),
             )
         )
         for a in result.scalars().all():
@@ -521,7 +539,7 @@ async def generate_content(
         result = await db.execute(
             select(Transcription).where(
                 Transcription.id.in_(parsed_ref_ids),
-                Transcription.user_id == current_user.id,
+                *workspace_filters(Transcription, ws, current_user.id),
             )
         )
         for t in result.scalars().all():
@@ -597,6 +615,7 @@ REGRAS:
         for item in parsed[:quantity]:
             idea = ContentIdea(
                 user_id=current_user.id,
+                workspace_id=ws.id,
                 title=item.get("title", "Sem título"),
                 summary=item.get("summary", ""),
                 prompt_used=prompt,

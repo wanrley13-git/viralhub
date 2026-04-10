@@ -15,6 +15,7 @@ from database import get_db
 from models import User, Analysis, KnowledgeBase
 from auth import get_current_user_dual as get_current_user
 from analyzer import configure_genai
+from workspace_utils import resolve_workspace, check_permission, workspace_filters, WorkspaceInfo
 
 logger = logging.getLogger(__name__)
 
@@ -139,19 +140,31 @@ async def debug_directives(current_user: User = Depends(get_current_user)):
 # ── CRUD ─────────────────────────────────────────────
 
 @router.get("/")
-async def list_knowledge_bases(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def list_knowledge_bases(
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "knowledge")
     result = await db.execute(
         select(KnowledgeBase)
-        .filter(KnowledgeBase.user_id == current_user.id)
+        .filter(*workspace_filters(KnowledgeBase, ws, current_user.id))
         .order_by(KnowledgeBase.created_at.desc())
     )
     return [kb_to_dict(kb) for kb in result.scalars().all()]
 
 
 @router.post("/")
-async def create_knowledge_base(body: KBCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def create_knowledge_base(
+    body: KBCreate,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "knowledge")
     kb = KnowledgeBase(
         user_id=current_user.id,
+        workspace_id=ws.id,
         name=body.name,
         selected_ids="[]",
         is_stale=1,
@@ -163,9 +176,15 @@ async def create_knowledge_base(body: KBCreate, current_user: User = Depends(get
 
 
 @router.get("/{kb_id}")
-async def get_knowledge_base(kb_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def get_knowledge_base(
+    kb_id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "knowledge")
     result = await db.execute(
-        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, KnowledgeBase.user_id == current_user.id)
+        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, *workspace_filters(KnowledgeBase, ws, current_user.id))
     )
     kb = result.scalars().first()
     if not kb:
@@ -174,9 +193,16 @@ async def get_knowledge_base(kb_id: int, current_user: User = Depends(get_curren
 
 
 @router.patch("/{kb_id}")
-async def update_knowledge_base(kb_id: int, body: KBUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def update_knowledge_base(
+    kb_id: int,
+    body: KBUpdate,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "knowledge")
     result = await db.execute(
-        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, KnowledgeBase.user_id == current_user.id)
+        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, *workspace_filters(KnowledgeBase, ws, current_user.id))
     )
     kb = result.scalars().first()
     if not kb:
@@ -196,9 +222,15 @@ async def update_knowledge_base(kb_id: int, body: KBUpdate, current_user: User =
 
 
 @router.delete("/{kb_id}")
-async def delete_knowledge_base(kb_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def delete_knowledge_base(
+    kb_id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "knowledge")
     result = await db.execute(
-        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, KnowledgeBase.user_id == current_user.id)
+        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, *workspace_filters(KnowledgeBase, ws, current_user.id))
     )
     kb = result.scalars().first()
     if not kb:
@@ -211,12 +243,19 @@ async def delete_knowledge_base(kb_id: int, current_user: User = Depends(get_cur
 # ── Selection ────────────────────────────────────────
 
 @router.put("/{kb_id}/selection")
-async def set_selection(kb_id: int, body: KBSetSelection, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def set_selection(
+    kb_id: int,
+    body: KBSetSelection,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "knowledge")
     if len(body.selected_ids) > MAX_VIDEOS_PER_KB:
         raise HTTPException(status_code=400, detail=f"Máximo de {MAX_VIDEOS_PER_KB} vídeos por base")
 
     result = await db.execute(
-        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, KnowledgeBase.user_id == current_user.id)
+        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, *workspace_filters(KnowledgeBase, ws, current_user.id))
     )
     kb = result.scalars().first()
     if not kb:
@@ -241,6 +280,7 @@ async def upload_knowledge_base(
     kb_id: int,
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
     """Importa uma base de conhecimento já compilada a partir de um arquivo.
@@ -250,11 +290,12 @@ async def upload_knowledge_base(
     pra ser usada pelos agentes). Não mexe em `selected_ids` — a base
     importada vive independente dos vídeos do analyzer.
     """
-    # 1. Ownership check
+    check_permission(ws, "knowledge")
+    # 1. Ownership / workspace check
     result = await db.execute(
         select(KnowledgeBase).filter(
             KnowledgeBase.id == kb_id,
-            KnowledgeBase.user_id == current_user.id,
+            *workspace_filters(KnowledgeBase, ws, current_user.id),
         )
     )
     kb = result.scalars().first()
@@ -313,11 +354,17 @@ async def upload_knowledge_base(
 # ── Compile ──────────────────────────────────────────
 
 @router.post("/{kb_id}/compile")
-async def compile_knowledge_base(kb_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def compile_knowledge_base(
+    kb_id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "knowledge")
     logger.info(f"compile_knowledge_base: kb_id={kb_id} user_id={current_user.id}")
 
     result = await db.execute(
-        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, KnowledgeBase.user_id == current_user.id)
+        select(KnowledgeBase).filter(KnowledgeBase.id == kb_id, *workspace_filters(KnowledgeBase, ws, current_user.id))
     )
     kb = result.scalars().first()
     if not kb:
@@ -328,9 +375,9 @@ async def compile_knowledge_base(kb_id: int, current_user: User = Depends(get_cu
     if not selected_ids:
         raise HTTPException(status_code=400, detail="Nenhum vídeo selecionado. Adicione vídeos à base antes de compilar.")
 
-    # Fetch all selected analyses
+    # Fetch all selected analyses (scoped to workspace)
     analysis_result = await db.execute(
-        select(Analysis).filter(Analysis.id.in_(selected_ids), Analysis.user_id == current_user.id)
+        select(Analysis).filter(Analysis.id.in_(selected_ids), *workspace_filters(Analysis, ws, current_user.id))
     )
     analyses = analysis_result.scalars().all()
 

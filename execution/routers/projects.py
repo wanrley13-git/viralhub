@@ -8,6 +8,7 @@ from sqlalchemy.future import select
 from database import get_db
 from models import User, Project, ContentTask
 from auth import get_current_user_dual as get_current_user
+from workspace_utils import resolve_workspace, check_permission, workspace_filters, WorkspaceInfo
 
 router = APIRouter(prefix="/projects", tags=["projects"])
 
@@ -41,10 +42,13 @@ def serialize_project(p):
 async def create_project(
     body: ProjectCreate,
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "kanban")
     project = Project(
         user_id=current_user.id,
+        workspace_id=ws.id,
         name=body.name,
         columns_json=DEFAULT_COLUMNS,
     )
@@ -57,11 +61,13 @@ async def create_project(
 @router.get("/")
 async def list_projects(
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "kanban")
     result = await db.execute(
         select(Project)
-        .filter(Project.user_id == current_user.id)
+        .filter(*workspace_filters(Project, ws, current_user.id))
         .order_by(Project.created_at.desc())
     )
     return [serialize_project(p) for p in result.scalars().all()]
@@ -71,10 +77,12 @@ async def list_projects(
 async def get_project(
     project_id: int,
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "kanban")
     result = await db.execute(
-        select(Project).filter(Project.id == project_id, Project.user_id == current_user.id)
+        select(Project).filter(Project.id == project_id, *workspace_filters(Project, ws, current_user.id))
     )
     project = result.scalars().first()
     if not project:
@@ -87,10 +95,12 @@ async def update_project(
     project_id: int,
     body: ProjectUpdate,
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "kanban")
     result = await db.execute(
-        select(Project).filter(Project.id == project_id, Project.user_id == current_user.id)
+        select(Project).filter(Project.id == project_id, *workspace_filters(Project, ws, current_user.id))
     )
     project = result.scalars().first()
     if not project:
@@ -109,10 +119,12 @@ async def update_project(
 async def delete_project(
     project_id: int,
     current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "kanban")
     result = await db.execute(
-        select(Project).filter(Project.id == project_id, Project.user_id == current_user.id)
+        select(Project).filter(Project.id == project_id, *workspace_filters(Project, ws, current_user.id))
     )
     project = result.scalars().first()
     if not project:

@@ -11,6 +11,7 @@ from database import get_db
 from models import User, Analysis, ContentTask, ChatSession, ChatMessage, KnowledgeBase, Tone
 from auth import get_current_user_dual as get_current_user
 from analyzer import configure_genai
+from workspace_utils import resolve_workspace, check_permission, workspace_filters, WorkspaceInfo
 
 AGENT_PROMPT_FILE = os.path.join(os.path.dirname(__file__), '..', 'directives', 'viral-content-agent.md')
 
@@ -34,17 +35,34 @@ class ChatResponse(BaseModel):
     suggested_task: Optional[dict] = None # Se a IA sugerir criar um card
 
 @router.get("/sessions")
-async def get_sessions(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ChatSession).filter(ChatSession.user_id == current_user.id).order_by(ChatSession.created_at.desc()))
+async def get_sessions(
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "content")
+    result = await db.execute(
+        select(ChatSession)
+        .filter(*workspace_filters(ChatSession, ws, current_user.id))
+        .order_by(ChatSession.created_at.desc())
+    )
     return result.scalars().all()
 
 @router.get("/sessions/{session_id}")
-async def get_session_messages(session_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    # Valida dono
-    result = await db.execute(select(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == current_user.id))
+async def get_session_messages(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "content")
+    # Valida dono/workspace
+    result = await db.execute(
+        select(ChatSession).filter(ChatSession.id == session_id, *workspace_filters(ChatSession, ws, current_user.id))
+    )
     if not result.scalars().first():
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
-    
+
     msg_result = await db.execute(select(ChatMessage).filter(ChatMessage.session_id == session_id).order_by(ChatMessage.created_at.asc()))
     return msg_result.scalars().all()
 
@@ -52,8 +70,17 @@ class RenameSessionRequest(BaseModel):
     title: str
 
 @router.patch("/sessions/{session_id}")
-async def rename_session(session_id: int, request: RenameSessionRequest, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == current_user.id))
+async def rename_session(
+    session_id: int,
+    request: RenameSessionRequest,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "content")
+    result = await db.execute(
+        select(ChatSession).filter(ChatSession.id == session_id, *workspace_filters(ChatSession, ws, current_user.id))
+    )
     session = result.scalars().first()
     if not session:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
@@ -62,8 +89,16 @@ async def rename_session(session_id: int, request: RenameSessionRequest, current
     return {"ok": True}
 
 @router.delete("/sessions/{session_id}")
-async def delete_session(session_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == current_user.id))
+async def delete_session(
+    session_id: int,
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
+):
+    check_permission(ws, "content")
+    result = await db.execute(
+        select(ChatSession).filter(ChatSession.id == session_id, *workspace_filters(ChatSession, ws, current_user.id))
+    )
     session = result.scalars().first()
     if not session:
         raise HTTPException(status_code=404, detail="Sessão não encontrada")
@@ -79,21 +114,25 @@ async def delete_session(session_id: int, current_user: User = Depends(get_curre
 async def chat_with_agent(
     request: ChatRequest,
     current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db)
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+    db: AsyncSession = Depends(get_db),
 ):
+    check_permission(ws, "content")
     configure_genai()
-    
+
     # 1. Gerenciar a Sessão no DB
     session_id = request.session_id
     if not session_id:
         title = request.message[:30] + "..." if len(request.message) > 30 else request.message
-        new_session = ChatSession(user_id=current_user.id, title=title)
+        new_session = ChatSession(user_id=current_user.id, workspace_id=ws.id, title=title)
         db.add(new_session)
         await db.commit()
         await db.refresh(new_session)
         session_id = new_session.id
     else:
-        result = await db.execute(select(ChatSession).filter(ChatSession.id == session_id, ChatSession.user_id == current_user.id))
+        result = await db.execute(
+            select(ChatSession).filter(ChatSession.id == session_id, *workspace_filters(ChatSession, ws, current_user.id))
+        )
         if not result.scalars().first():
             raise HTTPException(status_code=404, detail="Sessão inválida")
 
@@ -122,7 +161,7 @@ async def chat_with_agent(
         kb_result = await db.execute(
             select(KnowledgeBase).filter(
                 KnowledgeBase.id == request.knowledge_base_id,
-                KnowledgeBase.user_id == current_user.id
+                *workspace_filters(KnowledgeBase, ws, current_user.id),
             )
         )
         kb = kb_result.scalars().first()
@@ -142,7 +181,7 @@ async def chat_with_agent(
     # 2. Fallback: raw analyses (if no KB selected)
     if not context_text:
         analysis_result = await db.execute(
-            select(Analysis).filter(Analysis.user_id == current_user.id)
+            select(Analysis).filter(*workspace_filters(Analysis, ws, current_user.id))
             .order_by(Analysis.created_at.desc()).limit(50)
         )
         analyses = analysis_result.scalars().all()
@@ -161,7 +200,7 @@ async def chat_with_agent(
         if mention_ids:
             for mid in mention_ids:
                 m_result = await db.execute(
-                    select(Analysis).filter(Analysis.id == int(mid), Analysis.user_id == current_user.id)
+                    select(Analysis).filter(Analysis.id == int(mid), *workspace_filters(Analysis, ws, current_user.id))
                 )
                 m_analysis = m_result.scalars().first()
                 if m_analysis:
@@ -173,7 +212,7 @@ async def chat_with_agent(
     tone_text = ""
     if request.tone_id:
         tone_result = await db.execute(
-            select(Tone).filter(Tone.id == request.tone_id, Tone.user_id == current_user.id)
+            select(Tone).filter(Tone.id == request.tone_id, *workspace_filters(Tone, ws, current_user.id))
         )
         tone = tone_result.scalars().first()
         if tone and tone.tone_md:
