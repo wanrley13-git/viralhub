@@ -549,6 +549,18 @@ REGRAS:
 
     user_message = f"Gere {quantity} ideias de conteúdo viral sobre: {prompt}"
 
+    # Inject reference context directly into user_message so Gemini
+    # treats it as high-priority user input, not just background system info.
+    if references_text:
+        user_message = (
+            "IMPORTANTE: O usuário marcou vídeos de referência. Suas ideias DEVEM ser "
+            "inspiradas e baseadas no conteúdo desses vídeos. Use os elementos, temas, "
+            "estilo e conceitos presentes nas análises referenciadas como ponto de partida "
+            "para as ideias.\n\n"
+            f"Vídeos de referência marcados pelo usuário:\n{references_text}\n\n"
+            + user_message
+        )
+
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="GEMINI_API_KEY não configurada.")
