@@ -1396,6 +1396,38 @@ const ContentGenerator = () => {
     });
   }, []);
 
+  // Ctrl+V / Cmd+V paste handler — extracts image items from the
+  // clipboard and adds them to uploadedImages using the same flow as
+  // handleImageUpload. Text paste is left untouched.
+  const handlePaste = useCallback(async (e) => {
+    const items = Array.from(e.clipboardData?.items || []);
+    const imageItems = items.filter(item => item.type.startsWith('image/'));
+    if (imageItems.length === 0) return; // text paste — let default behaviour run
+
+    e.preventDefault();
+    const files = imageItems.map(item => item.getAsFile()).filter(Boolean);
+    if (files.length === 0) return;
+
+    const reads = await Promise.all(
+      files.map((file) => new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({
+          file,
+          previewUrl: URL.createObjectURL(file),
+          dataUrl: reader.result,
+        });
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
+      }))
+    );
+    const valid = reads.filter(Boolean);
+    if (valid.length === 0) return;
+    setUploadedImages((prev) => {
+      const remaining = Math.max(0, MAX_IMAGES - prev.length);
+      return [...prev, ...valid.slice(0, remaining)];
+    });
+  }, []);
+
   // Revoke any outstanding blob URLs when the component unmounts so we
   // don't leak object URLs across navigations.
   useEffect(() => {
@@ -2222,7 +2254,7 @@ const ContentGenerator = () => {
               {segments.map((seg, i) => {
                 if (seg.type === 'ref') return <RefChip key={`ref-${seg.analysis.id}`} analysis={seg.analysis} onRemove={removeRef} />;
                 if (i === segments.length - 1) return (
-                  <textarea key="active-input" ref={textareaRef} value={seg.value} onChange={handleTextChange} onKeyDown={handleKeyDown}
+                  <textarea key="active-input" ref={textareaRef} value={seg.value} onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
                     placeholder={segments.length === 1 && !seg.value ? 'Descreva o conteúdo que deseja criar... Use @ para referenciar análises' : ''} rows={1}
                     className="flex-1 min-w-[120px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1" />
                 );
