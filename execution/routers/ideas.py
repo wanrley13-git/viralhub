@@ -512,7 +512,8 @@ async def generate_creative_ideas(
             "Cada ideia deve ter título evocativo e resumo com arco narrativo (setup, virada, payoff). "
             "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
             'Formato: [{"title": "...", "summary": "..."}, ...]'
-            f"\n\nBriefing: {refined_prompt}"
+            f"\n\nPedido do usuário: {prompt}"
+            + (f"\n\nContexto adicional (pesquisa web): {refined_prompt}" if refined_prompt != prompt else "")
         )
     else:
         user_message = (
@@ -521,7 +522,8 @@ async def generate_creative_ideas(
             "Para cada ideia, retorne um título provocativo e uma frase explicativa. "
             "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
             'Formato: [{"title": "...", "summary": "..."}, ...]'
-            f"\n\nBriefing: {refined_prompt}"
+            f"\n\nPedido do usuário: {prompt}"
+            + (f"\n\nContexto adicional (pesquisa web): {refined_prompt}" if refined_prompt != prompt else "")
         )
 
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
