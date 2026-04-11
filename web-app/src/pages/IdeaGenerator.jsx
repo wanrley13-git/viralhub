@@ -237,7 +237,7 @@ const AdjustPopup = ({ idea, onClose, onSubmit }) => {
 
 // ─── Idea card (reused across tabs) ───
 // React.memo so typing in the prompt bar doesn't re-render every card.
-const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect, onToggleSave, onAdjust, onExpand, showDate = false, bgColor = null }) => {
+const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect, onToggleSave, onAdjust, onExpand, onDelete, onDownload, hasSelection = false, showDate = false, bgColor = null }) => {
   // Skeleton / loading state while the adjust API is in-flight
   if (isAdjusting) {
     const label = (idea.status === 'developed' && idea.developed_content) ? 'Ajustando roteiro...' : 'Ajustando ideia...';
@@ -259,7 +259,7 @@ const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
-      onClick={() => onExpand?.(idea)}
+      onClick={() => hasSelection ? onToggleSelect(idea.id) : onExpand?.(idea)}
       style={bgColor ? {
         backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor,
         ...(isSelected ? { borderColor: `color-mix(in srgb, ${bgColor} 92%, white)` } : {})
@@ -272,7 +272,7 @@ const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect
             : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
       }`}
     >
-      {/* Top-right corner: adjust + heart + selection checkbox */}
+      {/* Top-right corner: adjust + download + delete + heart + selection checkbox */}
       <div className="absolute top-3 right-3 flex items-center gap-2">
         <button
           onClick={(e) => { e.stopPropagation(); onAdjust?.(idea); }}
@@ -280,6 +280,20 @@ const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect
           title="Ajustar"
         >
           <SlidersHorizontal size={13} strokeWidth={2} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDownload?.(idea); }}
+          className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-white"
+          title="Baixar"
+        >
+          <Download size={13} strokeWidth={2} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete?.(idea.id); }}
+          className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-red-500/20 hover:border-red-500/30 transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-red-400"
+          title="Excluir"
+        >
+          <Trash2 size={13} strokeWidth={2} />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
@@ -1188,6 +1202,82 @@ const IdeaGenerator = () => {
     }
   };
 
+  // ─── Delete individual idea ───
+  const handleDeleteIdea = useCallback(async (ideaId) => {
+    const ok = await confirm({
+      title: 'Excluir ideia?',
+      message: 'Essa ação não pode ser desfeita.',
+      confirmText: 'Excluir',
+      confirmColor: 'red',
+    });
+    if (!ok) return;
+    try {
+      const token = await getAccessToken();
+      await axios.delete(`${API_URL}/content/ideas/${ideaId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const remover = (list) => list.filter(i => i.id !== ideaId);
+      setIdeas(remover); setHistoryIdeas(remover); setSavedIdeas(remover); setDevelopedIdeas(remover);
+      setSelectedIdeas(prev => prev.filter(id => id !== ideaId));
+    } catch (err) {
+      setErrorToast(`Erro ao excluir: ${formatApiError(err, 'tente novamente.')}`);
+      setTimeout(() => setErrorToast(null), 5000);
+    }
+  }, [confirm]);
+
+  // ─── Delete selected ideas (bulk) ───
+  const handleDeleteSelected = useCallback(async () => {
+    if (selectedIdeas.length === 0) return;
+    const count = selectedIdeas.length;
+    const ok = await confirm({
+      title: `Excluir ${count} card${count > 1 ? 's' : ''}?`,
+      message: 'Essa ação não pode ser desfeita.',
+      confirmText: `Excluir ${count}`,
+      confirmColor: 'red',
+    });
+    if (!ok) return;
+    try {
+      const token = await getAccessToken();
+      await Promise.all(selectedIdeas.map(id =>
+        axios.delete(`${API_URL}/content/ideas/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+      ));
+      const ids = new Set(selectedIdeas);
+      const remover = (list) => list.filter(i => !ids.has(i.id));
+      setIdeas(remover); setHistoryIdeas(remover); setSavedIdeas(remover); setDevelopedIdeas(remover);
+      setSelectedIdeas([]);
+      setSuccessToast(`${count} card${count > 1 ? 's' : ''} excluído${count > 1 ? 's' : ''}.`);
+      setTimeout(() => setSuccessToast(null), 3000);
+    } catch (err) {
+      setErrorToast(`Erro ao excluir: ${formatApiError(err, 'tente novamente.')}`);
+      setTimeout(() => setErrorToast(null), 5000);
+    }
+  }, [selectedIdeas, confirm]);
+
+  // ─── Download idea as file ───
+  const handleDownloadIdea = useCallback(async (idea) => {
+    const slug = idea.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    // Developed ideas → fetch detail if needed, download as .md
+    if (idea.status === 'developed') {
+      let content = idea.developed_content;
+      if (!content) {
+        try {
+          const token = await getAccessToken();
+          const res = await axios.get(`${API_URL}/content/ideas/detail/${idea.id}`, { headers: { Authorization: `Bearer ${token}` } });
+          content = res.data.developed_content || '';
+        } catch { content = ''; }
+      }
+      const blob = new Blob([content], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `${slug}.md`; a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      // Regular idea → download as .txt
+      const text = `${idea.title}\n\n${idea.summary || ''}`;
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `${slug}.txt`; a.click();
+      URL.revokeObjectURL(url);
+    }
+  }, []);
+
   // ─── Develop selected ideas (roteirist mode) ───
   const handleDevelop = useCallback(async () => {
     const picked = getSelectedIdeaObjects();
@@ -1814,6 +1904,9 @@ const IdeaGenerator = () => {
                     onToggleSave={toggleSaveIdea}
                     onAdjust={setAdjustingIdea}
                     onExpand={openIdeaDetail}
+                    onDelete={handleDeleteIdea}
+                    onDownload={handleDownloadIdea}
+                    hasSelection={selectedIdeas.length > 0}
                   />
                 ))}
               </div>
@@ -1868,6 +1961,9 @@ const IdeaGenerator = () => {
                             onToggleSave={toggleSaveIdea}
                             onAdjust={setAdjustingIdea}
                             onExpand={openIdeaDetail}
+                            onDelete={handleDeleteIdea}
+                            onDownload={handleDownloadIdea}
+                            hasSelection={selectedIdeas.length > 0}
                             bgColor="#121E1E"
                           />
                         ))}
@@ -1905,6 +2001,9 @@ const IdeaGenerator = () => {
                     onToggleSave={toggleSaveIdea}
                     onAdjust={setAdjustingIdea}
                     onExpand={openIdeaDetail}
+                    onDelete={handleDeleteIdea}
+                    onDownload={handleDownloadIdea}
+                    hasSelection={selectedIdeas.length > 0}
                     showDate
                     bgColor="#12121F"
                   />
@@ -1955,6 +2054,9 @@ const IdeaGenerator = () => {
                       onToggleSave={toggleSaveIdea}
                       onAdjust={setAdjustingIdea}
                       onExpand={openIdeaDetail}
+                      onDelete={handleDeleteIdea}
+                      onDownload={handleDownloadIdea}
+                      hasSelection={selectedIdeas.length > 0}
                       bgColor="#121E13"
                     />
                   )
@@ -2191,6 +2293,15 @@ const IdeaGenerator = () => {
             >
               <Send size={15} strokeWidth={2.5} />
               Enviar · {selectedIdeas.length}
+            </button>
+
+            <button
+              onClick={handleDeleteSelected}
+              className="relative z-10 flex items-center gap-2.5 px-10 py-4 rounded-full text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
+              style={{ background: 'linear-gradient(135deg, #991b1b, #dc2626)' }}
+            >
+              <Trash2 size={15} strokeWidth={2.5} />
+              Excluir · {selectedIdeas.length}
             </button>
 
             <AnimatePresence>

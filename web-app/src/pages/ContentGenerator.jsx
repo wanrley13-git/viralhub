@@ -234,7 +234,7 @@ const AdjustPopup = ({ idea, onClose, onSubmit }) => {
 // change (idea data, selected flag, card scale) — not on every keystroke
 // in the prompt bar. The parent passes stable useCallback'd handlers
 // so callback identity doesn't invalidate the memo.
-const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect, onToggleSave, onAdjust, showDate = false, bgColor = null }) => {
+const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect, onToggleSave, onAdjust, onExpand, onDelete, onDownload, hasSelection = false, showDate = false, bgColor = null }) => {
   // Skeleton / loading state while the adjust API is in-flight
   if (isAdjusting) {
     const label = (idea.status === 'developed' && idea.developed_content) ? 'Ajustando conteúdo...' : 'Ajustando ideia...';
@@ -256,7 +256,7 @@ const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
-      onClick={() => onToggleSelect(idea.id)}
+      onClick={() => hasSelection ? onToggleSelect(idea.id) : onExpand?.(idea)}
       style={bgColor ? {
         backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor,
         ...(isSelected ? { borderColor: `color-mix(in srgb, ${bgColor} 92%, white)` } : {})
@@ -269,7 +269,7 @@ const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect
             : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
       }`}
     >
-      {/* Top-right corner: adjust + heart + selection checkbox side by side */}
+      {/* Top-right corner: adjust + download + delete + heart + selection checkbox */}
       <div className="absolute top-3 right-3 flex items-center gap-2">
         <button
           onClick={(e) => { e.stopPropagation(); onAdjust?.(idea); }}
@@ -277,6 +277,20 @@ const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect
           title="Ajustar"
         >
           <SlidersHorizontal size={13} strokeWidth={2} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDownload?.(idea); }}
+          className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-white"
+          title="Baixar"
+        >
+          <Download size={13} strokeWidth={2} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onDelete?.(idea.id); }}
+          className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-red-500/20 hover:border-red-500/30 transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-red-400"
+          title="Excluir"
+        >
+          <Trash2 size={13} strokeWidth={2} />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
@@ -294,11 +308,16 @@ const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect
             stroke={idea.is_saved ? '#E2272F' : '#ffffff'}
           />
         </button>
-        <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
-          isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
-        }`}>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleSelect(idea.id); }}
+          className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+            isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20 hover:bg-white/[0.12]'
+          }`}
+          title={isSelected ? 'Desselecionar' : 'Selecionar'}
+        >
           <Check size={12} strokeWidth={3} />
-        </div>
+        </button>
       </div>
 
       <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
@@ -1133,6 +1152,82 @@ const ContentGenerator = () => {
     setSelectedDeveloped(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }, []);
 
+  // ─── Delete individual idea ───
+  const handleDeleteIdea = useCallback(async (ideaId) => {
+    const ok = await confirm({
+      title: 'Excluir ideia?',
+      message: 'Essa ação não pode ser desfeita.',
+      confirmText: 'Excluir',
+      confirmColor: 'red',
+    });
+    if (!ok) return;
+    try {
+      const token = await getAccessToken();
+      await axios.delete(`${API_URL}/content/ideas/${ideaId}`, { headers: { Authorization: `Bearer ${token}` } });
+      const remover = (list) => list.filter(i => i.id !== ideaId);
+      setIdeas(remover); setHistoryIdeas(remover); setSavedIdeas(remover); setDevelopedIdeas(remover);
+      setSelectedIdeas(prev => prev.filter(id => id !== ideaId));
+      setSelectedDeveloped(prev => prev.filter(id => id !== ideaId));
+    } catch (err) {
+      setErrorToast(`Erro ao excluir: ${formatApiError(err, 'tente novamente.')}`);
+      setTimeout(() => setErrorToast(null), 5000);
+    }
+  }, [confirm]);
+
+  // ─── Delete selected ideas (bulk) ───
+  const handleDeleteSelected = useCallback(async () => {
+    const allSelected = [...new Set([...selectedIdeas, ...selectedDeveloped])];
+    if (allSelected.length === 0) return;
+    const count = allSelected.length;
+    const ok = await confirm({
+      title: `Excluir ${count} card${count > 1 ? 's' : ''}?`,
+      message: 'Essa ação não pode ser desfeita.',
+      confirmText: `Excluir ${count}`,
+      confirmColor: 'red',
+    });
+    if (!ok) return;
+    try {
+      const token = await getAccessToken();
+      await Promise.all(allSelected.map(id =>
+        axios.delete(`${API_URL}/content/ideas/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+      ));
+      const ids = new Set(allSelected);
+      const remover = (list) => list.filter(i => !ids.has(i.id));
+      setIdeas(remover); setHistoryIdeas(remover); setSavedIdeas(remover); setDevelopedIdeas(remover);
+      setSelectedIdeas([]); setSelectedDeveloped([]);
+      setSuccessToast(`${count} card${count > 1 ? 's' : ''} excluído${count > 1 ? 's' : ''}.`);
+      setTimeout(() => setSuccessToast(null), 3000);
+    } catch (err) {
+      setErrorToast(`Erro ao excluir: ${formatApiError(err, 'tente novamente.')}`);
+      setTimeout(() => setErrorToast(null), 5000);
+    }
+  }, [selectedIdeas, selectedDeveloped, confirm]);
+
+  // ─── Download idea as file ───
+  const handleDownloadIdea = useCallback(async (idea) => {
+    const slug = idea.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    if (idea.status === 'developed') {
+      let content = idea.developed_content;
+      if (!content) {
+        try {
+          const token = await getAccessToken();
+          const res = await axios.get(`${API_URL}/content/ideas/detail/${idea.id}`, { headers: { Authorization: `Bearer ${token}` } });
+          content = res.data.developed_content || '';
+        } catch { content = ''; }
+      }
+      const blob = new Blob([content], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `${slug}.md`; a.click();
+      URL.revokeObjectURL(url);
+    } else {
+      const text = `${idea.title}\n\n${idea.summary || ''}`;
+      const blob = new Blob([text], { type: 'text/plain' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a'); a.href = url; a.download = `${slug}.txt`; a.click();
+      URL.revokeObjectURL(url);
+    }
+  }, []);
+
   // Open the destination modal for the currently-selected developed cards
   const openBulkSendDest = (mode) => {
     const ideas = developedIdeas.filter(i =>
@@ -1873,6 +1968,10 @@ const ContentGenerator = () => {
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
                     onAdjust={setAdjustingIdea}
+                    onExpand={openIdeaDetail}
+                    onDelete={handleDeleteIdea}
+                    onDownload={handleDownloadIdea}
+                    hasSelection={selectedIdeas.length > 0}
                   />
                 ))}
               </div>
@@ -1927,6 +2026,10 @@ const ContentGenerator = () => {
                             onToggleSelect={toggleIdeaSelect}
                             onToggleSave={toggleSaveIdea}
                             onAdjust={setAdjustingIdea}
+                            onExpand={openIdeaDetail}
+                            onDelete={handleDeleteIdea}
+                            onDownload={handleDownloadIdea}
+                            hasSelection={selectedIdeas.length > 0}
                             bgColor="#121E1E"
                           />
                         ))}
@@ -1964,6 +2067,10 @@ const ContentGenerator = () => {
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
                     onAdjust={setAdjustingIdea}
+                    onExpand={openIdeaDetail}
+                    onDelete={handleDeleteIdea}
+                    onDownload={handleDownloadIdea}
+                    hasSelection={selectedIdeas.length > 0}
                     showDate
                     bgColor="#12121F"
                   />
@@ -2004,7 +2111,7 @@ const ContentGenerator = () => {
                       initial={{ opacity: 0, y: 16 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ duration: 0.2, delay: Math.min(i * 0.02, 0.2), ease: 'easeOut' }}
-                      onClick={() => isReady && openIdeaDetail(idea)}
+                      onClick={() => isReady && (selectedDeveloped.length > 0 ? toggleDevelopedSelect(idea.id) : openIdeaDetail(idea))}
                       style={!hasFailed ? { backgroundColor: isSelected ? 'color-mix(in srgb, #121E13 92%, white)' : '#121E13' } : undefined}
                       className={`group relative ${cs.pad} rounded-2xl border transition-all duration-300 flex flex-col ${
                         isDeveloping
@@ -2016,17 +2123,33 @@ const ContentGenerator = () => {
                               : 'border-white/[0.08] hover:border-primary/40 cursor-pointer'
                       }`}
                     >
-                      {/* Selection checkbox (only on ready cards) */}
+                      {/* Top-right corner: download + delete + checkbox (only on ready cards) */}
                       {isReady && (
-                        <button
-                          onClick={(e) => { e.stopPropagation(); toggleDevelopedSelect(idea.id); }}
-                          className={`absolute top-3 right-3 w-5 h-5 rounded-md flex items-center justify-center transition-all z-10 ${
-                            isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
-                          }`}
-                          title={isSelected ? 'Desmarcar' : 'Selecionar'}
-                        >
-                          <Check size={12} strokeWidth={3} />
-                        </button>
+                        <div className="absolute top-3 right-3 flex items-center gap-2 z-10">
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDownloadIdea(idea); }}
+                            className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-white"
+                            title="Baixar"
+                          >
+                            <Download size={13} strokeWidth={2} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); handleDeleteIdea(idea.id); }}
+                            className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-red-500/20 hover:border-red-500/30 transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-red-400"
+                            title="Excluir"
+                          >
+                            <Trash2 size={13} strokeWidth={2} />
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); toggleDevelopedSelect(idea.id); }}
+                            className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+                              isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20 hover:bg-white/[0.12]'
+                            }`}
+                            title={isSelected ? 'Desmarcar' : 'Selecionar'}
+                          >
+                            <Check size={12} strokeWidth={3} />
+                          </button>
+                        </div>
                       )}
 
                       {isCardAdjusting ? (
@@ -2432,7 +2555,7 @@ const ContentGenerator = () => {
         )}
       </AnimatePresence>
 
-      {/* ═══ DEVELOP BUTTON (floating above prompt bar) ═══ */}
+      {/* ═══ DEVELOP + DELETE BUTTONS (floating above prompt bar) ═══ */}
       <AnimatePresence>
         {selectedIdeas.length > 0 && (
           <motion.div
@@ -2440,13 +2563,21 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center px-6 pointer-events-none"
+            className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center gap-3 px-6 pointer-events-none"
           >
             <button
               onClick={handleDevelop}
               className="px-12 py-4 rounded-full bg-blue-600 hover:bg-blue-700 text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
             >
               Criar conteúdo · {selectedIdeas.length}
+            </button>
+            <button
+              onClick={handleDeleteSelected}
+              className="flex items-center gap-2.5 px-10 py-4 rounded-full text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
+              style={{ background: 'linear-gradient(135deg, #991b1b, #dc2626)' }}
+            >
+              <Trash2 size={15} strokeWidth={2.5} />
+              Excluir · {selectedIdeas.length}
             </button>
           </motion.div>
         )}
@@ -2460,7 +2591,7 @@ const ContentGenerator = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 16 }}
             transition={{ duration: 0.2, ease: 'easeOut' }}
-            className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center px-6 pointer-events-none"
+            className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center gap-3 px-6 pointer-events-none"
           >
             <button
               onClick={() => setBulkSendPopupOpen(o => !o)}
@@ -2468,6 +2599,15 @@ const ContentGenerator = () => {
             >
               <Send size={15} strokeWidth={2.5} />
               Enviar · {selectedDeveloped.length}
+            </button>
+
+            <button
+              onClick={handleDeleteSelected}
+              className="relative z-10 flex items-center gap-2.5 px-10 py-4 rounded-full text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
+              style={{ background: 'linear-gradient(135deg, #991b1b, #dc2626)' }}
+            >
+              <Trash2 size={15} strokeWidth={2.5} />
+              Excluir · {selectedDeveloped.length}
             </button>
 
             <AnimatePresence>
