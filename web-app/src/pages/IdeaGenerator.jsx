@@ -2359,7 +2359,7 @@ const IdeaGenerator = () => {
                 if (i === segments.length - 1) return (
                   <textarea key="active-input" ref={textareaRef} value={seg.value} onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
                     placeholder={segments.length === 1 && !seg.value ? 'Descreva o briefing... Use @ para referências, [termo] para pesquisa web' : ''} rows={1}
-                    className="flex-1 min-w-[120px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1" />
+                    className="flex-1 min-w-[40px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1" />
                 );
                 if (!seg.value) return null;
                 return <span key={`text-${i}`} className="text-[14px] text-white whitespace-pre-wrap leading-relaxed py-1">{seg.value}</span>;

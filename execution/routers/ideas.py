@@ -514,6 +514,7 @@ async def generate_creative_ideas(
     if parsed_search_terms:
         search_context = await _search_terms_context(parsed_search_terms)
         logger.info(f"Search context ({len(parsed_search_terms)} termos): {len(search_context)} chars")
+        logger.info(f"Search context content:\n{search_context}")
 
     # ── Build user_message ──
     if is_roteirist:
