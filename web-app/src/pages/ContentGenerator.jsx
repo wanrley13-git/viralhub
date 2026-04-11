@@ -1,7 +1,7 @@
 import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import {
   Lightbulb, FileCheck, FileText, Minus, Plus, ChevronDown, ChevronUp, Video, X, ImagePlus,
-  BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload, Globe,
+  BookOpen, Mic, Check, Pencil, Trash2, Eye, Download, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
   LayoutGrid, Grid3x3, Clock, Heart, Send, Layout, CalendarDays, StickyNote, Folder, SlidersHorizontal,
 } from 'lucide-react';
@@ -111,14 +111,8 @@ const RefChip = ({ analysis, onRemove }) => (
   </span>
 );
 
-const SearchChip = ({ term, onRemove }) => (
-  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[12px] font-semibold text-blue-400 whitespace-nowrap select-none shrink-0">
-    <Globe size={11} strokeWidth={2} className="shrink-0 text-blue-400/70" />
-    <span className="truncate max-w-[140px]">{term}</span>
-    <button onClick={(e) => { e.stopPropagation(); onRemove(term); }} className="opacity-40 hover:opacity-100 transition-opacity">
-      <X size={10} strokeWidth={2.5} />
-    </button>
-  </span>
+const SearchTag = ({ term }) => (
+  <span className="text-[14px] font-semibold leading-relaxed py-1" style={{ color: '#60A5FA' }}>[{term}]</span>
 );
 
 // The previewUrl is created ONCE at upload time (inside handleImageUpload)
@@ -2584,7 +2578,7 @@ const ContentGenerator = () => {
 
               {segments.map((seg, i) => {
                 if (seg.type === 'ref') return <RefChip key={`ref-${seg.analysis.id}`} analysis={seg.analysis} onRemove={removeRef} />;
-                if (seg.type === 'search') return <SearchChip key={`search-${seg.term}`} term={seg.term} onRemove={removeSearch} />;
+                if (seg.type === 'search') return <SearchTag key={`search-${seg.term}`} term={seg.term} />;
                 if (i === segments.length - 1) return (
                   <textarea key="active-input" ref={textareaRef} value={seg.value} onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
                     placeholder={segments.length === 1 && !seg.value ? 'Descreva o conteúdo que deseja criar... Use @ para referências, [termo] para pesquisa web' : ''} rows={1}
