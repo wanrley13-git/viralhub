@@ -144,38 +144,21 @@ const formatDateHeader = (iso) => {
 };
 
 // ─── Adjust Popup ───
-const AdjustPopup = ({ idea, apiEndpoint, onClose, onUpdated }) => {
+// onSubmit(idea, instruction) — fires immediately then the parent handles the async call.
+const AdjustPopup = ({ idea, onClose, onSubmit }) => {
   const [instruction, setInstruction] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [currentIdea, setCurrentIdea] = useState(idea);
   const textareaRef = useRef(null);
 
   useEffect(() => { textareaRef.current?.focus(); }, []);
 
-  const handleSubmit = async () => {
-    if (!instruction.trim() || loading) return;
-    setLoading(true);
-    try {
-      const token = await getAccessToken();
-      const res = await axios.post(
-        `${API_URL}${apiEndpoint}`,
-        { idea_id: currentIdea.id, instruction: instruction.trim() },
-        { headers: { Authorization: `Bearer ${token}` }, timeout: 180000 },
-      );
-      setCurrentIdea(res.data);
-      onUpdated(res.data);
-      setInstruction('');
-    } catch (err) {
-      const detail = err?.response?.data?.detail;
-      alert(typeof detail === 'string' ? detail : 'Erro ao ajustar conteúdo.');
-    } finally {
-      setLoading(false);
-    }
+  const handleSubmit = () => {
+    if (!instruction.trim()) return;
+    onSubmit(idea, instruction.trim());
   };
 
-  const preview = currentIdea.developed_content
-    ? currentIdea.developed_content.replace(/^#+\s*/gm, '').replace(/\*+/g, '').split('\n').filter(l => l.trim()).slice(0, 4).join('\n')
-    : `${currentIdea.title}${currentIdea.summary ? '\n' + currentIdea.summary : ''}`;
+  const preview = idea.developed_content
+    ? idea.developed_content.replace(/^#+\s*/gm, '').replace(/\*+/g, '').split('\n').filter(l => l.trim()).slice(0, 4).join('\n')
+    : `${idea.title}${idea.summary ? '\n' + idea.summary : ''}`;
 
   return (
     <motion.div
@@ -240,20 +223,11 @@ const AdjustPopup = ({ idea, apiEndpoint, onClose, onUpdated }) => {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading || !instruction.trim()}
+            disabled={!instruction.trim()}
             className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-[12px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {loading ? (
-              <>
-                <Loader2 size={13} className="animate-spin" />
-                Ajustando...
-              </>
-            ) : (
-              <>
-                <SlidersHorizontal size={13} strokeWidth={2} />
-                Enviar ajuste
-              </>
-            )}
+            <SlidersHorizontal size={13} strokeWidth={2} />
+            Enviar ajuste
           </button>
         </div>
       </motion.div>
@@ -263,81 +237,99 @@ const AdjustPopup = ({ idea, apiEndpoint, onClose, onUpdated }) => {
 
 // ─── Idea card (reused across tabs) ───
 // React.memo so typing in the prompt bar doesn't re-render every card.
-const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, onAdjust, onExpand, showDate = false, bgColor = null }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 16 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
-    onClick={() => onExpand?.(idea)}
-    style={bgColor ? {
-      backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor,
-      ...(isSelected ? { borderColor: `color-mix(in srgb, ${bgColor} 92%, white)` } : {})
-    } : undefined}
-    className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-colors duration-200 group flex flex-col ${
-      isSelected
-        ? (bgColor ? '' : 'bg-white/[0.06] border-primary')
-        : bgColor
-          ? 'border-white/[0.08] hover:border-primary/40'
-          : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
-    }`}
-  >
-    {/* Top-right corner: adjust + heart + selection checkbox */}
-    <div className="absolute top-3 right-3 flex items-center gap-2">
-      <button
-        onClick={(e) => { e.stopPropagation(); onAdjust?.(idea); }}
-        className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-white"
-        title="Ajustar"
+const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect, onToggleSave, onAdjust, onExpand, showDate = false, bgColor = null }) => {
+  // Skeleton / loading state while the adjust API is in-flight
+  if (isAdjusting) {
+    const label = (idea.status === 'developed' && idea.developed_content) ? 'Ajustando roteiro...' : 'Ajustando ideia...';
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
+        className={`relative ${cs.pad} rounded-2xl border border-primary/20 bg-primary/[0.04] flex flex-col items-center justify-center gap-3 min-h-[120px]`}
       >
-        <SlidersHorizontal size={13} strokeWidth={2} />
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
-        className="w-7 h-7 flex items-center justify-center rounded-full transition-transform duration-200 active:scale-125 overflow-visible"
-        style={{
-          backgroundColor: idea.is_saved ? '#2E0B15' : 'transparent',
-          border: idea.is_saved ? '1px solid #38161F' : '1px solid transparent',
-        }}
-        title={idea.is_saved ? 'Remover dos favoritos' : 'Favoritar'}
-      >
-        <Heart
-          size={14}
-          strokeWidth={2}
-          fill={idea.is_saved ? '#E2272F' : 'none'}
-          stroke={idea.is_saved ? '#E2272F' : '#ffffff'}
-        />
-      </button>
-      <button
-        type="button"
-        onClick={(e) => { e.stopPropagation(); onToggleSelect(idea.id); }}
-        className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
-          isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20 hover:bg-white/[0.12]'
-        }`}
-        title={isSelected ? 'Desselecionar' : 'Selecionar'}
-      >
-        <Check size={12} strokeWidth={3} />
-      </button>
-    </div>
+        <Loader2 size={20} className="text-primary animate-spin" />
+        <p className="text-[11px] font-bold uppercase tracking-widest text-primary/70">{label}</p>
+      </motion.div>
+    );
+  }
 
-    <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
-      Ideia {String(index + 1).padStart(2, '0')}
-    </p>
-    <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-28 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
-      {idea.title}
-    </p>
-    {idea.summary && (
-      <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>
-        {idea.summary}
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
+      onClick={() => onExpand?.(idea)}
+      style={bgColor ? {
+        backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor,
+        ...(isSelected ? { borderColor: `color-mix(in srgb, ${bgColor} 92%, white)` } : {})
+      } : undefined}
+      className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-colors duration-200 group flex flex-col ${
+        isSelected
+          ? (bgColor ? '' : 'bg-white/[0.06] border-primary')
+          : bgColor
+            ? 'border-white/[0.08] hover:border-primary/40'
+            : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
+      }`}
+    >
+      {/* Top-right corner: adjust + heart + selection checkbox */}
+      <div className="absolute top-3 right-3 flex items-center gap-2">
+        <button
+          onClick={(e) => { e.stopPropagation(); onAdjust?.(idea); }}
+          className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-white"
+          title="Ajustar"
+        >
+          <SlidersHorizontal size={13} strokeWidth={2} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
+          className="w-7 h-7 flex items-center justify-center rounded-full transition-transform duration-200 active:scale-125 overflow-visible"
+          style={{
+            backgroundColor: idea.is_saved ? '#2E0B15' : 'transparent',
+            border: idea.is_saved ? '1px solid #38161F' : '1px solid transparent',
+          }}
+          title={idea.is_saved ? 'Remover dos favoritos' : 'Favoritar'}
+        >
+          <Heart
+            size={14}
+            strokeWidth={2}
+            fill={idea.is_saved ? '#E2272F' : 'none'}
+            stroke={idea.is_saved ? '#E2272F' : '#ffffff'}
+          />
+        </button>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); onToggleSelect(idea.id); }}
+          className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+            isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20 hover:bg-white/[0.12]'
+          }`}
+          title={isSelected ? 'Desselecionar' : 'Selecionar'}
+        >
+          <Check size={12} strokeWidth={3} />
+        </button>
+      </div>
+
+      <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
+        Ideia {String(index + 1).padStart(2, '0')}
       </p>
-    )}
+      <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-28 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
+        {idea.title}
+      </p>
+      {idea.summary && (
+        <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>
+          {idea.summary}
+        </p>
+      )}
 
-    {showDate && idea.created_at && (
-      <span className="text-[10px] text-white/30 font-mono flex items-center gap-1 mt-3">
-        <Clock size={10} strokeWidth={1.5} />
-        {formatDateHeader(idea.created_at)}
-      </span>
-    )}
-  </motion.div>
-);
+      {showDate && idea.created_at && (
+        <span className="text-[10px] text-white/30 font-mono flex items-center gap-1 mt-3">
+          <Clock size={10} strokeWidth={1.5} />
+          {formatDateHeader(idea.created_at)}
+        </span>
+      )}
+    </motion.div>
+  );
+};
 const IdeaCard = memo(IdeaCardBase);
 
 const IdeaGenerator = () => {
@@ -587,8 +579,9 @@ const IdeaGenerator = () => {
 
   // Expand modal — read-only popup with the full idea title + summary.
   const [expandedIdea, setExpandedIdea] = useState(null);
-  // Adjust popup state
+  // Adjust state: popup + in-flight skeleton
   const [adjustingIdea, setAdjustingIdea] = useState(null);
+  const [adjustingIds, setAdjustingIds] = useState(new Set());
 
   const openIdeaDetail = useCallback(async (idea) => {
     // If developed_content is already loaded or it's not a developed idea, open immediately
@@ -763,15 +756,31 @@ const IdeaGenerator = () => {
     }
   }, []);
 
-  // Adjust callback — update the idea in every list + the expanded modal
-  const handleAdjustUpdated = useCallback((updated) => {
-    const updater = (list) => list.map(i => i.id === updated.id ? { ...i, ...updated } : i);
-    setIdeas(updater);
-    setHistoryIdeas(updater);
-    setSavedIdeas(updater);
-    setDevelopedIdeas(updater);
-    if (expandedIdea?.id === updated.id) setExpandedIdea(prev => ({ ...prev, ...updated }));
-  }, [expandedIdea]);
+  // Adjust: close popup immediately, show skeleton on card, fire API in background
+  const handleAdjustSubmit = useCallback(async (idea, instruction) => {
+    setAdjustingIdea(null);
+    setAdjustingIds(prev => new Set(prev).add(idea.id));
+    try {
+      const token = await getAccessToken();
+      const res = await axios.post(
+        `${API_URL}/content/ideas/adjust`,
+        { idea_id: idea.id, instruction },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 180000 },
+      );
+      const updated = res.data;
+      const updater = (list) => list.map(i => i.id === updated.id ? { ...i, ...updated } : i);
+      setIdeas(updater);
+      setHistoryIdeas(updater);
+      setSavedIdeas(updater);
+      setDevelopedIdeas(updater);
+      if (expandedIdea?.id === updated.id) setExpandedIdea(prev => prev ? { ...prev, ...updated } : prev);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast(typeof detail === 'string' ? detail : 'Erro ao ajustar conteúdo.', 'error');
+    } finally {
+      setAdjustingIds(prev => { const s = new Set(prev); s.delete(idea.id); return s; });
+    }
+  }, [expandedIdea, toast]);
 
   const fetchAnalyses = async () => {
     try {
@@ -1791,6 +1800,7 @@ const IdeaGenerator = () => {
                     idea={idea}
                     index={i}
                     isSelected={selectedIdeas.includes(idea.id)}
+                    isAdjusting={adjustingIds.has(idea.id)}
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
@@ -1844,6 +1854,7 @@ const IdeaGenerator = () => {
                             idea={idea}
                             index={i}
                             isSelected={selectedIdeas.includes(idea.id)}
+                            isAdjusting={adjustingIds.has(idea.id)}
                             cs={cs}
                             onToggleSelect={toggleIdeaSelect}
                             onToggleSave={toggleSaveIdea}
@@ -1880,6 +1891,7 @@ const IdeaGenerator = () => {
                     idea={idea}
                     index={i}
                     isSelected={selectedIdeas.includes(idea.id)}
+                    isAdjusting={adjustingIds.has(idea.id)}
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
@@ -1929,6 +1941,7 @@ const IdeaGenerator = () => {
                       idea={idea}
                       index={i}
                       isSelected={selectedIdeas.includes(idea.id)}
+                      isAdjusting={adjustingIds.has(idea.id)}
                       cs={cs}
                       onToggleSelect={toggleIdeaSelect}
                       onToggleSave={toggleSaveIdea}
@@ -2746,9 +2759,8 @@ const IdeaGenerator = () => {
           <AdjustPopup
             key={adjustingIdea.id}
             idea={adjustingIdea}
-            apiEndpoint="/content/ideas/adjust"
             onClose={() => setAdjustingIdea(null)}
-            onUpdated={handleAdjustUpdated}
+            onSubmit={handleAdjustSubmit}
           />
         )}
       </AnimatePresence>

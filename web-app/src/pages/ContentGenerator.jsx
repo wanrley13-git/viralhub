@@ -138,38 +138,21 @@ const formatDateHeader = (iso) => {
 };
 
 // ─── Adjust Popup ───
-const AdjustPopup = ({ idea, apiEndpoint, onClose, onUpdated }) => {
+// onSubmit(idea, instruction) — fires immediately then the parent handles the async call.
+const AdjustPopup = ({ idea, onClose, onSubmit }) => {
   const [instruction, setInstruction] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [currentIdea, setCurrentIdea] = useState(idea);
   const textareaRef = useRef(null);
 
   useEffect(() => { textareaRef.current?.focus(); }, []);
 
-  const handleSubmit = async () => {
-    if (!instruction.trim() || loading) return;
-    setLoading(true);
-    try {
-      const token = await getAccessToken();
-      const res = await axios.post(
-        `${API_URL}${apiEndpoint}`,
-        { idea_id: currentIdea.id, instruction: instruction.trim() },
-        { headers: { Authorization: `Bearer ${token}` }, timeout: 180000 },
-      );
-      setCurrentIdea(res.data);
-      onUpdated(res.data);
-      setInstruction('');
-    } catch (err) {
-      const detail = err?.response?.data?.detail;
-      alert(typeof detail === 'string' ? detail : 'Erro ao ajustar conteúdo.');
-    } finally {
-      setLoading(false);
-    }
+  const handleSubmit = () => {
+    if (!instruction.trim()) return;
+    onSubmit(idea, instruction.trim());
   };
 
-  const preview = currentIdea.developed_content
-    ? currentIdea.developed_content.replace(/^#+\s*/gm, '').replace(/\*+/g, '').split('\n').filter(l => l.trim()).slice(0, 4).join('\n')
-    : `${currentIdea.title}${currentIdea.summary ? '\n' + currentIdea.summary : ''}`;
+  const preview = idea.developed_content
+    ? idea.developed_content.replace(/^#+\s*/gm, '').replace(/\*+/g, '').split('\n').filter(l => l.trim()).slice(0, 4).join('\n')
+    : `${idea.title}${idea.summary ? '\n' + idea.summary : ''}`;
 
   return (
     <motion.div
@@ -234,20 +217,11 @@ const AdjustPopup = ({ idea, apiEndpoint, onClose, onUpdated }) => {
           </button>
           <button
             onClick={handleSubmit}
-            disabled={loading || !instruction.trim()}
+            disabled={!instruction.trim()}
             className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-[12px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {loading ? (
-              <>
-                <Loader2 size={13} className="animate-spin" />
-                Ajustando...
-              </>
-            ) : (
-              <>
-                <SlidersHorizontal size={13} strokeWidth={2} />
-                Enviar ajuste
-              </>
-            )}
+            <SlidersHorizontal size={13} strokeWidth={2} />
+            Enviar ajuste
           </button>
         </div>
       </motion.div>
@@ -260,76 +234,94 @@ const AdjustPopup = ({ idea, apiEndpoint, onClose, onUpdated }) => {
 // change (idea data, selected flag, card scale) — not on every keystroke
 // in the prompt bar. The parent passes stable useCallback'd handlers
 // so callback identity doesn't invalidate the memo.
-const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, onAdjust, showDate = false, bgColor = null }) => (
-  <motion.div
-    initial={{ opacity: 0, y: 16 }}
-    animate={{ opacity: 1, y: 0 }}
-    transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
-    onClick={() => onToggleSelect(idea.id)}
-    style={bgColor ? {
-      backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor,
-      ...(isSelected ? { borderColor: `color-mix(in srgb, ${bgColor} 92%, white)` } : {})
-    } : undefined}
-    className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-colors duration-200 group flex flex-col ${
-      isSelected
-        ? (bgColor ? '' : 'bg-white/[0.06] border-primary')
-        : bgColor
-          ? 'border-white/[0.08] hover:border-primary/40'
-          : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
-    }`}
-  >
-    {/* Top-right corner: adjust + heart + selection checkbox side by side */}
-    <div className="absolute top-3 right-3 flex items-center gap-2">
-      <button
-        onClick={(e) => { e.stopPropagation(); onAdjust?.(idea); }}
-        className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-white"
-        title="Ajustar"
+const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect, onToggleSave, onAdjust, showDate = false, bgColor = null }) => {
+  // Skeleton / loading state while the adjust API is in-flight
+  if (isAdjusting) {
+    const label = (idea.status === 'developed' && idea.developed_content) ? 'Ajustando conteúdo...' : 'Ajustando ideia...';
+    return (
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
+        className={`relative ${cs.pad} rounded-2xl border border-primary/20 bg-primary/[0.04] flex flex-col items-center justify-center gap-3 min-h-[120px]`}
       >
-        <SlidersHorizontal size={13} strokeWidth={2} />
-      </button>
-      <button
-        onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
-        className="w-7 h-7 flex items-center justify-center rounded-full transition-transform duration-200 active:scale-125 overflow-visible"
-        style={{
-          backgroundColor: idea.is_saved ? '#2E0B15' : 'transparent',
-          border: idea.is_saved ? '1px solid #38161F' : '1px solid transparent',
-        }}
-        title={idea.is_saved ? 'Remover dos favoritos' : 'Favoritar'}
-      >
-        <Heart
-          size={14}
-          strokeWidth={2}
-          fill={idea.is_saved ? '#E2272F' : 'none'}
-          stroke={idea.is_saved ? '#E2272F' : '#ffffff'}
-        />
-      </button>
-      <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
-        isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
-      }`}>
-        <Check size={12} strokeWidth={3} />
+        <Loader2 size={20} className="text-primary animate-spin" />
+        <p className="text-[11px] font-bold uppercase tracking-widest text-primary/70">{label}</p>
+      </motion.div>
+    );
+  }
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 16 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2, delay: Math.min(index * 0.02, 0.3) }}
+      onClick={() => onToggleSelect(idea.id)}
+      style={bgColor ? {
+        backgroundColor: isSelected ? `color-mix(in srgb, ${bgColor} 92%, white)` : bgColor,
+        ...(isSelected ? { borderColor: `color-mix(in srgb, ${bgColor} 92%, white)` } : {})
+      } : undefined}
+      className={`relative ${cs.pad} rounded-2xl border cursor-pointer transition-colors duration-200 group flex flex-col ${
+        isSelected
+          ? (bgColor ? '' : 'bg-white/[0.06] border-primary')
+          : bgColor
+            ? 'border-white/[0.08] hover:border-primary/40'
+            : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
+      }`}
+    >
+      {/* Top-right corner: adjust + heart + selection checkbox side by side */}
+      <div className="absolute top-3 right-3 flex items-center gap-2">
+        <button
+          onClick={(e) => { e.stopPropagation(); onAdjust?.(idea); }}
+          className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-white"
+          title="Ajustar"
+        >
+          <SlidersHorizontal size={13} strokeWidth={2} />
+        </button>
+        <button
+          onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
+          className="w-7 h-7 flex items-center justify-center rounded-full transition-transform duration-200 active:scale-125 overflow-visible"
+          style={{
+            backgroundColor: idea.is_saved ? '#2E0B15' : 'transparent',
+            border: idea.is_saved ? '1px solid #38161F' : '1px solid transparent',
+          }}
+          title={idea.is_saved ? 'Remover dos favoritos' : 'Favoritar'}
+        >
+          <Heart
+            size={14}
+            strokeWidth={2}
+            fill={idea.is_saved ? '#E2272F' : 'none'}
+            stroke={idea.is_saved ? '#E2272F' : '#ffffff'}
+          />
+        </button>
+        <div className={`w-5 h-5 rounded-md flex items-center justify-center transition-all ${
+          isSelected ? 'bg-primary text-white' : 'bg-white/[0.06] text-transparent group-hover:text-white/20'
+        }`}>
+          <Check size={12} strokeWidth={3} />
+        </div>
       </div>
-    </div>
 
-    <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
-      Ideia {String(index + 1).padStart(2, '0')}
-    </p>
-    <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-20 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
-      {idea.title}
-    </p>
-    {idea.summary && (
-      <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>
-        {idea.summary}
+      <p className="font-bold uppercase tracking-widest text-white/25 mb-2" style={{ fontSize: cs.label }}>
+        Ideia {String(index + 1).padStart(2, '0')}
       </p>
-    )}
+      <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-20 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
+        {idea.title}
+      </p>
+      {idea.summary && (
+        <p className={`text-white/40 leading-relaxed mt-3 ${cs.clampSum}`} style={{ fontSize: cs.summary }}>
+          {idea.summary}
+        </p>
+      )}
 
-    {showDate && idea.created_at && (
-      <span className="text-[10px] text-white/30 font-mono flex items-center gap-1 mt-3">
-        <Clock size={10} strokeWidth={1.5} />
-        {formatDateHeader(idea.created_at)}
-      </span>
-    )}
-  </motion.div>
-);
+      {showDate && idea.created_at && (
+        <span className="text-[10px] text-white/30 font-mono flex items-center gap-1 mt-3">
+          <Clock size={10} strokeWidth={1.5} />
+          {formatDateHeader(idea.created_at)}
+        </span>
+      )}
+    </motion.div>
+  );
+};
 const IdeaCard = memo(IdeaCardBase);
 
 const ContentGenerator = () => {
@@ -548,6 +540,7 @@ const ContentGenerator = () => {
   const [expandedDeveloped, setExpandedDeveloped] = useState({}); // legacy, kept to avoid refactor
   const [developedViewing, setDevelopedViewing] = useState(null); // idea being shown in modal
   const [adjustingIdea, setAdjustingIdea] = useState(null); // idea being adjusted
+  const [adjustingIds, setAdjustingIds] = useState(new Set());
 
   const openIdeaDetail = useCallback(async (idea) => {
     // If developed_content is already loaded or it's not a developed idea, open immediately
@@ -732,15 +725,31 @@ const ContentGenerator = () => {
     }
   }, []);
 
-  // Adjust callback — update the idea in every list + the viewing modal
-  const handleAdjustUpdated = useCallback((updated) => {
-    const updater = (list) => list.map(i => i.id === updated.id ? { ...i, ...updated } : i);
-    setIdeas(updater);
-    setHistoryIdeas(updater);
-    setSavedIdeas(updater);
-    setDevelopedIdeas(updater);
-    if (developedViewing?.id === updated.id) setDevelopedViewing(prev => ({ ...prev, ...updated }));
-  }, [developedViewing]);
+  // Adjust: close popup immediately, show skeleton on card, fire API in background
+  const handleAdjustSubmit = useCallback(async (idea, instruction) => {
+    setAdjustingIdea(null);
+    setAdjustingIds(prev => new Set(prev).add(idea.id));
+    try {
+      const token = await getAccessToken();
+      const res = await axios.post(
+        `${API_URL}/content/adjust`,
+        { idea_id: idea.id, instruction },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 180000 },
+      );
+      const updated = res.data;
+      const updater = (list) => list.map(i => i.id === updated.id ? { ...i, ...updated } : i);
+      setIdeas(updater);
+      setHistoryIdeas(updater);
+      setSavedIdeas(updater);
+      setDevelopedIdeas(updater);
+      if (developedViewing?.id === updated.id) setDevelopedViewing(prev => prev ? { ...prev, ...updated } : prev);
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      toast(typeof detail === 'string' ? detail : 'Erro ao ajustar conteúdo.', 'error');
+    } finally {
+      setAdjustingIds(prev => { const s = new Set(prev); s.delete(idea.id); return s; });
+    }
+  }, [developedViewing, toast]);
 
   const fetchAnalyses = async () => {
     try {
@@ -1851,6 +1860,7 @@ const ContentGenerator = () => {
                     idea={idea}
                     index={i}
                     isSelected={selectedIdeas.includes(idea.id)}
+                    isAdjusting={adjustingIds.has(idea.id)}
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
@@ -1904,6 +1914,7 @@ const ContentGenerator = () => {
                             idea={idea}
                             index={i}
                             isSelected={selectedIdeas.includes(idea.id)}
+                            isAdjusting={adjustingIds.has(idea.id)}
                             cs={cs}
                             onToggleSelect={toggleIdeaSelect}
                             onToggleSave={toggleSaveIdea}
@@ -1940,6 +1951,7 @@ const ContentGenerator = () => {
                     idea={idea}
                     index={i}
                     isSelected={selectedIdeas.includes(idea.id)}
+                    isAdjusting={adjustingIds.has(idea.id)}
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
@@ -1970,7 +1982,8 @@ const ContentGenerator = () => {
                 {developedIdeas.map((idea, i) => {
                   const isDeveloping = idea.status === 'developing';
                   const hasFailed = idea._failed;
-                  const isReady = !isDeveloping && !hasFailed;
+                  const isCardAdjusting = adjustingIds.has(idea.id);
+                  const isReady = !isDeveloping && !hasFailed && !isCardAdjusting;
                   const isSelected = selectedDeveloped.includes(idea.id);
                   // Preview: first non-empty lines of the markdown content
                   const preview = idea.developed_content
@@ -2008,7 +2021,26 @@ const ContentGenerator = () => {
                         </button>
                       )}
 
-                      {isDeveloping ? (
+                      {isCardAdjusting ? (
+                        <>
+                          <p className="font-bold uppercase tracking-widest text-primary/70 mb-2" style={{ fontSize: cs.label }}>
+                            Ajustando
+                          </p>
+                          <p className={`font-bold text-white leading-snug uppercase tracking-wide pr-2 ${cs.clampTitle}`} style={{ fontSize: cs.title }}>
+                            {idea.title}
+                          </p>
+                          <div className="mt-3 space-y-1.5 animate-pulse flex-1">
+                            <div className="h-2.5 bg-primary/[0.12] rounded w-full" />
+                            <div className="h-2.5 bg-primary/[0.08] rounded w-4/5" />
+                            <div className="h-2.5 bg-primary/[0.08] rounded w-5/6" />
+                            <div className="h-2.5 bg-primary/[0.06] rounded w-3/4" />
+                          </div>
+                          <div className="flex items-center gap-1.5 mt-3 text-primary/80 font-medium" style={{ fontSize: cs.summary }}>
+                            <Loader2 size={11} className="animate-spin" />
+                            Ajustando conteúdo...
+                          </div>
+                        </>
+                      ) : isDeveloping ? (
                         <>
                           <p className="font-bold uppercase tracking-widest text-blue-400/70 mb-2" style={{ fontSize: cs.label }}>
                             Desenvolvendo
@@ -2933,9 +2965,8 @@ const ContentGenerator = () => {
           <AdjustPopup
             key={adjustingIdea.id}
             idea={adjustingIdea}
-            apiEndpoint="/content/adjust"
             onClose={() => setAdjustingIdea(null)}
-            onUpdated={handleAdjustUpdated}
+            onSubmit={handleAdjustSubmit}
           />
         )}
       </AnimatePresence>
