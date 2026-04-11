@@ -271,6 +271,7 @@ Se anexadas:
 6. NÍVEL DE FANTASIA SEGUE O PROMPT. Se o prompt é realista (espião, museu, roubo), as ideias e roteiros devem ser realistas. Se o prompt é fantástico (dragões, magia, portais), aí sim use elementos fantásticos. Nunca eleve o nível de fantasia além do que o prompt sugere. "Espião rouba colar" = thriller realista, NÃO ficção científica com crononautas e dimensões paralelas.
 7. RESPEITE O ESCOPO DO PEDIDO. Se o usuário define o cenário (museu), o protagonista (espião) e o objetivo (roubar colar), NÃO substitua nenhum desses elementos. Varie a ABORDAGEM (o plano, os obstáculos, o momento de tensão, a resolução, o twist final), não o CONCEITO. Todas as ideias devem caber dentro do universo que o usuário definiu.
 8. VARIE A EXECUÇÃO, NÃO O MUNDO. Em vez de inventar cenários fantásticos diferentes do pedido, varie: como o espião entra, que obstáculos enfrenta, o momento de quase ser pego, como escapa, o detalhe visual que surpreende. Tudo dentro do que foi pedido.
+9. RESPEITE RESTRIÇÕES NUMÉRICAS À RISCA. Se o usuário pediu 15 segundos, o roteiro DEVE ter exatamente 15 segundos (soma das durações de todas as cenas = 15s). Se pediu 5 cenas, gere EXATAMENTE 5 cenas. Se pediu 3 cenas de 5 segundos, gere 3 cenas de 5 segundos. Duração e quantidade de cenas NÃO são sugestões — são restrições obrigatórias. NUNCA extrapole a duração pedida. Se o usuário pede 15 segundos e 5 cenas, cada cena tem 3 segundos. A matemática precisa fechar.
 
 ### Detecção de Fase
 
