@@ -300,17 +300,17 @@ body::before {
   font-size: 0.9375rem;
 }
 .markdown-body > * + * {
-  margin-top: 1.25rem;
+  margin-top: 0.6em;
 }
 
 .markdown-body h1 {
   font-size: 1.5rem;
   font-weight: 800;
   color: white;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.2em;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding-bottom: 0.75rem;
-  margin-top: 2rem;
+  padding-bottom: 0.5rem;
+  margin-top: 0.6em;
   letter-spacing: -0.025em;
 }
 
@@ -318,8 +318,8 @@ body::before {
   font-size: 1.25rem;
   font-weight: 800;
   color: white;
-  margin-top: 2rem;
-  margin-bottom: 1rem;
+  margin-top: 0.6em;
+  margin-bottom: 0.2em;
   letter-spacing: -0.02em;
 }
 
@@ -327,13 +327,13 @@ body::before {
   font-size: 1.125rem;
   font-weight: 600;
   color: #f3f4f6;
-  margin-top: 1.5rem;
-  margin-bottom: 0.75rem;
+  margin-top: 0.6em;
+  margin-bottom: 0.2em;
   letter-spacing: -0.01em;
 }
 
 .markdown-body p {
-  margin-bottom: 1rem;
+  margin-bottom: 0.5em;
   line-height: 1.75;
 }
 

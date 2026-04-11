@@ -550,15 +550,23 @@ const ContentGenerator = () => {
   const [adjustingIdea, setAdjustingIdea] = useState(null); // idea being adjusted
 
   const openIdeaDetail = useCallback(async (idea) => {
-    setDevelopedViewing(idea);
-    if (idea.developed_content || idea.status !== 'developed') return;
+    // If developed_content is already loaded or it's not a developed idea, open immediately
+    if (idea.developed_content || idea.status !== 'developed') {
+      setDevelopedViewing(idea);
+      return;
+    }
+    // Show modal with loading state while fetching
+    setDevelopedViewing({ ...idea, _loading: true });
     try {
       const token = await getAccessToken();
       const res = await axios.get(`${API_URL}/content/ideas/detail/${idea.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setDevelopedViewing(res.data);
-    } catch { /* fallback to summary */ }
+    } catch {
+      // Remove loading flag, fallback to summary
+      setDevelopedViewing((prev) => prev ? { ...prev, _loading: false } : prev);
+    }
   }, []);
 
   // "Enviar" flow state — destination modal opens from the big viewing modal
@@ -2129,7 +2137,11 @@ const ContentGenerator = () => {
 
               {/* Body — full markdown */}
               <div className="flex-1 overflow-y-auto custom-scrollbar px-7 py-6">
-                {developedViewing.developed_content ? (
+                {developedViewing._loading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 size={24} className="text-primary animate-spin" />
+                  </div>
+                ) : developedViewing.developed_content ? (
                   <MarkdownRenderer className="max-w-none">
                     {developedViewing.developed_content}
                   </MarkdownRenderer>

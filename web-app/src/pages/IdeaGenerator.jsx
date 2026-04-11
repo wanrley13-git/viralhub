@@ -591,15 +591,23 @@ const IdeaGenerator = () => {
   const [adjustingIdea, setAdjustingIdea] = useState(null);
 
   const openIdeaDetail = useCallback(async (idea) => {
-    setExpandedIdea(idea);
-    if (idea.developed_content || idea.status !== 'developed') return;
+    // If developed_content is already loaded or it's not a developed idea, open immediately
+    if (idea.developed_content || idea.status !== 'developed') {
+      setExpandedIdea(idea);
+      return;
+    }
+    // Show modal with loading state while fetching
+    setExpandedIdea({ ...idea, _loading: true });
     try {
       const token = await getAccessToken();
       const res = await axios.get(`${API_URL}/content/ideas/detail/${idea.id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       setExpandedIdea(res.data);
-    } catch { /* fallback to summary */ }
+    } catch {
+      // Remove loading flag, fallback to summary
+      setExpandedIdea((prev) => prev ? { ...prev, _loading: false } : prev);
+    }
   }, []);
 
   // Send flow state — destination modal for Kanban / direct send to Notes.
@@ -1998,7 +2006,11 @@ const IdeaGenerator = () => {
 
               {/* Body — markdown for developed ideas, plain text for others */}
               <div className="flex-1 overflow-y-auto custom-scrollbar px-7 py-6">
-                {expandedIdea.developed_content ? (
+                {expandedIdea._loading ? (
+                  <div className="flex items-center justify-center py-16">
+                    <Loader2 size={24} className="text-primary animate-spin" />
+                  </div>
+                ) : expandedIdea.developed_content ? (
                   <MarkdownRenderer>{expandedIdea.developed_content}</MarkdownRenderer>
                 ) : expandedIdea.summary ? (
                   <p className="text-[15px] text-white/80 leading-relaxed whitespace-pre-wrap">
