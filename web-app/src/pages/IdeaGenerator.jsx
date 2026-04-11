@@ -2328,12 +2328,12 @@ const IdeaGenerator = () => {
             </div>
           )}
 
-          <div className="relative">
-            <div className="flex flex-wrap items-center gap-1.5 min-h-[28px] cursor-text" onClick={() => textareaRef.current?.focus()}>
+          <div className="relative overflow-hidden">
+            <div className="flex flex-wrap items-start gap-1.5 min-h-[28px] w-full cursor-text" onClick={() => textareaRef.current?.focus()}>
               <button
                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                 disabled={uploadedImages.length >= MAX_IMAGES}
-                className="shrink-0 w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-white/[0.07] transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
+                className="shrink-0 w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-white/[0.07] transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed mt-0.5"
                 title={uploadedImages.length >= MAX_IMAGES ? `Máximo de ${MAX_IMAGES} imagens` : 'Anexar imagem'}
               >
                 <ImagePlus size={15} strokeWidth={1.8} />
@@ -2353,10 +2353,10 @@ const IdeaGenerator = () => {
                 if (i === segments.length - 1) return (
                   <textarea key="active-input" ref={textareaRef} value={seg.value} onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
                     placeholder={segments.length === 1 && !seg.value ? 'Descreva o briefing... Use @ para referências, [termo] para pesquisa web' : ''} rows={1}
-                    className="flex-1 min-w-[40px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1" />
+                    className="flex-1 w-0 min-w-0 bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1 break-words overflow-hidden" />
                 );
                 if (!seg.value) return null;
-                return <span key={`text-${i}`} className="text-[14px] text-white whitespace-pre-wrap leading-relaxed py-1">{seg.value}</span>;
+                return <span key={`text-${i}`} className="text-[14px] text-white whitespace-pre-wrap break-words leading-relaxed py-1">{seg.value}</span>;
               })}
             </div>
 
