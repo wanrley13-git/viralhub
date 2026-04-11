@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   User, Shield, MessageCircle, Camera, Lock, Mail, Eye, EyeOff,
   Check, X, Loader2, AlertCircle, ExternalLink, Clock, Phone,
-  ChevronRight,
+  ChevronRight, Download, Smartphone,
 } from 'lucide-react';
 import axios from 'axios';
 import { clsx } from 'clsx';
@@ -418,9 +418,124 @@ const SupportSection = () => {
   );
 };
 
+// ── Install App Section ──
+const InstallAppSection = ({ toast }) => {
+  const [deferredPrompt, setDeferredPrompt] = useState(null);
+  const [installed, setInstalled] = useState(false);
+  const [installing, setInstalling] = useState(false);
+
+  useEffect(() => {
+    // Check if already installed (standalone mode)
+    if (window.matchMedia('(display-mode: standalone)').matches) {
+      setInstalled(true);
+      return;
+    }
+
+    const handler = (e) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    const installedHandler = () => {
+      setInstalled(true);
+      setDeferredPrompt(null);
+    };
+
+    window.addEventListener('beforeinstallprompt', handler);
+    window.addEventListener('appinstalled', installedHandler);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      window.removeEventListener('appinstalled', installedHandler);
+    };
+  }, []);
+
+  const handleInstall = async () => {
+    if (!deferredPrompt) return;
+    setInstalling(true);
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setInstalled(true);
+        toast('App instalado com sucesso!', 'success');
+      }
+      setDeferredPrompt(null);
+    } catch {
+      toast('Erro ao instalar o app.', 'error');
+    } finally {
+      setInstalling(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6 space-y-5">
+        <div className="flex items-start gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-primary/15 border border-primary/20 flex items-center justify-center shrink-0">
+            <Smartphone size={22} strokeWidth={1.5} className="text-primary" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[15px] font-bold text-white mb-1">Instalar ViralHub</h3>
+            <p className="text-[13px] text-gray-500 leading-relaxed">
+              Instale o ViralHub como um aplicativo no seu dispositivo para acesso
+              rápido direto da tela inicial, sem precisar abrir o navegador.
+            </p>
+          </div>
+        </div>
+
+        {installed ? (
+          <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-primary/8 border border-primary/15">
+            <Check size={16} strokeWidth={2.5} className="text-primary shrink-0" />
+            <span className="text-[13px] font-semibold text-primary">App instalado</span>
+          </div>
+        ) : deferredPrompt ? (
+          <button
+            onClick={handleInstall}
+            disabled={installing}
+            className="w-full flex items-center justify-center gap-2.5 px-5 py-3 rounded-xl bg-primary/15 border border-primary/25 text-primary text-[13px] font-bold hover:bg-primary/20 transition-all disabled:opacity-50"
+          >
+            {installing ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Download size={16} strokeWidth={2} />
+            )}
+            Instalar ViralHub como app
+          </button>
+        ) : (
+          <div className="px-4 py-3 rounded-xl bg-white/[0.02] border border-white/[0.05]">
+            <p className="text-[12px] text-gray-600 leading-relaxed">
+              A instalação fica disponível automaticamente quando o navegador detecta que este
+              site pode ser instalado. Tente acessar pelo Chrome ou Edge em desktop/mobile.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="bg-white/[0.02] border border-white/[0.06] rounded-2xl p-6">
+        <p className="data-label mb-4">Como funciona</p>
+        <div className="space-y-3">
+          {[
+            { step: '1', text: 'O app abre em janela própria, sem barra de endereço' },
+            { step: '2', text: 'Ícone na tela inicial ou dock do seu sistema' },
+            { step: '3', text: 'Carregamento mais rápido com cache inteligente' },
+          ].map((item) => (
+            <div key={item.step} className="flex items-center gap-3">
+              <div className="w-6 h-6 rounded-lg bg-white/[0.04] border border-white/[0.06] flex items-center justify-center shrink-0">
+                <span className="text-[10px] font-bold text-gray-500">{item.step}</span>
+              </div>
+              <span className="text-[13px] text-gray-400">{item.text}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ── Navigation Items ──
 const NAV_ITEMS = [
   { id: 'profile', label: 'Perfil', icon: User, description: 'Foto, nome e senha' },
+  { id: 'app', label: 'Instalar App', icon: Download, description: 'PWA para desktop e mobile' },
   { id: 'support', label: 'Suporte', icon: MessageCircle, description: 'Ajuda via WhatsApp' },
 ];
 
@@ -505,7 +620,7 @@ const Settings = () => {
         {/* Main Content */}
         <div className="flex-1 min-w-0">
           <div className="max-w-[560px] mx-auto px-6 lg:px-12 py-8 lg:py-12">
-            {/* Section Header (profile only) */}
+            {/* Section Header */}
             {activeTab === 'profile' && (
               <div className="mb-10">
                 <div className="flex items-center gap-2.5 mb-1">
@@ -518,10 +633,23 @@ const Settings = () => {
                 <div className="h-px bg-gradient-to-r from-primary/20 via-border-subtle to-transparent mt-6" />
               </div>
             )}
+            {activeTab === 'app' && (
+              <div className="mb-10">
+                <div className="flex items-center gap-2.5 mb-1">
+                  <Download size={18} strokeWidth={2} className="text-primary" />
+                  <h2 className="text-xl font-black text-white tracking-tight">Instalar App</h2>
+                </div>
+                <p className="text-[13px] text-gray-500 mt-1">
+                  Use o ViralHub como aplicativo nativo
+                </p>
+                <div className="h-px bg-gradient-to-r from-primary/20 via-border-subtle to-transparent mt-6" />
+              </div>
+            )}
 
             {/* Content */}
             <div key={activeTab} className="animate-fade-in">
               {activeTab === 'profile' && <ProfileSection toast={showToast} />}
+              {activeTab === 'app' && <InstallAppSection toast={showToast} />}
               {activeTab === 'support' && <SupportSection />}
             </div>
           </div>
