@@ -2161,8 +2161,8 @@ const IdeaGenerator = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center gap-3 px-6 pointer-events-none"
           >
-            {/* Roteirizar — only in roteirist mode */}
-            {roteiristMode && (
+            {/* Roteirizar — only in roteirist mode on Ideas tab */}
+            {roteiristMode && activeTab === 'ideas' && (
               <button
                 onClick={handleDevelop}
                 className="relative z-10 flex items-center gap-2.5 px-10 py-4 rounded-full text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
