@@ -176,6 +176,7 @@ class ContentIdea(Base):
     title = Column(String)
     summary = Column(Text, nullable=True)
     prompt_used = Column(Text, nullable=True)
+    original_prompt = Column(Text, nullable=True)  # raw user prompt (for constraint propagation to develop)
     tone_id = Column(Integer, nullable=True)
     base_id = Column(Integer, nullable=True)
     status = Column(String, default="idea")          # idea, developing, developed

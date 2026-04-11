@@ -620,6 +620,7 @@ async def generate_creative_ideas(
                 title=item.get("title", "Sem título"),
                 summary=item.get("summary", ""),
                 prompt_used=prompt,
+                original_prompt=prompt,
                 tone_id=tone_id,
                 base_id=base_id,
                 status="idea",
@@ -703,13 +704,29 @@ async def develop_creative_idea(
 
     title = request.title or idea.title or ""
     summary = request.summary or idea.summary or ""
+    orig_prompt = idea.original_prompt or ""
+
     user_message = (
         "Desenvolva o roteiro completo para a seguinte ideia, "
         "executando a FASE 2 — DESENVOLVIMENTO DE ROTEIRO:\n\n"
+    )
+    if orig_prompt:
+        user_message += (
+            f"Prompt original do usuário: {orig_prompt}\n\n"
+            "Ideia selecionada para desenvolver em roteiro:\n"
+        )
+    user_message += (
         f"Título: {title}\n\n"
         f"Resumo: {summary}"
     )
-    user_message = _append_duration_scene_constraints(user_message, f"{title} {summary}")
+    if orig_prompt:
+        user_message += (
+            "\n\nDesenvolva o roteiro completo RESPEITANDO as restrições "
+            "do prompt original (duração, número de cenas, etc)."
+        )
+    # Also enforce numeric constraints explicitly
+    constraint_source = orig_prompt if orig_prompt else f"{title} {summary}"
+    user_message = _append_duration_scene_constraints(user_message, constraint_source)
 
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:

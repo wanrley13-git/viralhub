@@ -495,15 +495,31 @@ async def develop_content(
 
     title = request.title or idea.title or ""
     summary = request.summary or idea.summary or ""
+    orig_prompt = idea.original_prompt or ""
+
     user_message = (
-        f"Crie um conteúdo viral completo no formato Reels sobre o seguinte tema: "
-        f"{title}"
-        + (f"\n\nResumo: {summary}" if summary else "")
-        + "\n\nUse o MODO 4 (Criador de Conteúdo). Entregue o briefing completo "
-          "seguindo exatamente o formato de saída para Reels definido na sua diretiva, "
-          "com ganchos, takes, legenda e notas de produção."
+        "Crie um conteúdo viral completo no formato Reels sobre o seguinte tema:\n\n"
     )
-    user_message = _append_duration_scene_constraints(user_message, f"{title} {summary}")
+    if orig_prompt:
+        user_message += (
+            f"Prompt original do usuário: {orig_prompt}\n\n"
+            "Ideia selecionada para desenvolver:\n"
+        )
+    user_message += f"Título: {title}"
+    if summary:
+        user_message += f"\n\nResumo: {summary}"
+    user_message += (
+        "\n\nUse o MODO 4 (Criador de Conteúdo). Entregue o briefing completo "
+        "seguindo exatamente o formato de saída para Reels definido na sua diretiva, "
+        "com ganchos, takes, legenda e notas de produção."
+    )
+    if orig_prompt:
+        user_message += (
+            "\n\nDesenvolva o conteúdo RESPEITANDO as restrições "
+            "do prompt original (duração, número de cenas, etc)."
+        )
+    constraint_source = orig_prompt if orig_prompt else f"{title} {summary}"
+    user_message = _append_duration_scene_constraints(user_message, constraint_source)
 
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
@@ -827,6 +843,7 @@ REGRAS:
                 title=item.get("title", "Sem título"),
                 summary=item.get("summary", ""),
                 prompt_used=prompt,
+                original_prompt=prompt,
                 tone_id=tone_id,
                 base_id=base_id,
                 status="idea",
