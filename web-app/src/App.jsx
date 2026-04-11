@@ -76,8 +76,8 @@ const ProtectedRoute = ({ children }) => {
 function App() {
   return (
     <SidebarProvider>
-      <ProjectsProvider>
       <WorkspaceProvider>
+      <ProjectsProvider>
       <NotesProvider>
       <Router>
         <Routes>
@@ -158,8 +158,8 @@ function App() {
         </Routes>
       </Router>
       </NotesProvider>
-      </WorkspaceProvider>
       </ProjectsProvider>
+      </WorkspaceProvider>
     </SidebarProvider>
   );
 }
