@@ -843,27 +843,6 @@ const Sidebar = () => {
             {/* Sub-items: projetos */}
             {!collapsed && kanbanOpen && (
               <div className="ml-[22px] mt-2 space-y-1.5 border-l border-white/[0.06] pl-4">
-                <NavLink
-                  to="/kanban"
-                  end
-                  className={({ isActive }) => cn(
-                    "flex items-center gap-2.5 px-3 py-3 rounded-xl transition-all duration-200 group/sub",
-                    isActive
-                      ? "bg-primary/8 text-white"
-                      : "text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]"
-                  )}
-                >
-                  {({ isActive }) => (
-                    <>
-                      <FolderKanban size={14} strokeWidth={1.5} className={cn(
-                        "shrink-0 transition-colors",
-                        isActive ? "text-primary" : "text-gray-600 group-hover/sub:text-gray-400"
-                      )} />
-                      <span className="text-[13px] font-semibold leading-tight">Todos os projetos</span>
-                    </>
-                  )}
-                </NavLink>
-
                 {projects.slice(0, MAX_SIDEBAR_PROJECTS).map((project) => {
                   const dotColor = SIDEBAR_PROJECT_COLORS[project.id % SIDEBAR_PROJECT_COLORS.length];
                   return (
@@ -886,6 +865,26 @@ const Sidebar = () => {
                   );
                 })}
 
+                <NavLink
+                  to="/kanban"
+                  end
+                  className={({ isActive }) => cn(
+                    "flex items-center gap-2.5 px-3 py-3 rounded-xl transition-all duration-200 group/sub",
+                    isActive
+                      ? "bg-primary/8 text-white"
+                      : "text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]"
+                  )}
+                >
+                  {({ isActive }) => (
+                    <>
+                      <FolderKanban size={14} strokeWidth={1.5} className={cn(
+                        "shrink-0 transition-colors",
+                        isActive ? "text-primary" : "text-gray-600 group-hover/sub:text-gray-400"
+                      )} />
+                      <span className="text-[13px] font-semibold leading-tight">Todos os projetos</span>
+                    </>
+                  )}
+                </NavLink>
               </div>
             )}
           </div>
