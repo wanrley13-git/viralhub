@@ -61,10 +61,6 @@ const RefChip = ({ analysis, onRemove }) => (
   </span>
 );
 
-const SearchTag = ({ term }) => (
-  <span className="text-[14px] font-semibold leading-relaxed py-1" style={{ color: '#60A5FA' }}>[{term}]</span>
-);
-
 // ─── Image thumbnail ─────────────────────────────
 // The previewUrl is created ONCE at upload time (inside handleImageUpload)
 // and stored alongside the file. Never call URL.createObjectURL in the
@@ -1096,13 +1092,15 @@ const IdeaGenerator = () => {
   // the boundary is missing and the server returns 422 because it can't
   // parse the payload.
   const handleGenerate = async () => {
-    const searchTerms = segments.filter(s => s.type === 'search').map(s => s.term);
-    const fullPrompt = segments.map(s => {
-      if (s.type === 'ref') return `[Referência: ${s.analysis.title}]`;
-      if (s.type === 'search') return '';
-      return s.value;
-    }).join('');
+    const fullPrompt = segments.map(s => s.type === 'ref' ? `[Referência: ${s.analysis.title}]` : s.value).join('');
     if (!fullPrompt.trim()) return;
+
+    // Extract [search terms] from the prompt text via regex
+    const searchTerms = [];
+    fullPrompt.replace(/\[([^\[\]\n]+)\]/g, (_, term) => {
+      const t = term.trim();
+      if (t && !t.startsWith('Referência:')) searchTerms.push(t);
+    });
 
     setGenerating(true);
     setErrorToast(null);
@@ -1475,21 +1473,6 @@ const IdeaGenerator = () => {
 
   const handleTextChange = useCallback((e) => {
     const val = e.target.value;
-    // Detect completed [search term] pattern
-    const bracketMatch = val.match(/\[([^\[\]\n]+)\]/);
-    if (bracketMatch) {
-      const fullMatch = bracketMatch[0];
-      const term = bracketMatch[1].trim();
-      if (term) {
-        const idx = val.indexOf(fullMatch);
-        const before = val.slice(0, idx);
-        const after = val.slice(idx + fullMatch.length);
-        setSegments(prev => [...prev.slice(0, -1), { type: 'text', value: before }, { type: 'search', term }, { type: 'text', value: after }]);
-        setMentionOpen(false);
-        setTimeout(() => textareaRef.current?.focus(), 0);
-        return;
-      }
-    }
     setSegments(prev => { const u = [...prev]; u[u.length - 1] = { type: 'text', value: val }; return u; });
     const cursor = e.target.selectionStart;
     const atMatch = val.slice(0, cursor).match(/@([^@\n]*)$/);
@@ -1509,19 +1492,6 @@ const IdeaGenerator = () => {
   const removeRef = useCallback((refId) => {
     setSegments(prev => {
       const idx = prev.findIndex(s => s.type === 'ref' && s.analysis.id === refId);
-      if (idx === -1) return prev;
-      const ps = prev[idx - 1], ns = prev[idx + 1];
-      const merged = (ps?.type === 'text' ? ps.value : '') + (ns?.type === 'text' ? ns.value : '');
-      const s = ps?.type === 'text' ? idx - 1 : idx;
-      const e = ns?.type === 'text' ? idx + 2 : idx + 1;
-      const r = [...prev.slice(0, s), { type: 'text', value: merged }, ...prev.slice(e)];
-      return r.length === 0 ? [{ type: 'text', value: '' }] : r;
-    });
-  }, []);
-
-  const removeSearch = useCallback((term) => {
-    setSegments(prev => {
-      const idx = prev.findIndex(s => s.type === 'search' && s.term === term);
       if (idx === -1) return prev;
       const ps = prev[idx - 1], ns = prev[idx + 1];
       const merged = (ps?.type === 'text' ? ps.value : '') + (ns?.type === 'text' ? ns.value : '');
@@ -2328,12 +2298,12 @@ const IdeaGenerator = () => {
             </div>
           )}
 
-          <div className="relative overflow-hidden">
-            <div className="flex flex-wrap items-start gap-1.5 min-h-[28px] w-full cursor-text" onClick={() => textareaRef.current?.focus()}>
+          <div className="relative">
+            <div className="flex flex-wrap items-center gap-1.5 min-h-[28px] cursor-text" onClick={() => textareaRef.current?.focus()}>
               <button
                 onClick={(e) => { e.stopPropagation(); fileInputRef.current?.click(); }}
                 disabled={uploadedImages.length >= MAX_IMAGES}
-                className="shrink-0 w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-white/[0.07] transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed mt-0.5"
+                className="shrink-0 w-8 h-8 rounded-xl bg-white/[0.04] border border-white/[0.06] flex items-center justify-center text-gray-600 hover:text-gray-300 hover:bg-white/[0.07] transition-all duration-200 disabled:opacity-30 disabled:cursor-not-allowed"
                 title={uploadedImages.length >= MAX_IMAGES ? `Máximo de ${MAX_IMAGES} imagens` : 'Anexar imagem'}
               >
                 <ImagePlus size={15} strokeWidth={1.8} />
@@ -2349,14 +2319,13 @@ const IdeaGenerator = () => {
 
               {segments.map((seg, i) => {
                 if (seg.type === 'ref') return <RefChip key={`ref-${seg.analysis.id}`} analysis={seg.analysis} onRemove={removeRef} />;
-                if (seg.type === 'search') return <SearchTag key={`search-${seg.term}`} term={seg.term} />;
                 if (i === segments.length - 1) return (
                   <textarea key="active-input" ref={textareaRef} value={seg.value} onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
                     placeholder={segments.length === 1 && !seg.value ? 'Descreva o briefing... Use @ para referências, [termo] para pesquisa web' : ''} rows={1}
-                    className="flex-1 w-0 min-w-0 bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1 break-words overflow-hidden" />
+                    className="flex-1 min-w-[120px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1" />
                 );
                 if (!seg.value) return null;
-                return <span key={`text-${i}`} className="text-[14px] text-white whitespace-pre-wrap break-words leading-relaxed py-1">{seg.value}</span>;
+                return <span key={`text-${i}`} className="text-[14px] text-white whitespace-pre-wrap leading-relaxed py-1">{seg.value}</span>;
               })}
             </div>
 
