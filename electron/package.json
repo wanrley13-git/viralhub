@@ -1,0 +1,26 @@
+{
+  "name": "viralhub-desktop",
+  "version": "1.0.0",
+  "description": "ViralHub — Análise de vídeos virais com IA (Desktop Mac)",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --mac"
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.viralhub.desktop",
+    "productName": "ViralHub",
+    "mac": {
+      "target": "dmg",
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns"
+    },
+    "directories": {
+      "output": "dist"
+    }
+  }
+}
