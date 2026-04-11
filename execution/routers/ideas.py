@@ -43,6 +43,38 @@ router = APIRouter(prefix="/content/ideas", tags=["creative-ideas"])
 
 IDEA_TYPE = "creative"
 
+import re as _re
+
+def _append_duration_scene_constraints(user_message: str, prompt: str) -> str:
+    """Detect duration/scene constraints in the user prompt and append them
+    explicitly to the user_message so Gemini respects them."""
+    dur_match = _re.search(r'(\d+)\s*(?:segundos?|segs?|s\b)', prompt, _re.IGNORECASE)
+    min_match = _re.search(r'(\d+)\s*(?:minutos?|mins?)\b', prompt, _re.IGNORECASE)
+    scene_match = _re.search(r'(\d+)\s*(?:cenas?)\b', prompt, _re.IGNORECASE)
+
+    duration_secs = None
+    if dur_match:
+        duration_secs = int(dur_match.group(1))
+    elif min_match:
+        duration_secs = int(min_match.group(1)) * 60
+
+    num_scenes = int(scene_match.group(1)) if scene_match else None
+
+    if duration_secs is None and num_scenes is None:
+        return user_message
+
+    lines = ["\n\nRESTRIÇÕES OBRIGATÓRIAS DO USUÁRIO (respeite à risca, não extrapole):"]
+    if duration_secs is not None:
+        lines.append(f"- Duração total: {duration_secs} segundos")
+    if num_scenes is not None:
+        lines.append(f"- Número de cenas: {num_scenes} cenas")
+    if duration_secs is not None and num_scenes is not None:
+        lines.append(f"- A soma das durações de todas as cenas DEVE ser igual a {duration_secs} segundos")
+    elif duration_secs is not None:
+        lines.append(f"- A soma das durações de todas as cenas DEVE ser igual a {duration_secs} segundos")
+
+    return user_message + "\n".join(lines)
+
 
 # ──────────────────────────── schemas ────────────────────────────
 # NOTE: The /generate endpoint is multipart/form-data (to accept image
@@ -550,6 +582,8 @@ async def generate_creative_ideas(
             + user_message
         )
 
+    user_message = _append_duration_scene_constraints(user_message, prompt)
+
     model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=system_prompt)
 
     raw = ""
@@ -675,6 +709,7 @@ async def develop_creative_idea(
         f"Título: {title}\n\n"
         f"Resumo: {summary}"
     )
+    user_message = _append_duration_scene_constraints(user_message, f"{title} {summary}")
 
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
