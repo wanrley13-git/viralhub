@@ -2550,8 +2550,8 @@ const ContentGenerator = () => {
                 if (seg.type === 'ref') return <RefChip key={`ref-${seg.analysis.id}`} analysis={seg.analysis} onRemove={removeRef} />;
                 if (i === segments.length - 1) return (
                   <textarea key="active-input" ref={textareaRef} value={seg.value} onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
-                    placeholder={segments.length === 1 && !seg.value ? 'Descreva o conteúdo que deseja criar... Use @ para referências, [termo] para pesquisa web' : ''} rows={1}
-                    className="flex-1 min-w-[120px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1" />
+                    placeholder={segments.length === 1 && !seg.value ? 'Descreva o conteúdo que deseja criar... Use @ para referenciar análises' : ''} rows={1}
+                    className="flex-1 w-0 min-w-[120px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1" />
                 );
                 if (!seg.value) return null;
                 return <span key={`text-${i}`} className="text-[14px] text-white whitespace-pre-wrap leading-relaxed py-1">{seg.value}</span>;
