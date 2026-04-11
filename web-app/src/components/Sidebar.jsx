@@ -620,108 +620,7 @@ const Sidebar = () => {
       <div className={cn("flex-1 pt-4 overflow-y-auto overflow-x-hidden custom-scrollbar", collapsed ? "px-2" : "px-4")}>
         {!collapsed && <p className="data-label px-3 mb-4">Menu</p>}
         <nav className={cn("stagger-children", collapsed ? "space-y-2" : "space-y-1")}>
-          {/* Hub Analítico com submenu */}
-          {hubAllowed && (
-          <div>
-            <button
-              onClick={() => {
-                if (collapsed) {
-                  const first = hubSubItems.find((s) => isModuleAllowed(s.module));
-                  if (first) navigate(first.path);
-                } else {
-                  const next = !hubOpen;
-                  setHubOpen(next);
-                  if (next) {
-                    setKanbanOpen(false);
-                    setGeneratorOpen(false);
-                  }
-                }
-              }}
-              title={collapsed ? 'Hub Analítico' : undefined}
-              className={cn(
-                "w-full flex items-center rounded-2xl transition-all duration-200 group relative",
-                collapsed
-                  ? "justify-center p-3"
-                  : "gap-3.5 px-4 py-3",
-                isHubActive
-                  ? "bg-primary/10 text-white border border-primary/15"
-                  : "text-gray-500 hover:text-white hover:bg-white/[0.03] border border-transparent"
-              )}
-            >
-              {isHubActive && (
-                <div className={cn(
-                  "absolute top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full shadow-[0_0_12px_rgba(55,178,77,0.5)]",
-                  collapsed ? "-left-2" : "-left-4"
-                )} />
-              )}
-
-              <div className={cn(
-                "p-1.5 rounded-xl transition-colors shrink-0",
-                isHubActive ? "bg-primary/20 text-primary" : "text-gray-500 group-hover:text-gray-300"
-              )}>
-                <TrendingUp size={18} />
-              </div>
-
-              {!collapsed && (
-                <>
-                  <div className="flex flex-col flex-1 text-left">
-                    <span className="text-[13px] font-semibold leading-tight">Hub Analítico</span>
-                  </div>
-                  <ChevronDown size={14} className={cn(
-                    "text-gray-600 transition-transform duration-200",
-                    hubOpen && "rotate-180"
-                  )} />
-                </>
-              )}
-            </button>
-
-            {/* Sub-items */}
-            {!collapsed && hubOpen && (
-              <div className="ml-[22px] mt-2 space-y-1.5 border-l border-white/[0.06] pl-4">
-                {hubSubItems.map((sub) => {
-                  const allowed = isModuleAllowed(sub.module);
-                  if (!allowed) {
-                    return (
-                      <div
-                        key={sub.path}
-                        className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-gray-700 cursor-not-allowed select-none"
-                      >
-                        <sub.icon size={14} strokeWidth={1.5} className="shrink-0 text-gray-700" />
-                        <span className="text-[13px] font-semibold leading-tight flex-1 opacity-60">{sub.label}</span>
-                        <Lock size={11} className="text-gray-700 shrink-0" />
-                      </div>
-                    );
-                  }
-                  return (
-                  <NavLink
-                    key={sub.path}
-                    to={sub.path}
-                    end
-                    className={({ isActive }) => cn(
-                      "flex items-center gap-2.5 px-3 py-3 rounded-xl transition-all duration-200 group/sub",
-                      isActive
-                        ? "bg-primary/8 text-white"
-                        : "text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]"
-                    )}
-                  >
-                    {({ isActive }) => (
-                      <>
-                        <sub.icon size={14} strokeWidth={1.5} className={cn(
-                          "shrink-0 transition-colors",
-                          isActive ? "text-primary" : "text-gray-600 group-hover/sub:text-gray-400"
-                        )} />
-                        <span className="text-[13px] font-semibold leading-tight">{sub.label}</span>
-                      </>
-                    )}
-                  </NavLink>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-          )}
-
-          {/* Gerador com submenu */}
+          {/* 1. Gerador com submenu */}
           {generatorAllowed && (
           <div>
             <button
@@ -822,6 +721,7 @@ const Sidebar = () => {
           </div>
           )}
 
+          {/* 2. Notas */}
           {menuItems.map((item) => {
             const allowed = isModuleAllowed(item.module);
             if (!allowed) {
@@ -886,7 +786,7 @@ const Sidebar = () => {
             );
           })}
 
-          {/* Kanban com submenu de projetos */}
+          {/* 3. Quadros (ex-Kanban) com submenu de projetos */}
           {kanbanAllowed ? (
           <div>
             <button
@@ -902,7 +802,7 @@ const Sidebar = () => {
                   }
                 }
               }}
-              title={collapsed ? 'Kanban' : undefined}
+              title={collapsed ? 'Quadros' : undefined}
               className={cn(
                 "w-full flex items-center rounded-2xl transition-all duration-200 group relative",
                 collapsed
@@ -930,7 +830,7 @@ const Sidebar = () => {
               {!collapsed && (
                 <>
                   <div className="flex flex-col flex-1 text-left">
-                    <span className="text-[13px] font-semibold leading-tight">Kanban</span>
+                    <span className="text-[13px] font-semibold leading-tight">Quadros</span>
                   </div>
                   <ChevronDown size={14} className={cn(
                     "text-gray-600 transition-transform duration-200",
@@ -991,7 +891,7 @@ const Sidebar = () => {
           </div>
           ) : (
           <div
-            title={collapsed ? 'Kanban (bloqueado)' : undefined}
+            title={collapsed ? 'Quadros (bloqueado)' : undefined}
             className={cn(
               "flex items-center rounded-2xl text-gray-700 cursor-not-allowed select-none border border-transparent",
               collapsed ? "justify-center p-3" : "gap-3.5 px-4 py-3"
@@ -1002,9 +902,110 @@ const Sidebar = () => {
             </div>
             {!collapsed && (
               <>
-                <span className="text-[13px] font-semibold leading-tight flex-1 opacity-60">Kanban</span>
+                <span className="text-[13px] font-semibold leading-tight flex-1 opacity-60">Quadros</span>
                 <Lock size={12} className="text-gray-700 shrink-0" />
               </>
+            )}
+          </div>
+          )}
+
+          {/* 4. Hub Analítico com submenu */}
+          {hubAllowed && (
+          <div>
+            <button
+              onClick={() => {
+                if (collapsed) {
+                  const first = hubSubItems.find((s) => isModuleAllowed(s.module));
+                  if (first) navigate(first.path);
+                } else {
+                  const next = !hubOpen;
+                  setHubOpen(next);
+                  if (next) {
+                    setKanbanOpen(false);
+                    setGeneratorOpen(false);
+                  }
+                }
+              }}
+              title={collapsed ? 'Hub Analítico' : undefined}
+              className={cn(
+                "w-full flex items-center rounded-2xl transition-all duration-200 group relative",
+                collapsed
+                  ? "justify-center p-3"
+                  : "gap-3.5 px-4 py-3",
+                isHubActive
+                  ? "bg-primary/10 text-white border border-primary/15"
+                  : "text-gray-500 hover:text-white hover:bg-white/[0.03] border border-transparent"
+              )}
+            >
+              {isHubActive && (
+                <div className={cn(
+                  "absolute top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full shadow-[0_0_12px_rgba(55,178,77,0.5)]",
+                  collapsed ? "-left-2" : "-left-4"
+                )} />
+              )}
+
+              <div className={cn(
+                "p-1.5 rounded-xl transition-colors shrink-0",
+                isHubActive ? "bg-primary/20 text-primary" : "text-gray-500 group-hover:text-gray-300"
+              )}>
+                <TrendingUp size={18} />
+              </div>
+
+              {!collapsed && (
+                <>
+                  <div className="flex flex-col flex-1 text-left">
+                    <span className="text-[13px] font-semibold leading-tight">Hub Analítico</span>
+                  </div>
+                  <ChevronDown size={14} className={cn(
+                    "text-gray-600 transition-transform duration-200",
+                    hubOpen && "rotate-180"
+                  )} />
+                </>
+              )}
+            </button>
+
+            {/* Sub-items */}
+            {!collapsed && hubOpen && (
+              <div className="ml-[22px] mt-2 space-y-1.5 border-l border-white/[0.06] pl-4">
+                {hubSubItems.map((sub) => {
+                  const allowed = isModuleAllowed(sub.module);
+                  if (!allowed) {
+                    return (
+                      <div
+                        key={sub.path}
+                        className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-gray-700 cursor-not-allowed select-none"
+                      >
+                        <sub.icon size={14} strokeWidth={1.5} className="shrink-0 text-gray-700" />
+                        <span className="text-[13px] font-semibold leading-tight flex-1 opacity-60">{sub.label}</span>
+                        <Lock size={11} className="text-gray-700 shrink-0" />
+                      </div>
+                    );
+                  }
+                  return (
+                  <NavLink
+                    key={sub.path}
+                    to={sub.path}
+                    end
+                    className={({ isActive }) => cn(
+                      "flex items-center gap-2.5 px-3 py-3 rounded-xl transition-all duration-200 group/sub",
+                      isActive
+                        ? "bg-primary/8 text-white"
+                        : "text-gray-500 hover:text-gray-300 hover:bg-white/[0.03]"
+                    )}
+                  >
+                    {({ isActive }) => (
+                      <>
+                        <sub.icon size={14} strokeWidth={1.5} className={cn(
+                          "shrink-0 transition-colors",
+                          isActive ? "text-primary" : "text-gray-600 group-hover/sub:text-gray-400"
+                        )} />
+                        <span className="text-[13px] font-semibold leading-tight">{sub.label}</span>
+                      </>
+                    )}
+                  </NavLink>
+                  );
+                })}
+              </div>
             )}
           </div>
           )}
