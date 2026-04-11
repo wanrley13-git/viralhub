@@ -10,6 +10,7 @@ import { ProjectsProvider } from './contexts/ProjectsContext';
 import { NotesProvider } from './contexts/NotesContext';
 import { WorkspaceProvider } from './contexts/WorkspaceContext';
 import { supabase } from './supabaseClient';
+import PermissionGate from './components/PermissionGate';
 
 // Route-level code splitting. Each of these pages is large (500-1700 LOC)
 // and pulls in heavy dependencies (marked, turndown, react-dropzone, etc).
@@ -90,7 +91,9 @@ function App() {
             path="/"
             element={
               <ProtectedRoute>
-                <Analyzer />
+                <PermissionGate module="analyses">
+                  <Analyzer />
+                </PermissionGate>
               </ProtectedRoute>
             }
           />
@@ -99,7 +102,9 @@ function App() {
             path="/transcriber"
             element={
               <ProtectedRoute>
-                <Transcriber />
+                <PermissionGate module="transcriptions">
+                  <Transcriber />
+                </PermissionGate>
               </ProtectedRoute>
             }
           />
@@ -108,7 +113,9 @@ function App() {
             path="/creator"
             element={
               <ProtectedRoute>
-                <ContentGenerator />
+                <PermissionGate module="content">
+                  <ContentGenerator />
+                </PermissionGate>
               </ProtectedRoute>
             }
           />
@@ -116,7 +123,9 @@ function App() {
             path="/ideas"
             element={
               <ProtectedRoute>
-                <IdeaGenerator />
+                <PermissionGate module="ideas">
+                  <IdeaGenerator />
+                </PermissionGate>
               </ProtectedRoute>
             }
           />
@@ -124,7 +133,9 @@ function App() {
             path="/notes"
             element={
               <ProtectedRoute>
-                <Notes />
+                <PermissionGate module="notes">
+                  <Notes />
+                </PermissionGate>
               </ProtectedRoute>
             }
           />
@@ -132,7 +143,9 @@ function App() {
             path="/kanban"
             element={
               <ProtectedRoute>
-                <Kanban />
+                <PermissionGate module="kanban">
+                  <Kanban />
+                </PermissionGate>
               </ProtectedRoute>
             }
           />
@@ -140,7 +153,9 @@ function App() {
             path="/kanban/:projectId"
             element={
               <ProtectedRoute>
-                <Kanban />
+                <PermissionGate module="kanban">
+                  <Kanban />
+                </PermissionGate>
               </ProtectedRoute>
             }
           />

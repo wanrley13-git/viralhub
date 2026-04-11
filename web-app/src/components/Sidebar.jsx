@@ -26,6 +26,7 @@ import {
   Shield,
   Loader2,
   ChevronLeft,
+  Lock,
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -400,19 +401,31 @@ const Sidebar = () => {
     }
   };
 
+  // Permission helper — returns true when the module is accessible
+  const isModuleAllowed = (module) => {
+    if (!activeWorkspace) return true;
+    if (activeWorkspace.is_personal) return true;
+    if (!activeWorkspace.my_permissions) return true; // owner
+    return activeWorkspace.my_permissions[module] !== false;
+  };
+
   const hubSubItems = [
-    { icon: Zap, label: 'Vídeos curtos', path: '/' },
-    { icon: Film, label: 'Vídeos longos', path: '/transcriber' },
+    { icon: Zap, label: 'Vídeos curtos', path: '/', module: 'analyses' },
+    { icon: Film, label: 'Vídeos longos', path: '/transcriber', module: 'transcriptions' },
   ];
 
   const generatorSubItems = [
-    { icon: Sparkles,  label: 'Conteúdos', path: '/creator' },
-    { icon: Lightbulb, label: 'Ideias',    path: '/ideas'   },
+    { icon: Sparkles,  label: 'Conteúdos', path: '/creator', module: 'content' },
+    { icon: Lightbulb, label: 'Ideias',    path: '/ideas',   module: 'ideas'   },
   ];
 
   const menuItems = [
-    { icon: BookOpen, label: 'Notas', path: '/notes' },
+    { icon: BookOpen, label: 'Notas', path: '/notes', module: 'notes' },
   ];
+
+  const hubAllowed = hubSubItems.some((s) => isModuleAllowed(s.module));
+  const generatorAllowed = generatorSubItems.some((s) => isModuleAllowed(s.module));
+  const kanbanAllowed = isModuleAllowed('kanban');
 
   const handleCreateProject = async () => {
     try {
@@ -601,11 +614,13 @@ const Sidebar = () => {
         {!collapsed && <p className="data-label px-3 mb-4">Menu</p>}
         <nav className={cn("stagger-children", collapsed ? "space-y-2" : "space-y-1")}>
           {/* Hub Analítico com submenu */}
+          {hubAllowed && (
           <div>
             <button
               onClick={() => {
                 if (collapsed) {
-                  navigate('/');
+                  const first = hubSubItems.find((s) => isModuleAllowed(s.module));
+                  if (first) navigate(first.path);
                 } else {
                   const next = !hubOpen;
                   setHubOpen(next);
@@ -656,7 +671,21 @@ const Sidebar = () => {
             {/* Sub-items */}
             {!collapsed && hubOpen && (
               <div className="ml-[22px] mt-2 space-y-1.5 border-l border-white/[0.06] pl-4">
-                {hubSubItems.map((sub) => (
+                {hubSubItems.map((sub) => {
+                  const allowed = isModuleAllowed(sub.module);
+                  if (!allowed) {
+                    return (
+                      <div
+                        key={sub.path}
+                        className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-gray-700 cursor-not-allowed select-none"
+                      >
+                        <sub.icon size={14} strokeWidth={1.5} className="shrink-0 text-gray-700" />
+                        <span className="text-[13px] font-semibold leading-tight flex-1 opacity-60">{sub.label}</span>
+                        <Lock size={11} className="text-gray-700 shrink-0" />
+                      </div>
+                    );
+                  }
+                  return (
                   <NavLink
                     key={sub.path}
                     to={sub.path}
@@ -678,17 +707,21 @@ const Sidebar = () => {
                       </>
                     )}
                   </NavLink>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
+          )}
 
           {/* Gerador com submenu */}
+          {generatorAllowed && (
           <div>
             <button
               onClick={() => {
                 if (collapsed) {
-                  navigate('/creator');
+                  const first = generatorSubItems.find((s) => isModuleAllowed(s.module));
+                  if (first) navigate(first.path);
                 } else {
                   const next = !generatorOpen;
                   setGeneratorOpen(next);
@@ -739,7 +772,21 @@ const Sidebar = () => {
             {/* Sub-items */}
             {!collapsed && generatorOpen && (
               <div className="ml-[22px] mt-2 space-y-1.5 border-l border-white/[0.06] pl-4">
-                {generatorSubItems.map((sub) => (
+                {generatorSubItems.map((sub) => {
+                  const allowed = isModuleAllowed(sub.module);
+                  if (!allowed) {
+                    return (
+                      <div
+                        key={sub.path}
+                        className="flex items-center gap-2.5 px-3 py-3 rounded-xl text-gray-700 cursor-not-allowed select-none"
+                      >
+                        <sub.icon size={14} strokeWidth={1.5} className="shrink-0 text-gray-700" />
+                        <span className="text-[13px] font-semibold leading-tight flex-1 opacity-60">{sub.label}</span>
+                        <Lock size={11} className="text-gray-700 shrink-0" />
+                      </div>
+                    );
+                  }
+                  return (
                   <NavLink
                     key={sub.path}
                     to={sub.path}
@@ -761,12 +808,38 @@ const Sidebar = () => {
                       </>
                     )}
                   </NavLink>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
+          )}
 
-          {menuItems.map((item) => (
+          {menuItems.map((item) => {
+            const allowed = isModuleAllowed(item.module);
+            if (!allowed) {
+              return (
+                <div
+                  key={item.path}
+                  title={collapsed ? `${item.label} (bloqueado)` : undefined}
+                  className={cn(
+                    "flex items-center rounded-2xl text-gray-700 cursor-not-allowed select-none border border-transparent",
+                    collapsed ? "justify-center p-3" : "gap-3.5 px-4 py-3"
+                  )}
+                >
+                  <div className="p-1.5 rounded-xl shrink-0 text-gray-700">
+                    <item.icon size={18} />
+                  </div>
+                  {!collapsed && (
+                    <>
+                      <span className="text-[13px] font-semibold leading-tight flex-1 opacity-60">{item.label}</span>
+                      <Lock size={12} className="text-gray-700 shrink-0" />
+                    </>
+                  )}
+                </div>
+              );
+            }
+            return (
             <NavLink
               key={item.path}
               to={item.path}
@@ -803,9 +876,11 @@ const Sidebar = () => {
                 </>
               )}
             </NavLink>
-          ))}
+            );
+          })}
 
           {/* Kanban com submenu de projetos */}
+          {kanbanAllowed ? (
           <div>
             <button
               onClick={() => {
@@ -907,6 +982,25 @@ const Sidebar = () => {
               </div>
             )}
           </div>
+          ) : (
+          <div
+            title={collapsed ? 'Kanban (bloqueado)' : undefined}
+            className={cn(
+              "flex items-center rounded-2xl text-gray-700 cursor-not-allowed select-none border border-transparent",
+              collapsed ? "justify-center p-3" : "gap-3.5 px-4 py-3"
+            )}
+          >
+            <div className="p-1.5 rounded-xl shrink-0 text-gray-700">
+              <Layout size={18} />
+            </div>
+            {!collapsed && (
+              <>
+                <span className="text-[13px] font-semibold leading-tight flex-1 opacity-60">Kanban</span>
+                <Lock size={12} className="text-gray-700 shrink-0" />
+              </>
+            )}
+          </div>
+          )}
         </nav>
       </div>
 

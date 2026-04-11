@@ -24,3 +24,19 @@ axios.interceptors.request.use((config) => {
   }
   return config;
 });
+
+// Response interceptor — dispatch a custom event on module-permission 403
+// so that PermissionGate can react even after the page has loaded.
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (
+      error.response?.status === 403 &&
+      typeof error.response?.data?.detail === 'string' &&
+      error.response.data.detail.includes('permissão')
+    ) {
+      window.dispatchEvent(new CustomEvent('api-permission-denied'));
+    }
+    return Promise.reject(error);
+  },
+);

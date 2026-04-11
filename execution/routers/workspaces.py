@@ -65,6 +65,7 @@ class WorkspaceOut(BaseModel):
     is_personal: bool
     created_at: Optional[str] = None
     member_count: Optional[int] = None
+    my_permissions: Optional[dict] = None
 
     class Config:
         from_attributes = True
@@ -75,7 +76,11 @@ class WorkspaceDetailOut(WorkspaceOut):
 
 
 # ──────────────────────────── helpers ────────────────────────────
-def _serialize_workspace(ws: Workspace, member_count: int = 0) -> WorkspaceOut:
+def _serialize_workspace(
+    ws: Workspace,
+    member_count: int = 0,
+    my_permissions: dict | None = None,
+) -> WorkspaceOut:
     return WorkspaceOut(
         id=ws.id,
         name=ws.name,
@@ -83,7 +88,23 @@ def _serialize_workspace(ws: Workspace, member_count: int = 0) -> WorkspaceOut:
         is_personal=bool(ws.is_personal),
         created_at=ws.created_at.isoformat() if ws.created_at else None,
         member_count=member_count,
+        my_permissions=my_permissions,
     )
+
+
+def _extract_my_permissions(
+    ws: Workspace, membership: WorkspaceMember | None
+) -> dict | None:
+    """Return the member's permission dict, or None if unrestricted
+    (personal workspace or owner role)."""
+    if ws.is_personal:
+        return None
+    if not membership or membership.role == "owner":
+        return None
+    try:
+        return json.loads(membership.permissions or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return {}
 
 
 def _serialize_member(m: WorkspaceMember, email: Optional[str] = None) -> MemberOut:
@@ -166,6 +187,8 @@ async def list_workspaces(
     if not ws_ids:
         return []
 
+    memberships_map = {m.workspace_id: m for m in memberships}
+
     result = await db.execute(
         select(Workspace)
         .where(Workspace.id.in_(ws_ids))
@@ -177,7 +200,11 @@ async def list_workspaces(
     workspaces.sort(key=lambda w: (0 if w.is_personal else 1, w.name))
 
     return [
-        _serialize_workspace(ws, member_count=len(ws.members))
+        _serialize_workspace(
+            ws,
+            member_count=len(ws.members),
+            my_permissions=_extract_my_permissions(ws, memberships_map.get(ws.id)),
+        )
         for ws in workspaces
     ]
 
