@@ -60,6 +60,11 @@ class DevelopRequest(BaseModel):
     base_id: Optional[int] = None
 
 
+class AdjustRequest(BaseModel):
+    idea_id: int
+    instruction: str
+
+
 def _serialize(idea: ContentIdea, include_developed: bool = False) -> IdeaOut:
     return IdeaOut(
         id=idea.id,
@@ -463,6 +468,95 @@ async def develop_content(
         idea.status = "idea"
         await db.commit()
         raise HTTPException(status_code=500, detail=f"Erro ao desenvolver conteúdo: {str(e)}")
+
+
+# ────────────────────── adjust (surgical edit) ──────────────────────
+
+_ADJUST_SYSTEM = (
+    "Você é um editor de conteúdo. Seu trabalho é fazer AJUSTES CIRÚRGICOS em conteúdos já criados.\n\n"
+    "REGRAS ABSOLUTAS:\n"
+    "1. Modifique APENAS o que o usuário pediu. Todo o resto deve permanecer EXATAMENTE igual.\n"
+    "2. Mantenha o mesmo formato (se era JSON com title/summary, retorne JSON com title/summary. Se era Markdown, retorne Markdown).\n"
+    "3. Mantenha o mesmo tom, estilo e nível de detalhe do conteúdo original.\n"
+    "4. Não adicione comentários, explicações ou texto extra fora do conteúdo ajustado.\n"
+    "5. Retorne o conteúdo COMPLETO com o ajuste aplicado, não apenas o trecho modificado."
+)
+
+
+@router.post("/adjust", response_model=IdeaOut)
+async def adjust_content_idea(
+    request: AdjustRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    ws: WorkspaceInfo = Depends(resolve_workspace),
+):
+    """Apply a surgical adjustment to a content idea or its developed content."""
+    check_permission(ws, "content")
+
+    result = await db.execute(
+        select(ContentIdea).where(
+            ContentIdea.id == request.idea_id,
+            *workspace_filters(ContentIdea, ws, current_user.id),
+        )
+    )
+    idea = result.scalars().first()
+    if not idea:
+        raise HTTPException(status_code=404, detail="Ideia não encontrada.")
+
+    # Build the user message depending on status
+    if idea.status == "developed" and idea.developed_content:
+        current_content = idea.developed_content
+        content_format = "markdown"
+    else:
+        current_content = json.dumps({"title": idea.title or "", "summary": idea.summary or ""}, ensure_ascii=False)
+        content_format = "json"
+
+    user_message = (
+        f"Conteúdo atual:\n{current_content}\n\n"
+        f"Ajuste solicitado pelo usuário:\n{request.instruction}\n\n"
+        "Retorne o conteúdo completo com o ajuste aplicado. Mantenha tudo que não foi mencionado exatamente igual."
+    )
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="GEMINI_API_KEY não configurada.")
+
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel("gemini-2.5-flash", system_instruction=_ADJUST_SYSTEM)
+
+    try:
+        response = await asyncio.to_thread(
+            model.generate_content,
+            user_message,
+            request_options={"timeout": 180},
+        )
+        raw = (getattr(response, "text", None) or "").strip()
+        if not raw:
+            raise ValueError("Resposta vazia do modelo.")
+
+        if content_format == "json":
+            # Parse JSON — strip markdown fences
+            cleaned = raw
+            if cleaned.startswith("```"):
+                cleaned = "\n".join(cleaned.split("\n")[1:])
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+            parsed = json.loads(cleaned)
+            idea.title = parsed.get("title", idea.title)
+            idea.summary = parsed.get("summary", idea.summary)
+        else:
+            idea.developed_content = raw
+
+        await db.commit()
+        await db.refresh(idea)
+        return _serialize(idea, include_developed=True)
+
+    except json.JSONDecodeError as e:
+        logger.error(f"Erro ao parsear JSON de ajuste: {e}\nRaw: {raw}")
+        raise HTTPException(status_code=500, detail="Erro ao processar resposta da IA.")
+    except Exception as e:
+        logger.error(f"Erro em adjust_content_idea: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro ao ajustar conteúdo: {str(e)}")
 
 
 @router.post("/generate", response_model=List[IdeaOut])

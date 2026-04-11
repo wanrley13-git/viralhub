@@ -4,7 +4,7 @@ import {
   BookOpen, Mic, Check, Trash2, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
   LayoutGrid, Grid3x3, Clock, Heart, Pencil, Eye, Download,
-  Send, Layout, StickyNote, FileText, Film,
+  Send, Layout, StickyNote, FileText, Film, SlidersHorizontal,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -143,9 +143,127 @@ const formatDateHeader = (iso) => {
   return `${day}/${month}/${year} às ${hour}:${min}`;
 };
 
+// ─── Adjust Popup ───
+const AdjustPopup = ({ idea, apiEndpoint, onClose, onUpdated }) => {
+  const [instruction, setInstruction] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [currentIdea, setCurrentIdea] = useState(idea);
+  const textareaRef = useRef(null);
+
+  useEffect(() => { textareaRef.current?.focus(); }, []);
+
+  const handleSubmit = async () => {
+    if (!instruction.trim() || loading) return;
+    setLoading(true);
+    try {
+      const token = await getAccessToken();
+      const res = await axios.post(
+        `${API_URL}${apiEndpoint}`,
+        { idea_id: currentIdea.id, instruction: instruction.trim() },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 180000 },
+      );
+      setCurrentIdea(res.data);
+      onUpdated(res.data);
+      setInstruction('');
+    } catch (err) {
+      const detail = err?.response?.data?.detail;
+      alert(typeof detail === 'string' ? detail : 'Erro ao ajustar conteúdo.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const preview = currentIdea.developed_content
+    ? currentIdea.developed_content.replace(/^#+\s*/gm, '').replace(/\*+/g, '').split('\n').filter(l => l.trim()).slice(0, 4).join('\n')
+    : `${currentIdea.title}${currentIdea.summary ? '\n' + currentIdea.summary : ''}`;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.15 }}
+      className="fixed inset-0 z-[120] flex items-center justify-center p-6 backdrop-blur-md bg-black/60"
+      onClick={onClose}
+    >
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.95, y: 10 }}
+        transition={{ duration: 0.2, ease: 'easeOut' }}
+        className="w-full max-w-lg rounded-2xl border border-white/[0.08] bg-[#131316] shadow-[0_24px_80px_rgba(0,0,0,0.7)] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="px-6 pt-5 pb-4 border-b border-white/[0.06] flex items-center justify-between">
+          <div className="flex items-center gap-2.5">
+            <SlidersHorizontal size={16} strokeWidth={1.8} className="text-primary" />
+            <h3 className="text-[15px] font-extrabold text-white tracking-tight">Ajustar conteúdo</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-1.5 bg-white/[0.05] hover:bg-white/[0.08] rounded-lg transition-colors text-gray-400 hover:text-white"
+          >
+            <X size={14} strokeWidth={2.5} />
+          </button>
+        </div>
+
+        {/* Preview */}
+        <div className="px-6 pt-4 pb-3">
+          <p className="text-[10px] font-bold uppercase tracking-widest text-white/30 mb-2">Conteúdo atual</p>
+          <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-3 max-h-32 overflow-y-auto custom-scrollbar">
+            <p className="text-[12px] text-white/50 leading-relaxed whitespace-pre-wrap">{preview}</p>
+          </div>
+        </div>
+
+        {/* Instruction */}
+        <div className="px-6 pb-4">
+          <textarea
+            ref={textareaRef}
+            value={instruction}
+            onChange={(e) => setInstruction(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleSubmit(); }}
+            placeholder="Descreva o que quer ajustar..."
+            rows={3}
+            className="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl px-4 py-3 text-[13px] text-white placeholder-white/25 resize-none focus:outline-none focus:border-primary/40 transition-colors"
+          />
+          <p className="text-[10px] text-white/20 mt-1.5">⌘+Enter para enviar</p>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-white/[0.06] flex items-center justify-end gap-3 bg-black/20">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg bg-white/[0.04] border border-white/[0.08] text-gray-400 text-[12px] font-bold hover:bg-white/[0.06] transition-colors"
+          >
+            Fechar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={loading || !instruction.trim()}
+            className="flex items-center gap-2 px-5 py-2 rounded-lg bg-primary hover:bg-primary/90 text-white text-[12px] font-bold transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {loading ? (
+              <>
+                <Loader2 size={13} className="animate-spin" />
+                Ajustando...
+              </>
+            ) : (
+              <>
+                <SlidersHorizontal size={13} strokeWidth={2} />
+                Enviar ajuste
+              </>
+            )}
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+};
+
 // ─── Idea card (reused across tabs) ───
 // React.memo so typing in the prompt bar doesn't re-render every card.
-const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, onExpand, showDate = false, bgColor = null }) => (
+const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSave, onAdjust, onExpand, showDate = false, bgColor = null }) => (
   <motion.div
     initial={{ opacity: 0, y: 16 }}
     animate={{ opacity: 1, y: 0 }}
@@ -163,8 +281,15 @@ const IdeaCardBase = ({ idea, index, isSelected, cs, onToggleSelect, onToggleSav
           : 'bg-white/[0.02] border-white/[0.08] hover:border-primary/40'
     }`}
   >
-    {/* Top-right corner: heart + selection checkbox */}
+    {/* Top-right corner: adjust + heart + selection checkbox */}
     <div className="absolute top-3 right-3 flex items-center gap-2">
+      <button
+        onClick={(e) => { e.stopPropagation(); onAdjust?.(idea); }}
+        className="w-7 h-7 flex items-center justify-center rounded-full bg-transparent border border-transparent hover:bg-white/[0.08] hover:border-white/[0.12] transition-all duration-200 opacity-0 group-hover:opacity-100 text-white/50 hover:text-white"
+        title="Ajustar"
+      >
+        <SlidersHorizontal size={13} strokeWidth={2} />
+      </button>
       <button
         onClick={(e) => { e.stopPropagation(); onToggleSave(idea.id); }}
         className="w-7 h-7 flex items-center justify-center rounded-full transition-transform duration-200 active:scale-125 overflow-visible"
@@ -462,6 +587,8 @@ const IdeaGenerator = () => {
 
   // Expand modal — read-only popup with the full idea title + summary.
   const [expandedIdea, setExpandedIdea] = useState(null);
+  // Adjust popup state
+  const [adjustingIdea, setAdjustingIdea] = useState(null);
 
   const openIdeaDetail = useCallback(async (idea) => {
     setExpandedIdea(idea);
@@ -627,6 +754,16 @@ const IdeaGenerator = () => {
       setTimeout(() => setErrorToast(null), 4000);
     }
   }, []);
+
+  // Adjust callback — update the idea in every list + the expanded modal
+  const handleAdjustUpdated = useCallback((updated) => {
+    const updater = (list) => list.map(i => i.id === updated.id ? { ...i, ...updated } : i);
+    setIdeas(updater);
+    setHistoryIdeas(updater);
+    setSavedIdeas(updater);
+    setDevelopedIdeas(updater);
+    if (expandedIdea?.id === updated.id) setExpandedIdea(prev => ({ ...prev, ...updated }));
+  }, [expandedIdea]);
 
   const fetchAnalyses = async () => {
     try {
@@ -1281,6 +1418,7 @@ const IdeaGenerator = () => {
   useEffect(() => {
     const h = (e) => {
       if (e.key !== 'Escape') return;
+      if (adjustingIdea) { setAdjustingIdea(null); return; }
       if (expandedIdea) { setExpandedIdea(null); return; }
       if (sendDest)     { closeSendDest();       return; }
       if (bulkSendPopupOpen) { setBulkSendPopupOpen(false); return; }
@@ -1289,7 +1427,7 @@ const IdeaGenerator = () => {
     document.addEventListener('keydown', h);
     return () => document.removeEventListener('keydown', h);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [expandedIdea, sendDest, bulkSendPopupOpen, selectedIdeas]);
+  }, [adjustingIdea, expandedIdea, sendDest, bulkSendPopupOpen, selectedIdeas]);
 
   const stepQuantity = (dir) => setQuantity(p => Math.min(MAX_QTY, Math.max(MIN_QTY, p + dir)));
 
@@ -1648,6 +1786,7 @@ const IdeaGenerator = () => {
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
+                    onAdjust={setAdjustingIdea}
                     onExpand={openIdeaDetail}
                   />
                 ))}
@@ -1700,6 +1839,7 @@ const IdeaGenerator = () => {
                             cs={cs}
                             onToggleSelect={toggleIdeaSelect}
                             onToggleSave={toggleSaveIdea}
+                            onAdjust={setAdjustingIdea}
                             onExpand={openIdeaDetail}
                             bgColor="#121E1E"
                           />
@@ -1735,6 +1875,7 @@ const IdeaGenerator = () => {
                     cs={cs}
                     onToggleSelect={toggleIdeaSelect}
                     onToggleSave={toggleSaveIdea}
+                    onAdjust={setAdjustingIdea}
                     onExpand={openIdeaDetail}
                     showDate
                     bgColor="#12121F"
@@ -1783,6 +1924,7 @@ const IdeaGenerator = () => {
                       cs={cs}
                       onToggleSelect={toggleIdeaSelect}
                       onToggleSave={toggleSaveIdea}
+                      onAdjust={setAdjustingIdea}
                       onExpand={openIdeaDetail}
                       bgColor="#121E13"
                     />
@@ -1836,13 +1978,22 @@ const IdeaGenerator = () => {
                     {expandedIdea.title}
                   </h3>
                 </div>
-                <button
-                  onClick={() => setExpandedIdea(null)}
-                  className="p-2 bg-white/[0.05] hover:bg-white/[0.08] rounded-xl transition-colors text-gray-400 hover:text-white shrink-0"
-                  title="Fechar"
-                >
-                  <X size={16} strokeWidth={2.5} />
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={() => setAdjustingIdea(expandedIdea)}
+                    className="p-2 bg-white/[0.05] hover:bg-primary/20 rounded-xl transition-colors text-gray-400 hover:text-primary"
+                    title="Ajustar"
+                  >
+                    <SlidersHorizontal size={16} strokeWidth={2} />
+                  </button>
+                  <button
+                    onClick={() => setExpandedIdea(null)}
+                    className="p-2 bg-white/[0.05] hover:bg-white/[0.08] rounded-xl transition-colors text-gray-400 hover:text-white"
+                    title="Fechar"
+                  >
+                    <X size={16} strokeWidth={2.5} />
+                  </button>
+                </div>
               </div>
 
               {/* Body — markdown for developed ideas, plain text for others */}
@@ -2576,6 +2727,19 @@ const IdeaGenerator = () => {
         className="hidden"
         onChange={handleKBUploadFile}
       />
+
+      {/* ═══ ADJUST POPUP ═══ */}
+      <AnimatePresence>
+        {adjustingIdea && (
+          <AdjustPopup
+            key={adjustingIdea.id}
+            idea={adjustingIdea}
+            apiEndpoint="/content/ideas/adjust"
+            onClose={() => setAdjustingIdea(null)}
+            onUpdated={handleAdjustUpdated}
+          />
+        )}
+      </AnimatePresence>
 
       <ConfirmDialog />
       <ToastContainer />
