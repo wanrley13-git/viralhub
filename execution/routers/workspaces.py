@@ -18,11 +18,16 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import update as sa_update
 from sqlalchemy.future import select
 from sqlalchemy.orm import selectinload
 
 from database import get_db
-from models import Profile, User, Workspace, WorkspaceMember, _DEFAULT_PERMISSIONS
+from models import (
+    Profile, User, Workspace, WorkspaceMember, _DEFAULT_PERMISSIONS,
+    Analysis, Transcription, Tone, Project, ContentTask, CalendarNote,
+    KnowledgeBase, ContentIdea, NoteFolder, Note, ChatSession,
+)
 from auth import get_current_user_dual as get_current_user
 
 router = APIRouter(prefix="/workspaces", tags=["workspaces"])
@@ -316,7 +321,8 @@ async def delete_workspace(
     current_user: User = Depends(get_current_user),
 ):
     """Delete a workspace and all its memberships. Personal workspaces
-    cannot be deleted. Content rows are NOT deleted — they become orphaned."""
+    cannot be deleted. Content rows are NOT deleted — their workspace_id
+    is set to NULL so they become unscoped but preserved."""
     await _require_owner(workspace_id, current_user.id, db)
     ws = await _get_workspace(workspace_id, db)
 
@@ -326,7 +332,22 @@ async def delete_workspace(
             detail="O workspace pessoal não pode ser deletado.",
         )
 
-    # Delete all membership rows
+    # Detach all content rows from this workspace (SET NULL) so FK
+    # constraints don't block deletion.  Data is preserved.
+    _content_models = [
+        Analysis, Transcription, Tone, Project, ContentTask,
+        CalendarNote, KnowledgeBase, ContentIdea, NoteFolder,
+        Note, ChatSession,
+    ]
+    for model in _content_models:
+        await db.execute(
+            sa_update(model)
+            .where(model.workspace_id == workspace_id)
+            .values(workspace_id=None)
+        )
+
+    # Delete all membership rows (cascade handles this via ORM
+    # relationship too, but being explicit is safer with async).
     result = await db.execute(
         select(WorkspaceMember).where(
             WorkspaceMember.workspace_id == workspace_id,

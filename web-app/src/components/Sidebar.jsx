@@ -177,14 +177,14 @@ const WorkspaceManagePanel = ({ workspaceId, onClose }) => {
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="flex items-center gap-2 px-4 py-3 border-b border-white/[0.06]">
-        <button onClick={onClose} className="p-1 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-all">
+      <div className="flex items-center gap-2.5 px-6 py-4 border-b border-white/[0.06]">
+        <button onClick={onClose} className="p-1.5 rounded-lg text-gray-500 hover:text-white hover:bg-white/[0.06] transition-all">
           <ChevronLeft size={16} />
         </button>
-        <span className="text-[13px] font-bold text-white truncate flex-1">Gerenciar Workspace</span>
+        <span className="text-[14px] font-bold text-white truncate flex-1">Gerenciar Workspace</span>
       </div>
 
-      <div className="flex-1 overflow-y-auto custom-scrollbar px-5 py-5 space-y-7">
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-7 py-6 space-y-7">
         {/* Error */}
         <AnimatePresence>
           {error && (
@@ -263,8 +263,8 @@ const WorkspaceManagePanel = ({ workspaceId, onClose }) => {
               let perms = {};
               try { perms = JSON.parse(m.permissions || '{}'); } catch {}
               return (
-                <div key={m.id} className="bg-white/[0.02] border border-white/[0.05] rounded-xl p-3.5">
-                  <div className="flex items-center gap-2.5 mb-2">
+                <div key={m.id} className="bg-white/[0.02] border border-white/[0.05] rounded-xl p-4">
+                  <div className="flex items-center gap-3 mb-2">
                     <div className={cn(
                       "w-7 h-7 rounded-lg flex items-center justify-center shrink-0",
                       m.role === 'owner' ? "bg-primary/15 text-primary" : "bg-white/[0.06] text-gray-500"
@@ -288,7 +288,7 @@ const WorkspaceManagePanel = ({ workspaceId, onClose }) => {
 
                   {/* Permission toggles — only for non-owner members, only if viewer is owner */}
                   {isOwner && m.role !== 'owner' && (
-                    <div className="grid grid-cols-3 gap-1.5 mt-3">
+                    <div className="flex flex-wrap gap-2 mt-3">
                       {Object.entries(PERMISSION_LABELS).map(([key, label]) => {
                         const on = perms[key] !== false;
                         return (
@@ -296,7 +296,7 @@ const WorkspaceManagePanel = ({ workspaceId, onClose }) => {
                             key={key}
                             onClick={() => togglePerm(m.user_id, key, on)}
                             className={cn(
-                              "px-2.5 py-1.5 rounded-lg text-[10px] font-bold transition-all duration-150 border",
+                              "px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all duration-150 border whitespace-nowrap",
                               on
                                 ? "bg-primary/10 border-primary/20 text-primary"
                                 : "bg-white/[0.02] border-white/[0.05] text-gray-600"
@@ -438,19 +438,26 @@ const Sidebar = () => {
     } catch (err) { console.error(err); }
   };
 
-  // ─── Manage panel (replaces entire sidebar content) ───
+  // ─── Manage panel (drawer overlay — wider than sidebar) ───
   if (wsManageId && !collapsed) {
     return (
-      <div
-        className={cn(
-          "h-screen bg-surface/80 backdrop-blur-xl border-r border-border-subtle flex flex-col fixed left-0 top-0 z-50 transition-all duration-300 ease-in-out w-[260px]"
-        )}
-      >
-        <WorkspaceManagePanel
-          workspaceId={wsManageId}
-          onClose={() => setWsManageId(null)}
+      <>
+        {/* Backdrop — click to close */}
+        <div
+          className="fixed inset-0 bg-black/40 z-[55]"
+          onClick={() => setWsManageId(null)}
         />
-      </div>
+        <div
+          className={cn(
+            "h-screen bg-surface/95 backdrop-blur-2xl border-r border-border-subtle flex flex-col fixed left-0 top-0 z-[60] transition-all duration-300 ease-in-out w-[420px]"
+          )}
+        >
+          <WorkspaceManagePanel
+            workspaceId={wsManageId}
+            onClose={() => setWsManageId(null)}
+          />
+        </div>
+      </>
     );
   }
 
