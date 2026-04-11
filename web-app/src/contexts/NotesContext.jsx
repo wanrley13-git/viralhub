@@ -236,7 +236,7 @@ export const NotesProvider = ({ children }) => {
     workspaceId: activeWorkspaceId,
     currentUserId,
     isPersonal,
-    onInsert: (row) => setFolders((prev) => [...prev, normalizeFolder(row)]),
+    onInsert: (row) => setFolders((prev) => prev.some((f) => f.id === row.id) ? prev : [...prev, normalizeFolder(row)]),
     onUpdate: (row) => setFolders((prev) => prev.map((f) => (f.id === row.id ? normalizeFolder(row) : f))),
     onDelete: (row) => setFolders((prev) => prev.filter((f) => f.id !== row.id)),
   });
@@ -246,7 +246,7 @@ export const NotesProvider = ({ children }) => {
     workspaceId: activeWorkspaceId,
     currentUserId,
     isPersonal,
-    onInsert: (row) => setNotes((prev) => [...prev, normalizeNote(row)]),
+    onInsert: (row) => setNotes((prev) => prev.some((n) => n.id === row.id) ? prev : [...prev, normalizeNote(row)]),
     onUpdate: (row) => setNotes((prev) => prev.map((n) => (n.id === row.id ? { ...n, ...normalizeNote(row) } : n))),
     onDelete: (row) => setNotes((prev) => prev.filter((n) => n.id !== row.id)),
   });

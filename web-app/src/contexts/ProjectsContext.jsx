@@ -44,7 +44,7 @@ export const ProjectsProvider = ({ children }) => {
     workspaceId: activeWorkspaceId,
     currentUserId,
     isPersonal: activeWorkspace?.is_personal ?? true,
-    onInsert: (row) => setProjects((prev) => [row, ...prev]),
+    onInsert: (row) => setProjects((prev) => prev.some((p) => p.id === row.id) ? prev : [row, ...prev]),
     onUpdate: (row) => setProjects((prev) => prev.map((p) => (p.id === row.id ? { ...p, ...row } : p))),
     onDelete: (row) => setProjects((prev) => prev.filter((p) => p.id !== row.id)),
   });

@@ -165,7 +165,7 @@ const Analyzer = () => {
     workspaceId: activeWorkspaceId,
     currentUserId,
     isPersonal: activeWorkspace?.is_personal ?? true,
-    onInsert: (row) => setAnalyses((prev) => [row, ...prev]),
+    onInsert: (row) => setAnalyses((prev) => prev.some((a) => a.id === row.id) ? prev : [row, ...prev]),
     onDelete: (row) => setAnalyses((prev) => prev.filter((a) => a.id !== row.id)),
   });
 

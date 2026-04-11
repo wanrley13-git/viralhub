@@ -288,8 +288,9 @@ const BoardView = ({ projectId, collapsed }) => {
     workspaceId: activeWorkspaceId,
     currentUserId,
     isPersonal: activeWorkspace?.is_personal ?? true,
-    filter: (row) => row.project_id === projectId,
-    onInsert: (row) => setTasks((prev) => [...prev, row]),
+    // eslint-disable-next-line eqeqeq
+    filter: (row) => row.project_id == projectId,
+    onInsert: (row) => setTasks((prev) => prev.some((t) => t.id === row.id) ? prev : [...prev, row]),
     onUpdate: (row) => setTasks((prev) => prev.map((t) => (t.id === row.id ? { ...t, ...row } : t))),
     onDelete: (row) => setTasks((prev) => prev.filter((t) => t.id !== row.id)),
   });
@@ -394,25 +395,38 @@ const BoardView = ({ projectId, collapsed }) => {
   };
 
   const createdTaskRef = useRef(null);
+  const createPromiseRef = useRef(null);
 
   const handleSaveTask = async (taskData) => {
     const token = await getAccessToken();
     try {
-      const existingTask = editingTask || createdTaskRef.current;
+      let existingTask = editingTask || createdTaskRef.current;
+
+      // If a POST is already in flight, wait for it instead of creating a
+      // second task (the auto-save debounce can fire again before the first
+      // POST resolves).
+      if (!existingTask && createPromiseRef.current) {
+        try { await createPromiseRef.current; } catch { /* handled below */ }
+        existingTask = createdTaskRef.current;
+      }
+
       if (existingTask) {
         await axios.patch(`${API_URL}/tasks/${existingTask.id}`, taskData, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } else {
-        const res = await axios.post(`${API_URL}/tasks/`, { ...taskData, project_id: parseInt(projectId) }, {
+        createPromiseRef.current = axios.post(`${API_URL}/tasks/`, { ...taskData, project_id: parseInt(projectId) }, {
           headers: { Authorization: `Bearer ${token}` }
         });
+        const res = await createPromiseRef.current;
         createdTaskRef.current = res.data;
         setEditingTask(res.data);
+        createPromiseRef.current = null;
       }
       fetchTasks();
     } catch (err) {
       console.error('Erro ao salvar:', err?.response?.status, err?.response?.data || err.message);
+      createPromiseRef.current = null;
       throw err;
     }
   };

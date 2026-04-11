@@ -308,8 +308,9 @@ export default function CalendarView({ tasks, projectId, onEditTask }) {
     workspaceId: activeWorkspaceId,
     currentUserId,
     isPersonal: activeWorkspace?.is_personal ?? true,
-    filter: (row) => (projectId ? row.project_id === projectId : true),
-    onInsert: (row) => setNotes((prev) => [...prev, row]),
+    // eslint-disable-next-line eqeqeq
+    filter: (row) => (projectId ? row.project_id == projectId : true),
+    onInsert: (row) => setNotes((prev) => prev.some((n) => n.id === row.id) ? prev : [...prev, row]),
     onUpdate: (row) => setNotes((prev) => prev.map((n) => (n.id === row.id ? { ...n, ...row } : n))),
     onDelete: (row) => setNotes((prev) => prev.filter((n) => n.id !== row.id)),
   });

@@ -502,7 +502,7 @@ const ContentGenerator = () => {
     currentUserId,
     isPersonal: activeWorkspace?.is_personal ?? true,
     filter: (row) => (row.idea_type ?? 'content') === 'content',
-    onInsert: (row) => setIdeas((prev) => [row, ...prev]),
+    onInsert: (row) => setIdeas((prev) => prev.some((i) => i.id === row.id) ? prev : [row, ...prev]),
     onUpdate: (row) => setIdeas((prev) => prev.map((i) => (i.id === row.id ? { ...i, ...row } : i))),
     onDelete: (row) => setIdeas((prev) => prev.filter((i) => i.id !== row.id)),
   });

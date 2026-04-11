@@ -53,9 +53,13 @@ export default function useRealtimeSync({
           const row = payload.new || payload.old;
           if (!row) return;
 
-          // Ignore events from the current user
+          console.log(`[Realtime] event received: ${eventType} on ${table}`, row);
+
+          // Ignore events from the current user (use loose equality — payload
+          // values may arrive as strings while currentUserId is a number)
           const rowUserId = (payload.new ?? payload.old)?.user_id;
-          if (rowUserId && rowUserId === cbRef.current.currentUserId) return;
+          // eslint-disable-next-line eqeqeq
+          if (rowUserId != null && rowUserId == cbRef.current.currentUserId) return;
 
           // Optional extra filter (e.g. idea_type)
           if (cbRef.current.filter && !cbRef.current.filter(row, eventType)) return;
@@ -69,7 +73,15 @@ export default function useRealtimeSync({
           }
         },
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log(`[Realtime] ✓ subscribed to ${table} for workspace ${workspaceId}`);
+        } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+          console.error(`[Realtime] ✗ failed to subscribe to ${table}:`, status, err);
+        } else {
+          console.log(`[Realtime] status ${status} on ${table}`);
+        }
+      });
 
     return () => {
       supabase.removeChannel(channel);
