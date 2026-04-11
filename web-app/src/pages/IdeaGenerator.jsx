@@ -1,7 +1,7 @@
 import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import {
   Lightbulb, Minus, Plus, ChevronDown, Video, X, ImagePlus,
-  BookOpen, Mic, Check, Trash2, Search, Upload,
+  BookOpen, Mic, Check, Trash2, Search, Upload, Globe,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
   LayoutGrid, Grid3x3, Clock, Heart, Pencil, Eye, Download,
   Send, Layout, StickyNote, FileText, Film, SlidersHorizontal,
@@ -56,6 +56,16 @@ const RefChip = ({ analysis, onRemove }) => (
     <Video size={11} strokeWidth={2} className="shrink-0 text-primary/70" />
     <span className="truncate max-w-[120px]">{analysis.title}</span>
     <button onClick={(e) => { e.stopPropagation(); onRemove(analysis.id); }} className="opacity-40 hover:opacity-100 transition-opacity">
+      <X size={10} strokeWidth={2.5} />
+    </button>
+  </span>
+);
+
+const SearchChip = ({ term, onRemove }) => (
+  <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-[12px] font-semibold text-blue-400 whitespace-nowrap select-none shrink-0">
+    <Globe size={11} strokeWidth={2} className="shrink-0 text-blue-400/70" />
+    <span className="truncate max-w-[140px]">{term}</span>
+    <button onClick={(e) => { e.stopPropagation(); onRemove(term); }} className="opacity-40 hover:opacity-100 transition-opacity">
       <X size={10} strokeWidth={2.5} />
     </button>
   </span>
@@ -1092,7 +1102,12 @@ const IdeaGenerator = () => {
   // the boundary is missing and the server returns 422 because it can't
   // parse the payload.
   const handleGenerate = async () => {
-    const fullPrompt = segments.map(s => s.type === 'ref' ? `[Referência: ${s.analysis.title}]` : s.value).join('');
+    const searchTerms = segments.filter(s => s.type === 'search').map(s => s.term);
+    const fullPrompt = segments.map(s => {
+      if (s.type === 'ref') return `[Referência: ${s.analysis.title}]`;
+      if (s.type === 'search') return '';
+      return s.value;
+    }).join('');
     if (!fullPrompt.trim()) return;
 
     setGenerating(true);
@@ -1110,6 +1125,7 @@ const IdeaGenerator = () => {
       formData.append('reference_ids', JSON.stringify(selectedRefs.map(r => r.id)));
       formData.append('quantity', String(quantity));
       formData.append('mode', roteiristMode ? 'roteirista' : 'ideias');
+      if (searchTerms.length > 0) formData.append('search_terms', JSON.stringify(searchTerms));
       uploadedImages.forEach(img => formData.append('images', img.file));
 
       const res = await axios.post(`${API_URL}/content/ideas/generate`, formData, {
@@ -1465,6 +1481,21 @@ const IdeaGenerator = () => {
 
   const handleTextChange = useCallback((e) => {
     const val = e.target.value;
+    // Detect completed [search term] pattern
+    const bracketMatch = val.match(/\[([^\[\]\n]+)\]/);
+    if (bracketMatch) {
+      const fullMatch = bracketMatch[0];
+      const term = bracketMatch[1].trim();
+      if (term) {
+        const idx = val.indexOf(fullMatch);
+        const before = val.slice(0, idx);
+        const after = val.slice(idx + fullMatch.length);
+        setSegments(prev => [...prev.slice(0, -1), { type: 'text', value: before }, { type: 'search', term }, { type: 'text', value: after }]);
+        setMentionOpen(false);
+        setTimeout(() => textareaRef.current?.focus(), 0);
+        return;
+      }
+    }
     setSegments(prev => { const u = [...prev]; u[u.length - 1] = { type: 'text', value: val }; return u; });
     const cursor = e.target.selectionStart;
     const atMatch = val.slice(0, cursor).match(/@([^@\n]*)$/);
@@ -1484,6 +1515,19 @@ const IdeaGenerator = () => {
   const removeRef = useCallback((refId) => {
     setSegments(prev => {
       const idx = prev.findIndex(s => s.type === 'ref' && s.analysis.id === refId);
+      if (idx === -1) return prev;
+      const ps = prev[idx - 1], ns = prev[idx + 1];
+      const merged = (ps?.type === 'text' ? ps.value : '') + (ns?.type === 'text' ? ns.value : '');
+      const s = ps?.type === 'text' ? idx - 1 : idx;
+      const e = ns?.type === 'text' ? idx + 2 : idx + 1;
+      const r = [...prev.slice(0, s), { type: 'text', value: merged }, ...prev.slice(e)];
+      return r.length === 0 ? [{ type: 'text', value: '' }] : r;
+    });
+  }, []);
+
+  const removeSearch = useCallback((term) => {
+    setSegments(prev => {
+      const idx = prev.findIndex(s => s.type === 'search' && s.term === term);
       if (idx === -1) return prev;
       const ps = prev[idx - 1], ns = prev[idx + 1];
       const merged = (ps?.type === 'text' ? ps.value : '') + (ns?.type === 'text' ? ns.value : '');
@@ -2311,9 +2355,10 @@ const IdeaGenerator = () => {
 
               {segments.map((seg, i) => {
                 if (seg.type === 'ref') return <RefChip key={`ref-${seg.analysis.id}`} analysis={seg.analysis} onRemove={removeRef} />;
+                if (seg.type === 'search') return <SearchChip key={`search-${seg.term}`} term={seg.term} onRemove={removeSearch} />;
                 if (i === segments.length - 1) return (
                   <textarea key="active-input" ref={textareaRef} value={seg.value} onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
-                    placeholder={segments.length === 1 && !seg.value ? 'Descreva o briefing... O agente criativo vai disparar ideias não óbvias. Use @ para referenciar análises' : ''} rows={1}
+                    placeholder={segments.length === 1 && !seg.value ? 'Descreva o briefing... Use @ para referências, [termo] para pesquisa web' : ''} rows={1}
                     className="flex-1 min-w-[120px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1" />
                 );
                 if (!seg.value) return null;

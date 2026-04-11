@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.future import select
 from sqlalchemy import desc, or_
 import google.generativeai as genai
+from google.generativeai import protos as genai_protos
 from dotenv import load_dotenv
 
 from database import get_db
@@ -148,6 +149,46 @@ def _build_develop_system_prompt(base_text: str, tone_text: str) -> str:
 ---
 """
     return directive + injection
+
+
+# ──────────────────────── web search grounding ────────────────────────
+async def _search_terms_context(terms: list) -> str:
+    """For each search term, call Gemini with google_search_retrieval and
+    return a combined context string with grounded web results. Calls run
+    in parallel via asyncio.gather; individual failures are non-fatal."""
+    if not terms:
+        return ""
+
+    async def _search_one(term: str) -> str:
+        try:
+            model = genai.GenerativeModel(
+                "gemini-2.5-flash",
+                system_instruction=(
+                    "Você é um assistente de pesquisa. Pesquise na web e retorne um resumo "
+                    "conciso (máx 3 parágrafos) sobre o termo pesquisado. Foque em informações "
+                    "factuais, atuais e relevantes para criação de conteúdo viral."
+                ),
+            )
+            search_tool = genai_protos.Tool(
+                google_search_retrieval=genai_protos.GoogleSearchRetrieval()
+            )
+            response = await asyncio.to_thread(
+                model.generate_content,
+                f"Pesquise sobre: {term}",
+                tools=[search_tool],
+                request_options={"timeout": 30},
+            )
+            text = (getattr(response, "text", None) or "").strip()
+            return f"### {term}\n{text}" if text else ""
+        except Exception as e:
+            logger.warning(f"Pesquisa web falhou para '{term}': {e}")
+            return ""
+
+    results = await asyncio.gather(*[_search_one(t) for t in terms])
+    context_parts = [r for r in results if r]
+    if not context_parts:
+        return ""
+    return "## CONTEXTO DE PESQUISA WEB\n\n" + "\n\n".join(context_parts)
 
 
 @router.get("/ideas", response_model=List[IdeaOut])
@@ -566,6 +607,7 @@ async def generate_content(
     base_id: Optional[int] = Form(None),
     reference_ids: str = Form("[]"),
     quantity: int = Form(5),
+    search_terms: str = Form("[]"),
     # IMPORTANT: must be `List[UploadFile] = File(default=[])`, not
     # `Optional[List[UploadFile]] = File(None)`. In FastAPI 0.111 the
     # Optional variant makes Pydantic v2 reject a single uploaded file
@@ -678,7 +720,26 @@ REGRAS:
 - Formato: [{{"title": "...", "summary": "..."}}, ...]
 """
 
+    # ── Web search context ──
+    # If the frontend sent search_terms (from inline [term] chips), run
+    # grounded Gemini calls in parallel to gather fresh web context.
+    parsed_search_terms: list = []
+    try:
+        parsed_search_terms = json.loads(search_terms) if search_terms else []
+        if not isinstance(parsed_search_terms, list):
+            parsed_search_terms = []
+        parsed_search_terms = [str(t).strip() for t in parsed_search_terms if str(t).strip()]
+    except Exception:
+        parsed_search_terms = []
+
+    search_context = ""
+    if parsed_search_terms:
+        search_context = await _search_terms_context(parsed_search_terms)
+        logger.info(f"Search context ({len(parsed_search_terms)} termos): {len(search_context)} chars")
+
     user_message = f"Gere {quantity} ideias de conteúdo viral sobre: {prompt}"
+    if search_context:
+        user_message += f"\n\n{search_context}"
 
     # Inject reference context directly into user_message so Gemini
     # treats it as high-priority user input, not just background system info.

@@ -214,6 +214,46 @@ def _build_roteirist_system_prompt(base_text: str, tone_text: str) -> str:
     return directive + injection
 
 
+# ──────────────────────── web search grounding ────────────────────────
+async def _search_terms_context(terms: list) -> str:
+    """For each search term, call Gemini with google_search_retrieval and
+    return a combined context string with grounded web results. Calls run
+    in parallel via asyncio.gather; individual failures are non-fatal."""
+    if not terms:
+        return ""
+
+    async def _search_one(term: str) -> str:
+        try:
+            model = genai.GenerativeModel(
+                "gemini-2.5-flash",
+                system_instruction=(
+                    "Você é um assistente de pesquisa. Pesquise na web e retorne um resumo "
+                    "conciso (máx 3 parágrafos) sobre o termo pesquisado. Foque em informações "
+                    "factuais, atuais e relevantes para criação de conteúdo viral."
+                ),
+            )
+            search_tool = genai_protos.Tool(
+                google_search_retrieval=genai_protos.GoogleSearchRetrieval()
+            )
+            response = await asyncio.to_thread(
+                model.generate_content,
+                f"Pesquise sobre: {term}",
+                tools=[search_tool],
+                request_options={"timeout": 30},
+            )
+            text = (getattr(response, "text", None) or "").strip()
+            return f"### {term}\n{text}" if text else ""
+        except Exception as e:
+            logger.warning(f"Pesquisa web falhou para '{term}': {e}")
+            return ""
+
+    results = await asyncio.gather(*[_search_one(t) for t in terms])
+    context_parts = [r for r in results if r]
+    if not context_parts:
+        return ""
+    return "## CONTEXTO DE PESQUISA WEB\n\n" + "\n\n".join(context_parts)
+
+
 # ──────────────────────────── endpoints ────────────────────────────
 @router.get("/list", response_model=List[IdeaOut])
 async def list_creative_ideas(
@@ -348,6 +388,7 @@ async def generate_creative_ideas(
     # The plain `List[UploadFile]` with `File(default=[])` correctly
     # collects 0..N files under the same field name.
     mode: str = Form("ideias"),
+    search_terms: str = Form("[]"),
     images: List[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user),
@@ -457,73 +498,24 @@ async def generate_creative_ideas(
 
     genai.configure(api_key=api_key)
 
-    # ── Step 1: Refine the prompt with Google Search grounding ──
-    # A short Gemini call with google_search_retrieval enabled turns raw
-    # user input (which may mention tools, releases or techniques the base
-    # model doesn't know with certainty) into a structured briefing backed
-    # by web results. This step is intentionally NON-FATAL: if it fails for
-    # ANY reason (timeout, SDK version without the tools kwarg, grounding
-    # disabled for the API key, rate limits, …) we fall back to the
-    # original prompt so the creative agent always runs.
-    #
-    # NOTE on the tool form: google-generativeai 0.8.2 does NOT accept the
-    # string shorthand ``tools='google_search_retrieval'`` — only
-    # ``'code_execution'`` is accepted as a string. The working form in
-    # this SDK version is the explicit proto Tool below. Newer SDK
-    # releases accept the shorthand; both live paths fail-safely via the
-    # surrounding try/except.
-    refined_prompt = prompt
+    # ── Web search context (replaces the old refiner) ──
+    # If the frontend sent search_terms (from inline [term] chips), run
+    # grounded Gemini calls in parallel to gather fresh web context.
+    parsed_search_terms: list[str] = []
     try:
-        refiner_model = genai.GenerativeModel(
-            "gemini-2.5-flash",
-            system_instruction=(
-                "Você é um refinador de briefings para criação de conteúdo com vídeos gerados por IA. "
-                "Seu trabalho é receber o pedido do usuário, entender EXATAMENTE quais ferramentas e features ele menciona, "
-                "e retornar um briefing claro e contextualizado.\n\n"
-                "CONTEXTO ESSENCIAL — Ferramentas de IA para geração de vídeo:\n"
-                "Estas são ferramentas que GERAM VÍDEOS a partir de prompts de texto e/ou imagens de referência. "
-                "NÃO são ferramentas de dança, performance ou arte corporal.\n"
-                "- Seedance 2.0 (ByteDance): modelo de geração de vídeo com IA. 'Multi-referências' = usar múltiplas imagens como input (ex: rosto + roupa + cenário) para a IA combinar tudo num vídeo coerente.\n"
-                "- Kling (Kuaishou): modelo de geração de vídeo com IA. Suporta referências de imagem e motion.\n"
-                "- Runway (Gen-3/4): modelo de geração de vídeo com IA. Foco em movimento realista e controle de câmera.\n"
-                "- Sora (OpenAI): modelo de geração de vídeo com IA. Simula física realista.\n"
-                "- Veo (Google): modelo de geração de vídeo com IA. Renderização detalhada.\n"
-                "- Wan (Alibaba): modelo de geração de vídeo com IA open-source.\n"
-                "- Hailuo/MiniMax: modelo de geração de vídeo com IA.\n\n"
-                "REGRAS:\n"
-                "1. Se o usuário mencionar qualquer ferramenta acima ou similar, USE o conhecimento fornecido. Pesquise na web para complementar com informações atualizadas sobre features e capacidades específicas.\n"
-                "2. Se o usuário mencionar uma ferramenta ou feature que você não conhece E que não está listada acima, pesquise na web antes de contextualizar.\n"
-                "3. Retorne um briefing claro e estruturado que explique o que o usuário quer, qual ferramenta vai usar, e quais features/capacidades específicas estão envolvidas.\n"
-                "4. Não invente capacidades que a ferramenta não tem. Se não encontrar informação confirmada, diga o que sabe e sinalize o que não confirmou.\n"
-                "5. Não gere ideias. Apenas refine e enriqueça o pedido original."
-            ),
-        )
-        search_tool = genai_protos.Tool(
-            google_search_retrieval=genai_protos.GoogleSearchRetrieval()
-        )
-        # Multimodal refiner: prompt text + any uploaded images, so the
-        # briefing that the refiner produces already reflects the visual
-        # context the user attached.
-        refine_contents = [prompt, *image_parts]
-        refine_response = await asyncio.to_thread(
-            refiner_model.generate_content,
-            refine_contents,
-            tools=[search_tool],
-            request_options={"timeout": 30},
-        )
-        refined_text = (getattr(refine_response, "text", None) or "").strip()
-        if refined_text:
-            refined_prompt = refined_text
-    except Exception as refine_err:
-        logger.warning(
-            f"Refinador com Google Search falhou, usando prompt original: {refine_err}"
-        )
+        parsed_search_terms = json.loads(search_terms) if search_terms else []
+        if not isinstance(parsed_search_terms, list):
+            parsed_search_terms = []
+        parsed_search_terms = [str(t).strip() for t in parsed_search_terms if str(t).strip()]
+    except Exception:
+        parsed_search_terms = []
 
-    logger.info(f"Prompt original: {prompt}")
-    logger.info(f"Prompt refinado: {refined_prompt}")
+    search_context = ""
+    if parsed_search_terms:
+        search_context = await _search_terms_context(parsed_search_terms)
+        logger.info(f"Search context ({len(parsed_search_terms)} termos): {len(search_context)} chars")
 
-    # ── Step 2: Build the user_message for the agent with the
-    # refined briefing substituting the raw prompt ──
+    # ── Build user_message ──
     if is_roteirist:
         user_message = (
             "Com base no briefing a seguir, execute a FASE 1 — GERAÇÃO DE IDEIAS COM HISTÓRIA. "
@@ -532,7 +524,7 @@ async def generate_creative_ideas(
             "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
             'Formato: [{"title": "...", "summary": "..."}, ...]'
             f"\n\nPedido do usuário: {prompt}"
-            + (f"\n\nContexto adicional (pesquisa web): {refined_prompt}" if refined_prompt != prompt else "")
+            + (f"\n\n{search_context}" if search_context else "")
         )
     else:
         user_message = (
@@ -542,7 +534,7 @@ async def generate_creative_ideas(
             "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
             'Formato: [{"title": "...", "summary": "..."}, ...]'
             f"\n\nPedido do usuário: {prompt}"
-            + (f"\n\nContexto adicional (pesquisa web): {refined_prompt}" if refined_prompt != prompt else "")
+            + (f"\n\n{search_context}" if search_context else "")
         )
 
     # Inject reference context directly into user_message so Gemini
