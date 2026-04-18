@@ -1,0 +1,1743 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ViralHub — Design System</title>
+
+  <!-- Google Fonts: Plus Jakarta Sans · Instrument Serif · IBM Plex Mono -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap" rel="stylesheet" />
+
+  <!-- Lucide icons (only used inside the icons grid; design system itself draws no extra icons) -->
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+
+  <!-- Tailwind via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans:    ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            display: ['"Plus Jakarta Sans"', 'system-ui', 'sans-serif'],
+            serif:   ['"Instrument Serif"', 'Georgia', 'serif'],
+            mono:    ['"IBM Plex Mono"', 'monospace'],
+          },
+          colors: {
+            background:       '#08080A',
+            surface:          '#111114',
+            'surface-flat':   '#18181D',
+            'surface-raised': '#1F1F26',
+            primary:          '#37B24D',
+            'primary-hover':  '#2F9E44',
+            'primary-glow':   'rgba(55, 178, 77, 0.12)',
+            accent:           '#69DB7C',
+            'accent-muted':   'rgba(105, 219, 124, 0.1)',
+            'border-subtle':  'rgba(255, 255, 255, 0.06)',
+            'border-hover':   'rgba(255, 255, 255, 0.12)',
+          },
+          borderRadius: {
+            '2xl': '1rem',
+            '3xl': '1.5rem',
+            '4xl': '2rem',
+            '5xl': '2.5rem',
+            '6xl': '3rem',
+          },
+          boxShadow: {
+            'glow-sm':    '0 0 20px rgba(55, 178, 77, 0.15)',
+            'glow-md':    '0 0 40px rgba(55, 178, 77, 0.20)',
+            'glow-lg':    '0 0 60px rgba(55, 178, 77, 0.25)',
+            'card':       '0 8px 32px rgba(0, 0, 0, 0.4)',
+            'card-hover': '0 16px 48px rgba(0, 0, 0, 0.5), 0 0 24px rgba(55, 178, 77, 0.06)',
+            'modal':      '0 32px 80px rgba(0, 0, 0, 0.6)',
+          },
+        }
+      }
+    };
+  </script>
+
+  <style>
+    /* ───────── Base ───────── */
+    *, *::before, *::after { -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+    html, body { background: #08080A; color: #f3f4f6; }
+    body {
+      font-family: "Plus Jakarta Sans", system-ui, sans-serif;
+      letter-spacing: -0.01em;
+      font-feature-settings: "cv02","cv03","cv04","cv11";
+    }
+    ::selection { background: rgba(55,178,77,0.3); color: #fff; }
+
+    /* Scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+    .custom-scrollbar::-webkit-scrollbar { width: 4px; height: 4px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.06); border-radius: 999px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.12); }
+
+    /* ───────── Noise overlay ───────── */
+    body::before {
+      content: ""; position: fixed; inset: 0; z-index: 9999;
+      pointer-events: none; filter: url(#noise); opacity: 0.04;
+      mix-blend-mode: overlay;
+    }
+
+    /* ───────── Glassmorphism ───────── */
+    .glass {
+      background: rgba(17, 17, 20, 0.6);
+      backdrop-filter: blur(40px) saturate(1.2);
+      -webkit-backdrop-filter: blur(40px) saturate(1.2);
+      border: 1px solid rgba(255,255,255,0.06);
+      box-shadow: 0 8px 32px rgba(0,0,0,0.4),
+                  inset 0 1px 0 rgba(255,255,255,0.04);
+    }
+    .glass-raised {
+      background: rgba(24, 24, 29, 0.7);
+      backdrop-filter: blur(40px) saturate(1.2);
+      -webkit-backdrop-filter: blur(40px) saturate(1.2);
+      border: 1px solid rgba(255,255,255,0.08);
+      box-shadow: 0 16px 48px rgba(0,0,0,0.5),
+                  inset 0 1px 0 rgba(255,255,255,0.06);
+    }
+
+    /* ───────── Magnetic / lift / glow helpers ───────── */
+    .btn-magnetic { position: relative; overflow: hidden; font-weight: 600;
+      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                  box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+    .btn-magnetic:hover  { transform: scale(1.02); }
+    .btn-magnetic:active { transform: scale(0.98); transition-duration: 0.1s; }
+
+    .btn-primary { position: relative; overflow: hidden; font-weight: 700;
+      background: #37B24D; color: white;
+      box-shadow: 0 4px 20px rgba(55, 178, 77, 0.25);
+      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                  box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                  background 0.2s ease; }
+    .btn-primary:hover  { transform: scale(1.02); background: #2F9E44;
+                          box-shadow: 0 8px 32px rgba(55, 178, 77, 0.35); }
+    .btn-primary:active { transform: scale(0.98); transition-duration: 0.1s; }
+
+    .btn-white { position: relative; overflow: hidden; font-weight: 700;
+      background: white; color: #08080A;
+      box-shadow: 0 4px 20px rgba(255, 255, 255, 0.1);
+      transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+                  box-shadow 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+    .btn-white:hover  { transform: scale(1.02);
+                        box-shadow: 0 8px 32px rgba(255, 255, 255, 0.15); }
+    .btn-white:active { transform: scale(0.98); transition-duration: 0.1s; }
+
+    .btn-ghost { position: relative; font-weight: 500; color: #6b7280;
+      transition: color 0.25s ease,
+                  transform 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+    .btn-ghost:hover { color: white; transform: translateY(-1px); }
+
+    .lift { transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
+                        box-shadow 0.2s cubic-bezier(0.16, 1, 0.3, 1); }
+    .lift:hover { transform: translateY(-2px);
+      box-shadow: 0 12px 40px rgba(0,0,0,0.3), 0 0 24px rgba(55,178,77,0.08); }
+
+    .glow-primary { box-shadow: 0 0 40px rgba(55,178,77,0.10); }
+
+    /* ───────── Animations ───────── */
+    @keyframes fadeIn      { from {opacity:0} to {opacity:1} }
+    @keyframes fadeUp      { from {opacity:0; transform: translateY(24px)} to {opacity:1; transform: translateY(0)} }
+    @keyframes slideInRight{ 0%   {opacity:0; transform: translateX(-12px)} 100% {opacity:1; transform: translateX(0)} }
+    @keyframes scaleIn     { 0%   {opacity:0; transform: scale(0.95)} 100% {opacity:1; transform: scale(1)} }
+    @keyframes glowPulse   { 0%,100% {opacity:0.4} 50% {opacity:0.8} }
+    @keyframes slideInToast{ from {opacity:0; transform: translateY(16px) scale(0.96)} to {opacity:1; transform: translateY(0) scale(1)} }
+    @keyframes spin        { to { transform: rotate(360deg); } }
+    @keyframes pulse       { 0%,100% {opacity:1} 50% {opacity:0.5} }
+
+    .animate-fade-in        { animation: fadeIn 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+    .animate-fade-up        { animation: fadeUp 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+    .animate-slide-in-right { animation: slideInRight 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+    .animate-scale-in       { animation: scaleIn 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards; }
+    .animate-glow-pulse     { animation: glowPulse 3s ease-in-out infinite; }
+    .animate-slide-in-toast { animation: slideInToast 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .animate-spin           { animation: spin 1s linear infinite; }
+    .animate-pulse          { animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+    .stagger-children > * { opacity: 0; animation: fadeUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+    .stagger-children > *:nth-child(1) { animation-delay: 0s; }
+    .stagger-children > *:nth-child(2) { animation-delay: 0.06s; }
+    .stagger-children > *:nth-child(3) { animation-delay: 0.12s; }
+    .stagger-children > *:nth-child(4) { animation-delay: 0.18s; }
+    .stagger-children > *:nth-child(5) { animation-delay: 0.24s; }
+    .stagger-children > *:nth-child(6) { animation-delay: 0.30s; }
+    .stagger-children > *:nth-child(7) { animation-delay: 0.36s; }
+    .stagger-children > *:nth-child(8) { animation-delay: 0.42s; }
+
+    /* ───────── Inputs ───────── */
+    .input-field {
+      width: 100%; background: #18181D;
+      border: 1px solid rgba(255,255,255,0.06);
+      color: white; font-size: 0.875rem; font-weight: 400; outline: none;
+      transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    }
+    .input-field:focus { box-shadow: 0 0 0 2px rgba(55,178,77,0.3);
+                         border-color: rgba(55,178,77,0.4); }
+    .input-field::placeholder { color: #6b7280; font-weight: 400; }
+
+    /* ───────── Tab switcher ───────── */
+    .tab-group { display: flex; gap: 4px; padding: 4px; background: #18181D;
+                 border: 1px solid rgba(255,255,255,0.06); }
+    .tab-item { padding: 8px 20px; flex: 1; display: flex;
+                align-items: center; justify-content: center; gap: 8px;
+                font-size: 0.875rem; font-weight: 600;
+                transition: all 0.2s ease; cursor: pointer; }
+    .tab-item.active { background: #37B24D; color: white;
+                       box-shadow: 0 4px 16px rgba(55,178,77,0.25); }
+    .tab-item:not(.active)        { color: #6b7280; }
+    .tab-item:not(.active):hover  { color: #d1d5db; }
+
+    /* ───────── Data labels ───────── */
+    .data-label { font-family: "IBM Plex Mono", monospace; font-size: 10px;
+                  text-transform: uppercase; letter-spacing: 0.15em;
+                  font-weight: 600; color: #6b7280; }
+    .data-label-primary { font-family: "IBM Plex Mono", monospace; font-size: 10px;
+                  text-transform: uppercase; letter-spacing: 0.15em;
+                  font-weight: 600; color: #37B24D; }
+
+    /* ───────── DS-only chrome ───────── */
+    .ds-section { scroll-margin-top: 24px; }
+    .ds-h2 { font-size: clamp(1.75rem, 3vw, 2.5rem); font-weight: 800; color: #fff;
+             letter-spacing: -0.025em; }
+    .ds-eyebrow { font-family: "IBM Plex Mono", monospace; font-size: 10px;
+                  letter-spacing: 0.2em; text-transform: uppercase;
+                  color: #37B24D; font-weight: 600; }
+    .ds-block-title { font-size: 0.95rem; font-weight: 700; color: #fff; }
+    .ds-block-sub { color: #9ca3af; font-size: 0.85rem; }
+
+    .ds-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px;
+              align-items: stretch; }
+    @media (max-width: 900px) { .ds-row { grid-template-columns: 1fr; } }
+
+    /* Code blocks */
+    .ds-code-wrap { position: relative; }
+    .ds-code {
+      background: #0c0c0e; border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 16px; padding: 18px 18px 18px 18px;
+      font-family: "IBM Plex Mono", monospace; font-size: 12.5px;
+      color: #d1d5db; line-height: 1.65; overflow-x: auto;
+      white-space: pre; tab-size: 2;
+    }
+    .ds-code .tok-tag      { color: #69DB7C; }
+    .ds-code .tok-attr     { color: #f59e0b; }
+    .ds-code .tok-str      { color: #fef3c7; }
+    .ds-code .tok-com      { color: #4b5563; font-style: italic; }
+    .ds-code .tok-key      { color: #c084fc; }
+    .ds-code .tok-prop     { color: #93c5fd; }
+    .ds-copy-btn {
+      position: absolute; top: 10px; right: 10px;
+      background: rgba(255,255,255,0.06); color: #d1d5db;
+      border: 1px solid rgba(255,255,255,0.08);
+      padding: 6px 10px; border-radius: 8px; font-size: 11px;
+      font-family: "IBM Plex Mono", monospace; letter-spacing: 0.05em;
+      cursor: pointer; transition: all 0.2s ease;
+      text-transform: uppercase; font-weight: 600;
+    }
+    .ds-copy-btn:hover  { background: rgba(255,255,255,0.12); color: #fff; }
+    .ds-copy-btn.copied { background: #37B24D; color: white; border-color: #37B24D; }
+
+    /* Sidebar (DS) */
+    .ds-side {
+      position: fixed; top: 0; left: 0; bottom: 0; width: 260px;
+      background: rgba(17,17,20,0.85);
+      backdrop-filter: blur(24px) saturate(1.2);
+      border-right: 1px solid rgba(255,255,255,0.06);
+      padding: 28px 18px; overflow-y: auto; z-index: 50;
+    }
+    .ds-side h1 { color: #fff; font-weight: 800; letter-spacing: -0.025em;
+                  font-size: 1.125rem; }
+    .ds-side a {
+      display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+      border-radius: 12px; color: #9ca3af; font-size: 13px; font-weight: 500;
+      transition: all 0.2s ease; text-decoration: none;
+    }
+    .ds-side a:hover { color: #fff; background: rgba(255,255,255,0.04); }
+    .ds-side a.active { color: #fff; background: rgba(55,178,77,0.12);
+                        border: 1px solid rgba(55,178,77,0.15); }
+    .ds-main { margin-left: 260px; padding: 56px clamp(24px, 4vw, 64px);
+               max-width: 1280px; }
+    @media (max-width: 900px) {
+      .ds-side { position: static; width: 100%; height: auto; }
+      .ds-main { margin-left: 0; padding: 24px; }
+    }
+
+    /* Color swatch */
+    .swatch {
+      position: relative; border-radius: 16px; overflow: hidden;
+      border: 1px solid rgba(255,255,255,0.06);
+      cursor: pointer; transition: transform 0.2s ease;
+    }
+    .swatch:hover { transform: translateY(-2px); }
+    .swatch-block { aspect-ratio: 16 / 10; }
+    .swatch-meta { padding: 12px 14px; background: #0c0c0e;
+                   border-top: 1px solid rgba(255,255,255,0.06); }
+    .swatch-name { color: #fff; font-weight: 700; font-size: 12.5px;
+                   letter-spacing: -0.01em; }
+    .swatch-hex { color: #6b7280; font-family: "IBM Plex Mono", monospace;
+                  font-size: 10.5px; letter-spacing: 0.05em; margin-top: 2px;
+                  text-transform: uppercase; }
+
+    /* Icon grid */
+    .icon-cell {
+      display: flex; flex-direction: column; align-items: center;
+      justify-content: center; gap: 6px;
+      padding: 16px 8px; border-radius: 12px;
+      background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04);
+      color: #d1d5db; transition: all 0.2s ease;
+    }
+    .icon-cell:hover { color: #37B24D; background: rgba(55,178,77,0.06);
+                       border-color: rgba(55,178,77,0.2); }
+    .icon-cell-name { font-family: "IBM Plex Mono", monospace; font-size: 9.5px;
+                      color: #6b7280; letter-spacing: 0.05em; text-align: center;
+                      word-break: break-all; line-height: 1.3; }
+
+    /* Card primitive (DS visual frame around examples) */
+    .ds-card {
+      background: #0c0c0e; border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 24px; padding: 28px;
+    }
+    .ds-card-preview {
+      background:
+        radial-gradient(circle at 50% 0%, rgba(55,178,77,0.05), transparent 60%),
+        #0a0a0c;
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 16px;
+      padding: 32px 28px;
+      display: flex; align-items: center; justify-content: center;
+      min-height: 140px;
+    }
+
+    /* Decorative top hairline (used in raised cards) */
+    .top-hairline {
+      position: absolute; top: 0; left: 50%; transform: translateX(-50%);
+      width: 75%; height: 1px;
+      background: linear-gradient(to right, transparent, rgba(55,178,77,0.3), transparent);
+    }
+
+    /* Toast playground */
+    .ds-toast {
+      position: relative; background: #1A1A1A; border: 1px solid #2A2A2A;
+      border-radius: 12px; padding: 14px 12px 14px 18px;
+      min-width: 280px; max-width: 380px;
+      display: flex; align-items: flex-start; gap: 12px;
+      box-shadow: 0 20px 48px rgba(0,0,0,0.55);
+    }
+    .ds-toast-rail { position: absolute; left: 0; top: 0; bottom: 0; width: 4px; }
+    .ds-toast.success { box-shadow: 0 20px 48px rgba(0,0,0,0.55), 0 0 28px rgba(55,178,77,0.25); }
+    .ds-toast.success .ds-toast-rail { background: #37B24D; }
+    .ds-toast.error   { box-shadow: 0 20px 48px rgba(0,0,0,0.55), 0 0 28px rgba(226,39,47,0.25); }
+    .ds-toast.error   .ds-toast-rail { background: #E2272F; }
+    .ds-toast.info    { box-shadow: 0 20px 48px rgba(0,0,0,0.55), 0 0 28px rgba(47,111,235,0.25); }
+    .ds-toast.info    .ds-toast-rail { background: #2F6FEB; }
+
+    /* Sidebar item demo */
+    .demo-nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 8px 12px; border-radius: 12px;
+      font-size: 13px; font-weight: 500;
+      color: #9ca3af; transition: all 0.2s ease; cursor: pointer;
+    }
+    .demo-nav-item:hover { color: #fff; background: rgba(255,255,255,0.04); }
+    .demo-nav-item.active { color: #fff; background: rgba(55,178,77,0.12);
+                            border: 1px solid rgba(55,178,77,0.15); }
+
+    /* Microinteraction "play again" */
+    .replay-btn {
+      font-family: "IBM Plex Mono", monospace; font-size: 10.5px;
+      letter-spacing: 0.1em; text-transform: uppercase; font-weight: 600;
+      color: #37B24D; padding: 6px 12px; border-radius: 8px;
+      border: 1px solid rgba(55,178,77,0.25); background: rgba(55,178,77,0.06);
+      cursor: pointer; transition: all 0.2s ease;
+    }
+    .replay-btn:hover { background: rgba(55,178,77,0.12); }
+
+    /* Banners / chips */
+    .ds-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px;
+      background: rgba(55,178,77,0.10); color: #69DB7C;
+      font-family: "IBM Plex Mono", monospace; font-size: 10px;
+      letter-spacing: 0.15em; text-transform: uppercase; font-weight: 600;
+      border: 1px solid rgba(55,178,77,0.2);
+    }
+
+    /* Hairline divider */
+    .hr-soft { border: none; border-top: 1px solid rgba(255,255,255,0.06);
+               margin: 56px 0; }
+
+    /* Ambient blob */
+    .ambient-blob-wrap { position: relative; overflow: hidden;
+                         border-radius: 32px; padding: 56px 32px; }
+    .ambient-blob-wrap::before { content:""; position:absolute;
+      top:25%; left:50%; width:600px; height:600px;
+      background: rgba(55,178,77,0.08); border-radius:50%;
+      filter: blur(120px); transform: translate(-50%, -50%); pointer-events:none; }
+    .ambient-blob-wrap::after  { content:""; position:absolute;
+      bottom:0; left:0; width:400px; height:400px;
+      background: rgba(55,178,77,0.05); border-radius:50%;
+      filter: blur(100px); pointer-events:none; }
+  </style>
+</head>
+<body>
+
+  <!-- ─── SVG noise filter (must be in DOM for body::before to use it) ─── -->
+  <svg class="fixed pointer-events-none" width="0" height="0" aria-hidden="true">
+    <filter id="noise">
+      <feTurbulence type="fractalNoise" baseFrequency="0.80" numOctaves="4" stitchTiles="stitch"/>
+    </filter>
+  </svg>
+
+  <!-- ───────────────── SIDEBAR ───────────────── -->
+  <aside class="ds-side">
+    <div class="flex items-center gap-3 mb-2 pl-1">
+      <div class="w-9 h-9 rounded-2xl flex items-center justify-center"
+           style="background: rgba(55,178,77,0.12); border: 1px solid rgba(55,178,77,0.15);
+                  box-shadow: 0 0 40px rgba(55,178,77,0.10);">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#37B24D" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+          <polyline points="16 7 22 7 22 13"></polyline>
+        </svg>
+      </div>
+      <div>
+        <h1>ViralHub</h1>
+        <p class="text-[10px] font-mono tracking-[0.15em] uppercase text-gray-500">
+          Design System
+        </p>
+      </div>
+    </div>
+
+    <p class="data-label px-3 mt-6 mb-3">Sumário</p>
+    <nav class="space-y-1" id="ds-nav">
+      <a href="#identidade">Identidade</a>
+      <a href="#cores">Paleta</a>
+      <a href="#tipografia">Tipografia</a>
+      <a href="#espacamento">Espaçamento</a>
+      <a href="#radius">Border Radius</a>
+      <a href="#sombras">Sombras</a>
+      <a href="#efeitos">Efeitos</a>
+      <a href="#animacoes">Animações</a>
+      <a href="#botoes">Botões</a>
+      <a href="#inputs">Inputs</a>
+      <a href="#cards">Cards</a>
+      <a href="#modais">Modais</a>
+      <a href="#dropdowns">Dropdowns</a>
+      <a href="#tabs">Tabs</a>
+      <a href="#badges">Badges</a>
+      <a href="#toasts">Toasts</a>
+      <a href="#sidebar">Sidebar Items</a>
+      <a href="#empty">Empty States</a>
+      <a href="#loading">Loading</a>
+      <a href="#icones">Ícones</a>
+      <a href="#micro">Microinterações</a>
+      <a href="#prompt">Prompt para IA</a>
+    </nav>
+
+    <p class="text-[10px] text-gray-700 px-3 mt-8 leading-relaxed">
+      Versão extraída em 2026-04-18 do código real do projeto.
+      Para o documento completo, leia <span class="font-mono text-gray-500">DESIGN_SYSTEM.md</span>.
+    </p>
+  </aside>
+
+  <!-- ───────────────── MAIN ───────────────── -->
+  <main class="ds-main">
+
+    <!-- HERO ─────────────────────────────────────────── -->
+    <header class="ambient-blob-wrap mb-20" id="identidade">
+      <div class="relative z-10 max-w-[640px] stagger-children">
+        <span class="ds-pill">▌ Design System v1.0</span>
+        <h2 class="text-5xl md:text-6xl font-extrabold text-white tracking-tight mt-6">
+          ViralHub
+        </h2>
+        <p class="text-gray-500 text-lg mt-2 font-serif italic">
+          O epicentro da sua criação viral
+        </p>
+        <p class="text-gray-300 text-base mt-6 leading-relaxed max-w-lg">
+          Dark premium com glassmorphismo intenso, verde esmeralda como acento,
+          tipografia humanista e textura de noise sutil em toda a tela. Cada
+          componente abaixo foi extraído diretamente do código.
+        </p>
+        <div class="flex items-center gap-2.5 text-gray-600 mt-8">
+          <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+          <span class="font-mono text-[10px] tracking-widest uppercase">Sistema Operacional</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ────────────────── COLOR PALETTE ────────────────── -->
+    <section class="ds-section mb-20" id="cores">
+      <span class="ds-eyebrow">02 · Cores</span>
+      <h3 class="ds-h2 mt-3">Paleta</h3>
+      <p class="ds-block-sub mt-3 max-w-2xl">
+        Tokens nomeados do Tailwind. Clique em qualquer swatch para copiar o hex.
+      </p>
+
+      <p class="data-label mt-10 mb-4">Brand &amp; Background</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="swatch" data-copy="#08080A">
+          <div class="swatch-block" style="background:#08080A"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">background</div>
+            <div class="swatch-hex">#08080A</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="#111114">
+          <div class="swatch-block" style="background:#111114"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">surface</div>
+            <div class="swatch-hex">#111114</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="#18181D">
+          <div class="swatch-block" style="background:#18181D"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">surface-flat</div>
+            <div class="swatch-hex">#18181D</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="#1F1F26">
+          <div class="swatch-block" style="background:#1F1F26"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">surface-raised</div>
+            <div class="swatch-hex">#1F1F26</div>
+          </div>
+        </div>
+      </div>
+
+      <p class="data-label mt-10 mb-4">Primary &amp; Accent</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="swatch" data-copy="#37B24D">
+          <div class="swatch-block" style="background:#37B24D"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">primary</div>
+            <div class="swatch-hex">#37B24D</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="#2F9E44">
+          <div class="swatch-block" style="background:#2F9E44"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">primary-hover</div>
+            <div class="swatch-hex">#2F9E44</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="#69DB7C">
+          <div class="swatch-block" style="background:#69DB7C"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">accent</div>
+            <div class="swatch-hex">#69DB7C</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="rgba(55, 178, 77, 0.12)">
+          <div class="swatch-block" style="background:#08080A">
+            <div style="width:100%;height:100%;background:rgba(55,178,77,0.12)"></div>
+          </div>
+          <div class="swatch-meta">
+            <div class="swatch-name">primary-glow</div>
+            <div class="swatch-hex">rgba(55,178,77,.12)</div>
+          </div>
+        </div>
+      </div>
+
+      <p class="data-label mt-10 mb-4">Bordas (sobre fundos escuros)</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="swatch" data-copy="rgba(255, 255, 255, 0.06)">
+          <div class="swatch-block" style="background:#08080A">
+            <div style="width:100%;height:100%;background:rgba(255,255,255,0.06)"></div>
+          </div>
+          <div class="swatch-meta">
+            <div class="swatch-name">border-subtle</div>
+            <div class="swatch-hex">rgba(255,255,255,.06)</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="rgba(255, 255, 255, 0.12)">
+          <div class="swatch-block" style="background:#08080A">
+            <div style="width:100%;height:100%;background:rgba(255,255,255,0.12)"></div>
+          </div>
+          <div class="swatch-meta">
+            <div class="swatch-name">border-hover</div>
+            <div class="swatch-hex">rgba(255,255,255,.12)</div>
+          </div>
+        </div>
+      </div>
+
+      <p class="data-label mt-10 mb-4">Semânticos (uso pontual)</p>
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="swatch" data-copy="#E2272F">
+          <div class="swatch-block" style="background:#E2272F"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">error (toast)</div>
+            <div class="swatch-hex">#E2272F</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="#2F6FEB">
+          <div class="swatch-block" style="background:#2F6FEB"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">info (toast)</div>
+            <div class="swatch-hex">#2F6FEB</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="#1A1A1A">
+          <div class="swatch-block" style="background:#1A1A1A"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">toast-bg</div>
+            <div class="swatch-hex">#1A1A1A</div>
+          </div>
+        </div>
+        <div class="swatch" data-copy="#2A2A2A">
+          <div class="swatch-block" style="background:#2A2A2A"></div>
+          <div class="swatch-meta">
+            <div class="swatch-name">toast-border</div>
+            <div class="swatch-hex">#2A2A2A</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── TYPOGRAPHY ────────────────── -->
+    <section class="ds-section mb-20" id="tipografia">
+      <span class="ds-eyebrow">03 · Tipografia</span>
+      <h3 class="ds-h2 mt-3">Três famílias, papéis claros</h3>
+
+      <div class="ds-card mt-10">
+        <p class="data-label">Plus Jakarta Sans · UI</p>
+        <h1 class="text-5xl font-extrabold text-white tracking-tight mt-3">
+          Vídeos Longos
+        </h1>
+        <h2 class="text-3xl font-extrabold text-white tracking-tight mt-6">
+          Hero h2 das páginas internas
+        </h2>
+        <h3 class="text-xl font-bold text-white mt-6">
+          Section title
+        </h3>
+        <p class="text-gray-300 mt-4 max-w-2xl leading-relaxed">
+          Corpo padrão. Comprometido com legibilidade no escuro. <strong>Strong</strong>
+          em branco puro. <em>Itálico</em> em cinza-claro.
+        </p>
+        <p class="text-[10px] font-bold text-gray-400 uppercase tracking-[0.1em] mt-6">
+          Form Label
+        </p>
+      </div>
+
+      <div class="ds-card mt-6">
+        <p class="data-label">Instrument Serif · Decorativa</p>
+        <p class="text-gray-500 text-2xl mt-3 font-serif italic">
+          O epicentro da sua criação viral
+        </p>
+        <p class="text-gray-600 font-serif italic text-base mt-4">
+          Nenhum conteúdo ainda...
+        </p>
+        <p class="text-gray-500 text-xs mt-4 leading-relaxed">
+          Reservada para taglines curtas, frases poéticas em estados vazios e
+          subtítulos do hero. Sempre em <span class="font-mono text-gray-400">italic</span>.
+        </p>
+      </div>
+
+      <div class="ds-card mt-6">
+        <p class="data-label">IBM Plex Mono · Metadados</p>
+        <div class="mt-4 space-y-3">
+          <p class="data-label">Membros (4)</p>
+          <p class="data-label-primary">Status do sistema</p>
+          <p class="font-mono text-[10px] tracking-widest uppercase text-gray-600">
+            Sistema Operacional
+          </p>
+          <p>
+            <span class="text-3xl font-bold text-white font-mono tracking-tight">87%</span>
+            <span class="text-gray-500 font-mono text-xs ml-2">PROCESSAMENTO</span>
+          </p>
+          <p>
+            <code style="background:#1F1F26; padding:2px 8px; border-radius:6px;
+                         color:#69DB7C; font-family: 'IBM Plex Mono', monospace;
+                         font-size:13px;">npm install</code>
+          </p>
+        </div>
+      </div>
+
+      <div class="ds-code-wrap mt-6">
+        <pre class="ds-code"><span class="tok-com">/* Importar fontes via Google Fonts (uma única tag link) */</span>
+&lt;<span class="tok-tag">link</span> <span class="tok-attr">href</span>=<span class="tok-str">"https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&family=Instrument+Serif:ital@0;1&family=IBM+Plex+Mono:wght@300;400;500;600&display=swap"</span> <span class="tok-attr">rel</span>=<span class="tok-str">"stylesheet"</span> /&gt;</pre>
+        <button class="ds-copy-btn" data-copy-target="prev">Copy</button>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── SPACING ────────────────── -->
+    <section class="ds-section mb-20" id="espacamento">
+      <span class="ds-eyebrow">04 · Espaçamento</span>
+      <h3 class="ds-h2 mt-3">Escala 4px (Tailwind padrão)</h3>
+      <p class="ds-block-sub mt-3 max-w-2xl">
+        Saltos canônicos por contexto: <span class="font-mono text-gray-400">px-3 py-2</span>
+        em items de sidebar, <span class="font-mono text-gray-400">px-5 py-3</span> em botões,
+        <span class="font-mono text-gray-400">p-7 / p-8</span> em cards e modais.
+      </p>
+
+      <div class="ds-card mt-10">
+        <div class="flex flex-wrap gap-6 items-end">
+          <div class="flex flex-col items-center gap-2">
+            <div style="width:8px;height:8px" class="bg-primary rounded"></div>
+            <span class="data-label">2 · 8px</span>
+          </div>
+          <div class="flex flex-col items-center gap-2">
+            <div style="width:16px;height:16px" class="bg-primary rounded"></div>
+            <span class="data-label">4 · 16px</span>
+          </div>
+          <div class="flex flex-col items-center gap-2">
+            <div style="width:24px;height:24px" class="bg-primary rounded"></div>
+            <span class="data-label">6 · 24px</span>
+          </div>
+          <div class="flex flex-col items-center gap-2">
+            <div style="width:32px;height:32px" class="bg-primary rounded"></div>
+            <span class="data-label">8 · 32px</span>
+          </div>
+          <div class="flex flex-col items-center gap-2">
+            <div style="width:48px;height:48px" class="bg-primary rounded"></div>
+            <span class="data-label">12 · 48px</span>
+          </div>
+          <div class="flex flex-col items-center gap-2">
+            <div style="width:64px;height:64px" class="bg-primary rounded"></div>
+            <span class="data-label">16 · 64px</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── RADIUS ────────────────── -->
+    <section class="ds-section mb-20" id="radius">
+      <span class="ds-eyebrow">05 · Border Radius</span>
+      <h3 class="ds-h2 mt-3">Nunca uniforme</h3>
+
+      <div class="ds-card mt-10 grid grid-cols-2 md:grid-cols-4 gap-5">
+        <div class="flex flex-col items-center gap-3">
+          <div class="w-20 h-20 bg-primary/12 border border-primary/20 rounded-md"></div>
+          <p class="data-label">md · 6px</p>
+          <p class="text-[10px] text-gray-600">close X</p>
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <div class="w-20 h-20 bg-primary/12 border border-primary/20 rounded-xl"></div>
+          <p class="data-label">xl · 12px</p>
+          <p class="text-[10px] text-gray-600">tab item</p>
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <div class="w-20 h-20 bg-primary/12 border border-primary/20 rounded-2xl"></div>
+          <p class="data-label">2xl · 16px</p>
+          <p class="text-[10px] text-gray-600">botões / inputs</p>
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <div class="w-20 h-20 bg-primary/12 border border-primary/20 rounded-3xl"></div>
+          <p class="data-label">3xl · 24px</p>
+          <p class="text-[10px] text-gray-600">cards</p>
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <div class="w-20 h-20 bg-primary/12 border border-primary/20 rounded-4xl"></div>
+          <p class="data-label">4xl · 32px</p>
+          <p class="text-[10px] text-gray-600">modais</p>
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <div class="w-20 h-20 bg-primary/12 border border-primary/20 rounded-5xl"></div>
+          <p class="data-label">5xl · 40px</p>
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <div class="w-20 h-20 bg-primary/12 border border-primary/20 rounded-6xl"></div>
+          <p class="data-label">6xl · 48px</p>
+        </div>
+        <div class="flex flex-col items-center gap-3">
+          <div class="w-20 h-20 bg-primary/12 border border-primary/20 rounded-full"></div>
+          <p class="data-label">full · ∞</p>
+          <p class="text-[10px] text-gray-600">dots / avatar</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── SHADOWS ────────────────── -->
+    <section class="ds-section mb-20" id="sombras">
+      <span class="ds-eyebrow">06 · Sombras</span>
+      <h3 class="ds-h2 mt-3">Profundidade verde</h3>
+      <p class="ds-block-sub mt-3 max-w-2xl">
+        Cards usam <span class="font-mono text-gray-400">shadow-card</span>.
+        Modais usam <span class="font-mono text-gray-400">shadow-modal</span>.
+        Glows verdes são reservados para elementos primários.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-10">
+        <div class="ds-card">
+          <div class="bg-primary w-16 h-16 rounded-2xl shadow-glow-sm mx-auto"></div>
+          <p class="data-label mt-6 text-center">shadow-glow-sm</p>
+          <p class="text-xs text-gray-500 text-center mt-1 font-mono">0 0 20px /15</p>
+        </div>
+        <div class="ds-card">
+          <div class="bg-primary w-16 h-16 rounded-2xl shadow-glow-md mx-auto"></div>
+          <p class="data-label mt-6 text-center">shadow-glow-md</p>
+          <p class="text-xs text-gray-500 text-center mt-1 font-mono">0 0 40px /20</p>
+        </div>
+        <div class="ds-card">
+          <div class="bg-primary w-16 h-16 rounded-2xl shadow-glow-lg mx-auto"></div>
+          <p class="data-label mt-6 text-center">shadow-glow-lg</p>
+          <p class="text-xs text-gray-500 text-center mt-1 font-mono">0 0 60px /25</p>
+        </div>
+        <div class="ds-card">
+          <div class="bg-surface w-full h-20 rounded-2xl shadow-card border border-border-subtle"></div>
+          <p class="data-label mt-6 text-center">shadow-card</p>
+          <p class="text-xs text-gray-500 text-center mt-1 font-mono">0 8px 32px black/.4</p>
+        </div>
+        <div class="ds-card">
+          <div class="bg-surface w-full h-20 rounded-2xl shadow-card-hover border border-border-subtle"></div>
+          <p class="data-label mt-6 text-center">shadow-card-hover</p>
+          <p class="text-xs text-gray-500 text-center mt-1 font-mono">0 16px 48px + tinte</p>
+        </div>
+        <div class="ds-card">
+          <div class="bg-surface w-full h-20 rounded-2xl shadow-modal border border-border-subtle"></div>
+          <p class="data-label mt-6 text-center">shadow-modal</p>
+          <p class="text-xs text-gray-500 text-center mt-1 font-mono">0 32px 80px black/.6</p>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── EFFECTS ────────────────── -->
+    <section class="ds-section mb-20" id="efeitos">
+      <span class="ds-eyebrow">07 · Efeitos</span>
+      <h3 class="ds-h2 mt-3">Glassmorphismo &amp; Noise</h3>
+
+      <div class="ds-row mt-10">
+        <div class="ds-card">
+          <p class="ds-block-title">.glass</p>
+          <p class="ds-block-sub mt-1">backdrop-blur 40px sobre #111114 / 0.6</p>
+          <div class="ds-card-preview mt-5"
+               style="background-image: linear-gradient(135deg, #37B24D 0%, #2F6FEB 100%);
+                      background-size: cover;">
+            <div class="glass rounded-3xl p-6 w-full max-w-xs">
+              <p class="data-label">Glass Card</p>
+              <p class="text-white font-bold text-base mt-2">Painel translúcido</p>
+              <p class="text-gray-300 text-xs mt-1">Veja a borda branca interna sutil.</p>
+            </div>
+          </div>
+        </div>
+        <div class="ds-card">
+          <p class="ds-block-title">.glass-raised</p>
+          <p class="ds-block-sub mt-1">backdrop-blur 40px sobre #18181D / 0.7</p>
+          <div class="ds-card-preview mt-5"
+               style="background-image: linear-gradient(135deg, #37B24D 0%, #2F6FEB 100%);
+                      background-size: cover;">
+            <div class="glass-raised rounded-3xl p-6 w-full max-w-xs relative">
+              <div class="top-hairline"></div>
+              <p class="data-label">Glass Raised</p>
+              <p class="text-white font-bold text-base mt-2">Modal / dropdown</p>
+              <p class="text-gray-300 text-xs mt-1">Versão mais elevada e opaca.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="ds-card mt-6">
+        <p class="ds-block-title">Noise Overlay (SVG feTurbulence)</p>
+        <p class="ds-block-sub mt-1">
+          Aplicado em todo o body com opacity 0.04 e mix-blend-mode overlay.
+          Já está ativo nesta página — observe a textura granulada.
+        </p>
+        <div class="grid grid-cols-3 gap-4 mt-5">
+          <div style="background:#08080A;height:80px;border-radius:12px"></div>
+          <div style="background:#37B24D;height:80px;border-radius:12px"></div>
+          <div style="background:#fff;height:80px;border-radius:12px"></div>
+        </div>
+      </div>
+
+      <div class="ds-code-wrap mt-6">
+        <pre class="ds-code">&lt;<span class="tok-tag">svg</span> <span class="tok-attr">class</span>=<span class="tok-str">"fixed pointer-events-none"</span> <span class="tok-attr">width</span>=<span class="tok-str">"0"</span> <span class="tok-attr">height</span>=<span class="tok-str">"0"</span>&gt;
+  &lt;<span class="tok-tag">filter</span> <span class="tok-attr">id</span>=<span class="tok-str">"noise"</span>&gt;
+    &lt;<span class="tok-tag">feTurbulence</span> <span class="tok-attr">type</span>=<span class="tok-str">"fractalNoise"</span> <span class="tok-attr">baseFrequency</span>=<span class="tok-str">"0.80"</span> <span class="tok-attr">numOctaves</span>=<span class="tok-str">"4"</span> <span class="tok-attr">stitchTiles</span>=<span class="tok-str">"stitch"</span>/&gt;
+  &lt;/<span class="tok-tag">filter</span>&gt;
+&lt;/<span class="tok-tag">svg</span>&gt;
+
+<span class="tok-com">/* CSS */</span>
+<span class="tok-prop">body::before</span> {
+  <span class="tok-key">content</span>: <span class="tok-str">""</span>;
+  <span class="tok-key">position</span>: <span class="tok-str">fixed</span>; <span class="tok-key">inset</span>: <span class="tok-str">0</span>; <span class="tok-key">z-index</span>: <span class="tok-str">9999</span>;
+  <span class="tok-key">pointer-events</span>: <span class="tok-str">none</span>;
+  <span class="tok-key">filter</span>: <span class="tok-str">url(#noise)</span>;
+  <span class="tok-key">opacity</span>: <span class="tok-str">0.04</span>;
+  <span class="tok-key">mix-blend-mode</span>: <span class="tok-str">overlay</span>;
+}</pre>
+        <button class="ds-copy-btn" data-copy-target="prev">Copy</button>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── ANIMATIONS ────────────────── -->
+    <section class="ds-section mb-20" id="animacoes">
+      <span class="ds-eyebrow">08 · Animações</span>
+      <h3 class="ds-h2 mt-3">Curvas ease-out-expo</h3>
+      <p class="ds-block-sub mt-3 max-w-2xl">
+        cubic-bezier(0.16, 1, 0.3, 1) é a assinatura do projeto.
+        Clique em "Replay" para reexecutar a animação.
+      </p>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mt-10">
+        <div class="ds-card">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="ds-block-title">fadeIn</p>
+              <p class="ds-block-sub mt-1">opacity 0 → 1, 0.5s</p>
+            </div>
+            <button class="replay-btn" onclick="replayAnim(this, 'fade-in-demo', 'animate-fade-in')">Replay</button>
+          </div>
+          <div class="ds-card-preview mt-5">
+            <div id="fade-in-demo" class="animate-fade-in glass-raised rounded-2xl p-5 w-full max-w-xs text-center">
+              <p class="data-label-primary">★</p>
+              <p class="text-white font-bold mt-2">Apareci suavemente</p>
+            </div>
+          </div>
+        </div>
+        <div class="ds-card">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="ds-block-title">fadeUp</p>
+              <p class="ds-block-sub mt-1">y 24px → 0, 0.6s</p>
+            </div>
+            <button class="replay-btn" onclick="replayAnim(this, 'fade-up-demo', 'animate-fade-up')">Replay</button>
+          </div>
+          <div class="ds-card-preview mt-5">
+            <div id="fade-up-demo" class="animate-fade-up glass-raised rounded-2xl p-5 w-full max-w-xs text-center">
+              <p class="text-white font-bold">Subi entrando</p>
+            </div>
+          </div>
+        </div>
+        <div class="ds-card">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="ds-block-title">slideInRight</p>
+              <p class="ds-block-sub mt-1">x −12px → 0, 0.4s</p>
+            </div>
+            <button class="replay-btn" onclick="replayAnim(this, 'slide-demo', 'animate-slide-in-right')">Replay</button>
+          </div>
+          <div class="ds-card-preview mt-5">
+            <div id="slide-demo" class="animate-slide-in-right glass-raised rounded-2xl p-5 w-full max-w-xs text-center">
+              <p class="text-white font-bold">Vim da esquerda</p>
+            </div>
+          </div>
+        </div>
+        <div class="ds-card">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="ds-block-title">scaleIn</p>
+              <p class="ds-block-sub mt-1">scale 0.95 → 1, 0.3s</p>
+            </div>
+            <button class="replay-btn" onclick="replayAnim(this, 'scale-demo', 'animate-scale-in')">Replay</button>
+          </div>
+          <div class="ds-card-preview mt-5">
+            <div id="scale-demo" class="animate-scale-in glass-raised rounded-2xl p-5 w-full max-w-xs text-center">
+              <p class="text-white font-bold">Pop in</p>
+            </div>
+          </div>
+        </div>
+        <div class="ds-card">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="ds-block-title">glowPulse (∞)</p>
+              <p class="ds-block-sub mt-1">opacity 0.4 ⇆ 0.8, 3s</p>
+            </div>
+          </div>
+          <div class="ds-card-preview mt-5">
+            <div class="flex items-center gap-3">
+              <div class="w-3 h-3 rounded-full bg-primary animate-glow-pulse"
+                   style="box-shadow: 0 0 16px rgba(55,178,77,0.6);"></div>
+              <span class="font-mono text-[11px] tracking-widest uppercase text-gray-500">Online</span>
+            </div>
+          </div>
+        </div>
+        <div class="ds-card">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="ds-block-title">stagger-children</p>
+              <p class="ds-block-sub mt-1">delay 60ms entre filhos</p>
+            </div>
+            <button class="replay-btn" onclick="replayStagger()">Replay</button>
+          </div>
+          <div class="ds-card-preview mt-5">
+            <div id="stagger-demo" class="stagger-children flex flex-col gap-2 w-full">
+              <div class="bg-white/[0.04] rounded-xl px-4 py-2 text-sm text-gray-300">Item 1</div>
+              <div class="bg-white/[0.04] rounded-xl px-4 py-2 text-sm text-gray-300">Item 2</div>
+              <div class="bg-white/[0.04] rounded-xl px-4 py-2 text-sm text-gray-300">Item 3</div>
+              <div class="bg-white/[0.04] rounded-xl px-4 py-2 text-sm text-gray-300">Item 4</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── BUTTONS ────────────────── -->
+    <section class="ds-section mb-20" id="botoes">
+      <span class="ds-eyebrow">09 · Botões</span>
+      <h3 class="ds-h2 mt-3">Quatro variantes</h3>
+
+      <div class="ds-card mt-10">
+        <div class="ds-card-preview" style="gap:16px; flex-wrap:wrap;">
+          <button class="btn-primary rounded-2xl px-6 py-3 text-sm">
+            Analisar vídeo
+          </button>
+          <button class="btn-white rounded-2xl px-6 py-3 text-sm flex items-center gap-2">
+            Entrar no Hub
+          </button>
+          <button class="btn-ghost text-sm">Cancelar</button>
+          <button class="btn-magnetic rounded-2xl px-6 py-3 text-sm border border-white/10 text-white bg-white/[0.04]">
+            Magnetic
+          </button>
+        </div>
+
+        <p class="data-label mt-8 mb-3">Estados</p>
+        <div class="flex flex-wrap gap-4">
+          <button class="btn-primary rounded-2xl px-6 py-3 text-sm" disabled
+                  style="opacity:0.5; pointer-events:none;">
+            Disabled
+          </button>
+          <button class="btn-primary rounded-2xl px-6 py-3 text-sm flex items-center gap-2.5">
+            <span style="display:inline-block; width:14px; height:14px; border:2px solid white;
+                         border-top-color: transparent; border-radius:50%;
+                         animation: spin 1s linear infinite;"></span>
+            Carregando...
+          </button>
+          <button class="rounded-2xl px-3.5 py-3 text-gray-400 hover:text-white
+                         bg-white/5 hover:bg-white/[0.08] transition-colors flex items-center gap-2 text-sm">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 6L6 18"></path><path d="M6 6l12 12"></path>
+            </svg>
+            Icon button
+          </button>
+        </div>
+      </div>
+
+      <div class="ds-code-wrap mt-6">
+        <pre class="ds-code"><span class="tok-com">/* CTA primário */</span>
+&lt;<span class="tok-tag">button</span> <span class="tok-attr">class</span>=<span class="tok-str">"btn-primary rounded-2xl px-6 py-3 text-sm"</span>&gt;
+  Analisar vídeo
+&lt;/<span class="tok-tag">button</span>&gt;
+
+<span class="tok-com">/* CTA branco */</span>
+&lt;<span class="tok-tag">button</span> <span class="tok-attr">class</span>=<span class="tok-str">"w-full py-4 btn-white rounded-2xl flex justify-center items-center gap-2.5 text-sm
+                disabled:opacity-50 disabled:pointer-events-none"</span>&gt;
+  Entrar no Hub
+&lt;/<span class="tok-tag">button</span>&gt;
+
+<span class="tok-com">/* Ghost */</span>
+&lt;<span class="tok-tag">button</span> <span class="tok-attr">class</span>=<span class="tok-str">"btn-ghost text-sm"</span>&gt;Cancelar&lt;/<span class="tok-tag">button</span>&gt;
+
+<span class="tok-com">/* Icon discreto */</span>
+&lt;<span class="tok-tag">button</span> <span class="tok-attr">class</span>=<span class="tok-str">"p-3 bg-white/5 hover:bg-white/8 rounded-2xl transition-colors text-gray-400 hover:text-white"</span>&gt;
+  &lt;<span class="tok-tag">X</span> <span class="tok-attr">size</span>=<span class="tok-str">{18}</span> <span class="tok-attr">strokeWidth</span>=<span class="tok-str">{2.5}</span> /&gt;
+&lt;/<span class="tok-tag">button</span>&gt;</pre>
+        <button class="ds-copy-btn" data-copy-target="prev">Copy</button>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── INPUTS ────────────────── -->
+    <section class="ds-section mb-20" id="inputs">
+      <span class="ds-eyebrow">10 · Inputs</span>
+      <h3 class="ds-h2 mt-3">Foco verde, ícone à esquerda</h3>
+
+      <div class="ds-card mt-10 max-w-xl">
+        <p class="text-[10px] font-bold text-gray-400 ml-1 tracking-[0.1em] uppercase">Email</p>
+        <div class="relative group mt-2">
+          <svg class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-primary transition-colors"
+               width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
+            <polyline points="22,6 12,13 2,6"></polyline>
+          </svg>
+          <input type="email" class="input-field rounded-2xl p-4 pl-12"
+                 placeholder="seu@email.com" />
+        </div>
+
+        <p class="text-[10px] font-bold text-gray-400 ml-1 tracking-[0.1em] uppercase mt-6">Senha</p>
+        <div class="relative group mt-2">
+          <svg class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-600 group-focus-within:text-primary transition-colors"
+               width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+          <input type="password" class="input-field rounded-2xl p-4 pl-12"
+                 placeholder="••••••••" />
+        </div>
+
+        <p class="data-label mt-6 mb-2">Erro inline</p>
+        <div class="p-4 bg-red-500/8 border border-red-500/15 text-red-400 rounded-2xl text-sm font-medium flex items-center gap-2.5 animate-fade-in">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+               stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="12" y1="8" x2="12" y2="12"></line>
+            <line x1="12" y1="16" x2="12.01" y2="16"></line>
+          </svg>
+          Credenciais inválidas. Tente novamente.
+        </div>
+
+        <p class="data-label mt-6 mb-2">Compacto (sidebar)</p>
+        <input class="w-full bg-white/[0.04] border border-white/[0.08] rounded-xl pl-3 pr-3 py-2 text-[13px] text-white placeholder-gray-600 outline-none focus:border-primary/30"
+               placeholder="email@exemplo.com" />
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── CARDS ────────────────── -->
+    <section class="ds-section mb-20" id="cards">
+      <span class="ds-eyebrow">11 · Cards</span>
+      <h3 class="ds-h2 mt-3">Glass + lift</h3>
+
+      <div class="ds-card mt-10">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-5">
+          <div class="glass lift rounded-3xl p-5 cursor-pointer relative overflow-hidden">
+            <p class="data-label">Análise · 14:02</p>
+            <p class="text-white font-bold mt-2 leading-snug">
+              Como roteirizar um Reels viral
+            </p>
+            <p class="text-gray-500 text-xs mt-2">120 mil views · TikTok</p>
+          </div>
+          <div class="glass lift rounded-3xl p-5 cursor-pointer relative overflow-hidden border-primary/40 bg-primary/[0.06]"
+               style="box-shadow: 0 0 40px rgba(55,178,77,0.10);">
+            <p class="data-label-primary">Selecionado</p>
+            <p class="text-white font-bold mt-2 leading-snug">
+              Quebra de padrão no gancho
+            </p>
+            <p class="text-gray-500 text-xs mt-2">2.3M views · Instagram</p>
+          </div>
+          <div class="glass-raised rounded-3xl p-5 relative overflow-hidden">
+            <div class="top-hairline"></div>
+            <p class="data-label">Glass Raised</p>
+            <p class="text-white font-bold mt-2 leading-snug">
+              Modal interno
+            </p>
+            <p class="text-gray-500 text-xs mt-2">Para conteúdo destacado</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── MODALS ────────────────── -->
+    <section class="ds-section mb-20" id="modais">
+      <span class="ds-eyebrow">12 · Modais</span>
+      <h3 class="ds-h2 mt-3">Padrão (não há componente — é convenção)</h3>
+
+      <div class="ds-card mt-10">
+        <div class="relative rounded-2xl overflow-hidden" style="height:480px; background:#08080A;">
+          <!-- fake page beneath -->
+          <div class="absolute inset-0 opacity-30">
+            <div class="p-6 space-y-3">
+              <div class="h-5 w-1/3 bg-white/10 rounded"></div>
+              <div class="h-3 w-3/4 bg-white/5 rounded"></div>
+              <div class="h-3 w-2/3 bg-white/5 rounded"></div>
+            </div>
+          </div>
+          <!-- overlay -->
+          <div class="absolute inset-0 backdrop-blur-md flex items-center justify-center p-4 animate-fade-in"
+               style="background: rgba(0,0,0,0.5);">
+            <div class="glass-raised rounded-4xl flex flex-col overflow-hidden shadow-modal w-full max-w-xl"
+                 style="height:90%;">
+              <div class="p-6 border-b border-border-subtle flex justify-between items-center bg-surface/60">
+                <div class="flex items-center gap-4">
+                  <div class="p-3 bg-primary/12 rounded-2xl border border-primary/15">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#37B24D"
+                         stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+                      <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-lg font-extrabold text-white tracking-tight">Como Roteirizar</h3>
+                    <p class="text-[11px] text-gray-500 mt-0.5">Análise completa</p>
+                  </div>
+                </div>
+                <button class="p-3 bg-white/5 hover:bg-white/8 rounded-2xl transition-colors text-gray-400 hover:text-white">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                       stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M18 6L6 18"></path><path d="M6 6l12 12"></path>
+                  </svg>
+                </button>
+              </div>
+              <div class="p-6 overflow-y-auto custom-scrollbar flex-1 bg-background/40 text-sm text-gray-300 leading-relaxed">
+                <p>O corpo do modal usa <code style="background:#1F1F26;padding:2px 6px;border-radius:6px;color:#69DB7C;font-family:'IBM Plex Mono',monospace;font-size:12px;">bg-background/40</code>
+                e respira com <code style="background:#1F1F26;padding:2px 6px;border-radius:6px;color:#69DB7C;font-family:'IBM Plex Mono',monospace;font-size:12px;">p-7/p-8</code>.</p>
+                <p class="mt-3 text-gray-500 text-[13px]">
+                  Tamanhos canônicos: <span class="font-mono text-gray-400">max-w-3xl</span>
+                  (form), <span class="font-mono text-gray-400">max-w-4xl</span> (leitor),
+                  <span class="font-mono text-gray-400">max-w-5xl</span> (editor).
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── DROPDOWNS ────────────────── -->
+    <section class="ds-section mb-20" id="dropdowns">
+      <span class="ds-eyebrow">13 · Dropdowns</span>
+      <h3 class="ds-h2 mt-3">glass-raised + shadow-modal</h3>
+
+      <div class="ds-card mt-10">
+        <div class="ds-card-preview" style="min-height:220px; align-items:flex-start;">
+          <div class="relative">
+            <button class="btn-magnetic px-4 py-2 rounded-xl bg-white/[0.06] border border-white/[0.08] text-sm text-white flex items-center gap-2">
+              Opções
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+            <div class="absolute top-full right-0 mt-2 z-50 glass-raised rounded-xl py-1.5 min-w-[200px] animate-fade-in shadow-modal">
+              <button class="w-full text-left px-3 py-2 text-[13px] text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4z"></path>
+                </svg>
+                Renomear
+              </button>
+              <button class="w-full text-left px-3 py-2 text-[13px] text-gray-300 hover:bg-white/[0.06] hover:text-white transition-colors flex items-center gap-2">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                Exportar
+              </button>
+              <div class="my-1 border-t border-border-subtle"></div>
+              <button class="w-full text-left px-3 py-2 text-[13px] text-red-400 hover:bg-red-500/10 hover:text-red-300 transition-colors flex items-center gap-2">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                     stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                </svg>
+                Excluir
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── TABS ────────────────── -->
+    <section class="ds-section mb-20" id="tabs">
+      <span class="ds-eyebrow">14 · Tabs</span>
+      <h3 class="ds-h2 mt-3">Switcher contínuo</h3>
+
+      <div class="ds-card mt-10">
+        <div class="ds-card-preview">
+          <div class="tab-group rounded-2xl w-full max-w-[320px]">
+            <button class="tab-item rounded-xl active" data-tab="status">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+              Status
+            </button>
+            <button class="tab-item rounded-xl" data-tab="logs">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                   stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="4 17 10 11 4 5"></polyline>
+                <line x1="12" y1="19" x2="20" y2="19"></line>
+              </svg>
+              Log
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <script>
+        document.querySelectorAll('[data-tab]').forEach(btn => {
+          btn.addEventListener('click', () => {
+            btn.parentElement.querySelectorAll('.tab-item').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+          });
+        });
+      </script>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── BADGES ────────────────── -->
+    <section class="ds-section mb-20" id="badges">
+      <span class="ds-eyebrow">15 · Badges &amp; Chips</span>
+      <h3 class="ds-h2 mt-3">Mono uppercase + chip cinza</h3>
+
+      <div class="ds-card mt-10">
+        <div class="ds-card-preview" style="gap:12px; flex-wrap:wrap;">
+          <span class="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border font-mono"
+                style="background:rgba(255,255,255,0.04); border-color:rgba(255,255,255,0.08); color:rgba(255,255,255,0.6);">
+            Novo
+          </span>
+          <span class="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border font-mono"
+                style="background:rgba(55,178,77,0.10); border-color:rgba(55,178,77,0.2); color:#69DB7C;">
+            Ativo
+          </span>
+          <span class="px-2 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider border font-mono"
+                style="background:rgba(245,158,11,0.10); border-color:rgba(245,158,11,0.2); color:#fbbf24;">
+            Beta
+          </span>
+          <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-white/[0.08] text-[12px] font-semibold text-gray-300 select-none">
+            thumbnail.mp4
+          </span>
+          <div class="flex items-center gap-2.5 text-gray-600">
+            <div class="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></div>
+            <span class="font-mono text-[10px] tracking-widest uppercase">Sistema Operacional</span>
+          </div>
+        </div>
+
+        <p class="data-label mt-8 mb-3">Color picker (Kanban)</p>
+        <div class="flex gap-2">
+          <button class="w-6 h-6 rounded-full border-2 border-white" style="background:#06b6d4; transform:scale(1.25)"></button>
+          <button class="w-6 h-6 rounded-full border-2 border-transparent hover:scale-110 transition-transform" style="background:#22c55e"></button>
+          <button class="w-6 h-6 rounded-full border-2 border-transparent hover:scale-110 transition-transform" style="background:#8b5cf6"></button>
+          <button class="w-6 h-6 rounded-full border-2 border-transparent hover:scale-110 transition-transform" style="background:#f59e0b"></button>
+          <button class="w-6 h-6 rounded-full border-2 border-transparent hover:scale-110 transition-transform" style="background:#f43f5e"></button>
+          <button class="w-6 h-6 rounded-full border-2 border-transparent hover:scale-110 transition-transform" style="background:#3b82f6"></button>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── TOASTS ────────────────── -->
+    <section class="ds-section mb-20" id="toasts">
+      <span class="ds-eyebrow">16 · Toasts</span>
+      <h3 class="ds-h2 mt-3">Portal top-right, rail colorido</h3>
+
+      <div class="ds-card mt-10">
+        <div class="ds-card-preview" style="flex-direction:column; gap:14px;">
+          <div class="ds-toast success">
+            <div class="ds-toast-rail"></div>
+            <svg style="color:#7fdc91" class="shrink-0 mt-0.5 ml-1" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+              <polyline points="22 4 12 14.01 9 11.01"></polyline>
+            </svg>
+            <div class="flex-1 min-w-0">
+              <p class="text-[13px] font-bold text-white leading-tight">Análise concluída</p>
+              <p class="text-[12px] mt-1" style="color:#A0A0A0">Veja o relatório na biblioteca.</p>
+            </div>
+          </div>
+          <div class="ds-toast error">
+            <div class="ds-toast-rail"></div>
+            <svg style="color:#ff6b72" class="shrink-0 mt-0.5 ml-1" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="8" x2="12" y2="12"></line>
+              <line x1="12" y1="16" x2="12.01" y2="16"></line>
+            </svg>
+            <div class="flex-1 min-w-0">
+              <p class="text-[13px] font-bold text-white leading-tight">Falha no upload</p>
+              <p class="text-[12px] mt-1" style="color:#A0A0A0">Tente novamente em alguns segundos.</p>
+            </div>
+          </div>
+          <div class="ds-toast info">
+            <div class="ds-toast-rail"></div>
+            <svg style="color:#6b9bff" class="shrink-0 mt-0.5 ml-1" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10"></circle>
+              <line x1="12" y1="16" x2="12" y2="12"></line>
+              <line x1="12" y1="8" x2="12.01" y2="8"></line>
+            </svg>
+            <div class="flex-1 min-w-0">
+              <p class="text-[13px] font-bold text-white leading-tight">Sincronizando workspace</p>
+              <p class="text-[12px] mt-1" style="color:#A0A0A0">Atualizando permissões…</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── SIDEBAR ITEMS ────────────────── -->
+    <section class="ds-section mb-20" id="sidebar">
+      <span class="ds-eyebrow">17 · Sidebar items</span>
+      <h3 class="ds-h2 mt-3">NavLink padrão</h3>
+
+      <div class="ds-card mt-10">
+        <p class="data-label mb-4">Menu</p>
+        <div class="stagger-children space-y-1 max-w-xs">
+          <div class="demo-nav-item active">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polyline points="22 7 13.5 15.5 8.5 10.5 2 17"></polyline>
+              <polyline points="16 7 22 7 22 13"></polyline>
+            </svg>
+            <span>Vídeos curtos</span>
+          </div>
+          <div class="demo-nav-item">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"></rect>
+              <line x1="7" y1="2" x2="7" y2="22"></line>
+              <line x1="17" y1="2" x2="17" y2="22"></line>
+              <line x1="2" y1="12" x2="22" y2="12"></line>
+              <line x1="2" y1="7" x2="7" y2="7"></line>
+              <line x1="2" y1="17" x2="7" y2="17"></line>
+              <line x1="17" y1="17" x2="22" y2="17"></line>
+              <line x1="17" y1="7" x2="22" y2="7"></line>
+            </svg>
+            <span>Vídeos longos</span>
+          </div>
+          <div class="demo-nav-item">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+            </svg>
+            <span>Conteúdos</span>
+          </div>
+          <div class="demo-nav-item">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 18h6"></path><path d="M10 22h4"></path>
+              <path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8a6 6 0 0 0-12 0c0 1.5.5 3 1.5 4 .75.75 1.32 1.5 1.5 2.5"></path>
+            </svg>
+            <span>Ideias</span>
+          </div>
+          <div class="demo-nav-item">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+              <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
+            </svg>
+            <span>Notas</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── EMPTY ────────────────── -->
+    <section class="ds-section mb-20" id="empty">
+      <span class="ds-eyebrow">18 · Empty States</span>
+      <h3 class="ds-h2 mt-3">Acesso restrito + estado vazio em serif</h3>
+
+      <div class="ds-row mt-10">
+        <div class="ds-card">
+          <div class="ds-card-preview" style="flex-direction:column;">
+            <div class="text-center animate-scale-in">
+              <div class="inline-flex items-center justify-center w-16 h-16 bg-red-500/10 rounded-3xl mb-5 border border-red-500/15">
+                <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fb7185"
+                     stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              </div>
+              <h3 class="text-xl font-extrabold text-white tracking-tight mb-2">
+                Acesso restrito
+              </h3>
+              <p class="text-[13px] text-gray-500 leading-relaxed max-w-xs mx-auto">
+                Você não tem acesso a este módulo neste workspace. Peça ao administrador para liberar.
+              </p>
+            </div>
+          </div>
+        </div>
+        <div class="ds-card">
+          <div class="ds-card-preview" style="flex-direction:column;">
+            <p class="text-gray-600 text-base font-serif italic text-center">
+              Nenhum conteúdo ainda...
+            </p>
+            <p class="text-gray-700 text-xs text-center mt-3 font-mono uppercase tracking-widest">
+              clique para começar
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── LOADING ────────────────── -->
+    <section class="ds-section mb-20" id="loading">
+      <span class="ds-eyebrow">19 · Loading &amp; Skeleton</span>
+      <h3 class="ds-h2 mt-3">Loader2 + animate-pulse</h3>
+
+      <div class="ds-card mt-10">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div class="ds-card-preview" style="flex-direction:column; gap:14px;">
+            <div style="width:28px;height:28px;border:3px solid #37B24D;
+                        border-top-color: transparent; border-radius:50%;
+                        animation: spin 1s linear infinite;"></div>
+            <p class="text-gray-600 text-sm animate-pulse font-mono tracking-wide">
+              Sincronizando acervo...
+            </p>
+          </div>
+          <div class="ds-card-preview" style="flex-direction:column;">
+            <div class="w-6 h-6 rounded-full border-2 border-white/10 border-t-primary animate-spin"></div>
+            <p class="text-gray-600 text-xs mt-3">Brand spinner (App.jsx)</p>
+          </div>
+          <div class="ds-card-preview" style="flex-direction:column; gap:10px;">
+            <div class="bg-white/[0.03] border border-white/[0.08] rounded-2xl p-4 animate-pulse w-full">
+              <div class="h-3 w-2/3 bg-white/10 rounded"></div>
+              <div class="h-3 w-1/2 bg-white/10 rounded mt-2"></div>
+              <div class="h-3 w-1/3 bg-white/10 rounded mt-2"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── ICONS ────────────────── -->
+    <section class="ds-section mb-20" id="icones">
+      <span class="ds-eyebrow">20 · Iconografia</span>
+      <h3 class="ds-h2 mt-3">lucide-react · 14-16px · stroke 1.5/2.5</h3>
+      <p class="ds-block-sub mt-3 max-w-2xl">
+        Ícones realmente importados no projeto. Hover para ver o nome.
+      </p>
+
+      <div class="ds-card mt-10">
+        <div class="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-3" id="icon-grid"></div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── MICROINTERACTIONS ────────────────── -->
+    <section class="ds-section mb-20" id="micro">
+      <span class="ds-eyebrow">21 · Microinterações</span>
+      <h3 class="ds-h2 mt-3">Passe o mouse / clique</h3>
+
+      <div class="ds-card mt-10">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="ds-card-preview" style="flex-direction:column; gap:14px;">
+            <p class="data-label">.lift hover</p>
+            <div class="lift glass rounded-3xl p-5 cursor-pointer w-full max-w-xs">
+              <p class="text-white font-bold text-sm">Passe o mouse aqui</p>
+              <p class="text-gray-500 text-xs mt-1">translateY -2px + glow verde sutil</p>
+            </div>
+          </div>
+          <div class="ds-card-preview" style="flex-direction:column; gap:14px;">
+            <p class="data-label">.btn-magnetic</p>
+            <button class="btn-magnetic px-5 py-3 rounded-2xl bg-white/[0.06] border border-white/[0.08] text-sm text-white">
+              Hover &amp; click
+            </button>
+            <p class="text-gray-600 text-xs">scale 1.02 (hover) → 0.98 (active)</p>
+          </div>
+          <div class="ds-card-preview" style="flex-direction:column; gap:14px;">
+            <p class="data-label">Foco verde</p>
+            <input class="input-field rounded-2xl p-3 max-w-xs" placeholder="Clique aqui" />
+            <p class="text-gray-600 text-xs">box-shadow 0 0 0 2px primary/30</p>
+          </div>
+          <div class="ds-card-preview" style="flex-direction:column; gap:14px;">
+            <p class="data-label">Status pulse</p>
+            <div class="flex items-center gap-2.5 text-gray-400">
+              <div class="w-2 h-2 rounded-full bg-primary animate-glow-pulse" style="box-shadow:0 0 12px rgba(55,178,77,0.6)"></div>
+              <span class="font-mono text-[10px] tracking-widest uppercase">3 análises ativas</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <hr class="hr-soft" />
+
+    <!-- ────────────────── PROMPT FOR AI ────────────────── -->
+    <section class="ds-section mb-32" id="prompt">
+      <span class="ds-eyebrow">22 · Prompt para IA</span>
+      <h3 class="ds-h2 mt-3">Copie &amp; cole em outras IAs</h3>
+      <p class="ds-block-sub mt-3 max-w-2xl">
+        Bloco autocontido, projetado pra ser colado em Lovable, Bolt, v0,
+        Claude Code, ChatGPT — qualquer IA que precise replicar a identidade
+        do ViralHub em outro projeto.
+      </p>
+
+      <div class="ds-code-wrap mt-10">
+        <pre class="ds-code" style="white-space:pre-wrap;" id="ai-prompt">Você está construindo uma interface com a identidade visual do ViralHub.
+
+ESTÉTICA: dark premium com glassmorphismo intenso. Fundo principal #08080A
+(quase preto). Surfaces #111114 / #18181D / #1F1F26. Cor de marca verde
+esmeralda #37B24D (hover #2F9E44, accent claro #69DB7C). Bordas sempre
+rgba(255,255,255,0.06) ou /0.08. Acentos semânticos: erro #E2272F, info
+#2F6FEB, aviso amber-500. Não use roxo, não use gradientes em fundos sólidos
+de página, não use cores fora desta paleta.
+
+TIPOGRAFIA (3 famílias do Google Fonts, importadas via:
+https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300..1,800&amp;family=Instrument+Serif:ital@0;1&amp;family=IBM+Plex+Mono:wght@300;400;500;600&amp;display=swap):
+- Plus Jakarta Sans (300-800) → toda a UI, títulos, corpo, botões.
+  Use extremos de peso: 400 (corpo) vs 800 (títulos). Letter-spacing
+  -0.01em no body, -0.025em em h1.
+- Instrument Serif (regular + itálico) → APENAS taglines decorativas
+  curtas em "font-serif italic" (subtítulos de hero, estados vazios).
+- IBM Plex Mono (300-600) → labels de metadados em uppercase, métricas
+  numéricas, código inline. SEMPRE 10px / uppercase / tracking 0.15em /
+  weight 600 / cor #6B7280.
+
+NUNCA use Inter, Roboto, Arial, Open Sans, Lato, ou system fonts.
+
+BORDER-RADIUS: nunca uniforme. Botões = 16px (rounded-2xl). Cards de
+conteúdo = 24px (rounded-3xl). Modais grandes e hero cards = 32px
+(rounded-4xl). Status dots e color pickers = rounded-full.
+
+SHADOWS:
+- Botão primary: 0 4px 20px rgba(55,178,77,0.25), hover vira
+  0 8px 32px rgba(55,178,77,0.35).
+- Card padrão: 0 8px 32px rgba(0,0,0,0.4) + inset 0 1px 0 rgba(255,255,255,0.04).
+- Modal: 0 32px 80px rgba(0,0,0,0.6) (token shadow-modal).
+- Hover de card lift: translateY(-2px) + 0 12px 40px rgba(0,0,0,0.3) +
+  0 0 24px rgba(55,178,77,0.08).
+
+GLASSMORPHISMO: aplique em todo card e modal:
+  background: rgba(17,17,20,0.6) (ou rgba(24,24,29,0.7) para "raised");
+  backdrop-filter: blur(40px) saturate(1.2);
+  border: 1px solid rgba(255,255,255,0.06);
+
+NOISE OVERLAY (obrigatório, sempre presente): inclua um SVG inline com
+filter feTurbulence baseFrequency=0.80 numOctaves=4, e aplique via body::before
+com filter:url(#noise), opacity 0.04, mix-blend-mode overlay, position fixed
+inset 0, z-index 9999, pointer-events none.
+
+ANIMAÇÕES: use cubic-bezier(0.16, 1, 0.3, 1) em micro-interações (ease-out-expo)
+e cubic-bezier(0.25, 0.46, 0.45, 0.94) em transições maiores. Stagger de
+filhos com delay de 60ms (até 0.42s no 8º filho). Hover de botão = scale(1.02),
+active = scale(0.98) com transition-duration 0.1s. Page entry = fadeUp 0.6s.
+
+ICONOGRAFIA: use exclusivamente lucide-react. Tamanhos canônicos: 14-16px
+para uso geral. strokeWidth 1.5 para ícones decorativos, 2.5 para ícones
+em CTAs e botões close. NUNCA misture lucide com outras bibliotecas.
+
+COMPONENTES BASE (classes utilitárias canônicas):
+- .btn-primary: bg #37B24D, color white, font-weight 700, border-radius 16px,
+  shadow do CTA (acima), hover scale(1.02) + bg #2F9E44.
+- .btn-white: bg white, color #08080A, font-weight 700, border-radius 16px.
+- .btn-ghost: color #6B7280, hover color white + translateY(-1px).
+- .input-field: bg #18181D, border 1px rgba(255,255,255,0.06), border-radius
+  16px, padding 16px (com ícone à esquerda use pl-12). Focus = box-shadow
+  0 0 0 2px rgba(55,178,77,0.3) + border-color rgba(55,178,77,0.4).
+- Tab switcher: container bg #18181D padding 4px gap 4px; item ativo
+  bg #37B24D + shadow 0 4px 16px rgba(55,178,77,0.25).
+- Modal: overlay bg-black/50 + backdrop-blur-md, conteúdo glass-raised
+  rounded-4xl shadow-modal max-w-5xl h-[85vh].
+- Toast (top-right portal): bg #1A1A1A, border #2A2A2A, border-radius 12px,
+  rail vertical de 4px na cor da variante (success/error/info), framer-motion
+  slide horizontal 40px.
+- Sidebar: w-[260px] (ou 72px collapsed), bg-surface/80 backdrop-blur-xl,
+  border-r border-subtle. Item ativo: bg-primary/12 border-primary/15.
+
+UI WRITING: 100% pt-BR. Tom ousado e direto ("Entrar no Hub", "O epicentro
+da sua criação viral"). Estados vazios em font-serif italic ("Nenhum conteúdo
+ainda..."). Labels de metadados em IBM Plex Mono 10px uppercase tracking 0.15em.
+
+GRADE DE LAYOUT: container .max-w-4xl mx-auto pt-16 px-8. Modais max-w-3xl
+(form), max-w-4xl (leitor), max-w-5xl (editor).
+
+Siga estritamente essa identidade. Se em dúvida sobre um valor, escolha
+o mais próximo da paleta/escala documentada — nunca invente um novo token.</pre>
+        <button class="ds-copy-btn" data-copy-target="prev">Copy</button>
+      </div>
+    </section>
+
+    <footer class="text-center pt-8 pb-16 text-gray-700 text-xs font-mono tracking-widest uppercase">
+      ViralHub Design System · 2026-04-18 · v1.0
+    </footer>
+
+  </main>
+
+  <!-- ───────────────── SCRIPTS ───────────────── -->
+  <script>
+    /* ─── Copy buttons ─── */
+    document.querySelectorAll('.ds-copy-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.previousElementSibling;
+        if (!target) return;
+        const text = target.innerText;
+        navigator.clipboard.writeText(text).then(() => {
+          const original = btn.textContent;
+          btn.textContent = 'Copiado';
+          btn.classList.add('copied');
+          setTimeout(() => {
+            btn.textContent = original;
+            btn.classList.remove('copied');
+          }, 1400);
+        });
+      });
+    });
+
+    /* ─── Swatch click to copy hex ─── */
+    document.querySelectorAll('.swatch[data-copy]').forEach(s => {
+      s.addEventListener('click', () => {
+        const value = s.getAttribute('data-copy');
+        navigator.clipboard.writeText(value).then(() => {
+          const meta = s.querySelector('.swatch-name');
+          const original = meta.textContent;
+          meta.textContent = 'Copiado!';
+          meta.style.color = '#37B24D';
+          setTimeout(() => { meta.textContent = original; meta.style.color = ''; }, 1400);
+        });
+      });
+    });
+
+    /* ─── Replay animation ─── */
+    function replayAnim(btn, id, animClass) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      el.classList.remove(animClass);
+      void el.offsetWidth; // force reflow
+      el.classList.add(animClass);
+    }
+    function replayStagger() {
+      const wrapper = document.getElementById('stagger-demo');
+      if (!wrapper) return;
+      wrapper.classList.remove('stagger-children');
+      void wrapper.offsetWidth;
+      wrapper.classList.add('stagger-children');
+    }
+
+    /* ─── Sidebar active link via scroll ─── */
+    const navLinks = document.querySelectorAll('#ds-nav a');
+    const sections = [...navLinks].map(l => document.querySelector(l.getAttribute('href')));
+    const onScroll = () => {
+      const y = window.scrollY + 120;
+      let activeIdx = 0;
+      sections.forEach((s, i) => { if (s && s.offsetTop <= y) activeIdx = i; });
+      navLinks.forEach((a, i) => a.classList.toggle('active', i === activeIdx));
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    onScroll();
+
+    /* ─── Render lucide-react icon grid ─── */
+    const ICONS = [
+      'trending-up','sparkles','layout','log-out','settings','panel-left-close',
+      'panel-left-open','chevron-down','chevron-left','chevron-right','zap',
+      'film','clapperboard','folder-kanban','plus','book-open','lightbulb',
+      'user','users','check','x','trash-2','mail','shield','loader-2','lock',
+      'log-in','user-plus','alert-circle','check-circle-2','info','alert-triangle',
+      'zoom-in','zoom-out','rotate-ccw','pencil','calendar','calendar-days',
+      'columns-3','search','arrow-left','library','activity','terminal','download'
+    ];
+    const grid = document.getElementById('icon-grid');
+    ICONS.forEach(name => {
+      const cell = document.createElement('div');
+      cell.className = 'icon-cell';
+      cell.innerHTML = `<i data-lucide="${name}" stroke-width="1.5" width="22" height="22"></i>
+                        <span class="icon-cell-name">${name}</span>`;
+      grid.appendChild(cell);
+    });
+    if (window.lucide) window.lucide.createIcons();
+  </script>
+</body>
+</html>
