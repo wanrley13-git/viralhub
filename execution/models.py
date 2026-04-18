@@ -1,5 +1,5 @@
 import datetime
-from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey
+from sqlalchemy import Column, Integer, BigInteger, String, Text, DateTime, ForeignKey, CheckConstraint
 from sqlalchemy.orm import relationship
 from database import Base
 
@@ -30,7 +30,8 @@ User = Profile
 
 _DEFAULT_PERMISSIONS = (
     '{"analyses":true,"transcriptions":true,"content":true,"ideas":true,'
-    '"kanban":true,"notes":true,"calendar":true,"knowledge":true,"tones":true}'
+    '"kanban":true,"notes":true,"calendar":true,"knowledge":true,"tones":true,'
+    '"cinema":true}'
 )
 
 
@@ -62,12 +63,23 @@ class WorkspaceMember(Base):
 
 class Analysis(Base) :
     __tablename__ = "analyses"
+    # "short"  = Analyzer original (prompt-agente-viral-v2), surfaced at "/"
+    # "cinema" = Cinema transcriber (agente-transcritor-cinematografico), at "/cinema"
+    # Invariant enforced by ck_analyses_category; see migration 017.
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('short', 'cinema')",
+            name="ck_analyses_category",
+        ),
+    )
+
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("profiles.id"), index=True)
     workspace_id = Column(Integer, ForeignKey("workspaces.id"), nullable=True, index=True)
     title = Column(String)
     report_md = Column(Text)
     thumbnail_url = Column(String, nullable=True)
+    category = Column(String(20), nullable=False, server_default="short")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("Profile", back_populates="analyses")

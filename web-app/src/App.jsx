@@ -92,7 +92,18 @@ function App() {
             element={
               <ProtectedRoute>
                 <PermissionGate module="analyses">
-                  <Analyzer />
+                  <Analyzer category="short" />
+                </PermissionGate>
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/cinema"
+            element={
+              <ProtectedRoute>
+                <PermissionGate module="cinema">
+                  <Analyzer category="cinema" />
                 </PermissionGate>
               </ProtectedRoute>
             }

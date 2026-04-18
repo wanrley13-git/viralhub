@@ -68,10 +68,40 @@ const groupAnalysesByDate = (list) => {
     }));
 };
 
-const Analyzer = () => {
+// Per-category copy. Keeps the same component driving both "/"
+// (Vídeos Curtos) and "/cinema" without duplicating the whole page.
+const CATEGORY_COPY = {
+  short: {
+    pageTitle: 'Workspace Analítico',
+    pageSubtitle: 'Hub centralizado de decodificação viral. Arraste arquivos para extrair relatórios automáticos.',
+    libraryLabel: 'Acervo Permanente',
+    libraryTitle: 'Relatórios em Acervo',
+    librarySubtitle: 'Busque e baixe em MD isolado ou lotes compactados.',
+    emptyTitle: 'Biblioteca vazia.',
+    emptySubtitle: 'Nenhum relatório pronto para mostrar.',
+    linkPlaceholder: 'https://youtube.com/shorts/...\nhttps://...',
+    linkHint: 'Copie e cole o link de até {N} vídeos do Instagram, Shorts ou TikTok',
+    cardBadge: 'Relatório',
+  },
+  cinema: {
+    pageTitle: 'Workspace Cinematográfico',
+    pageSubtitle: 'Decupagem cena a cena com timestamps, descrição visual e áudio — transcrição fiel do vídeo.',
+    libraryLabel: 'Acervo Cinematográfico',
+    libraryTitle: 'Decupagens em Acervo',
+    librarySubtitle: 'Busque e baixe transcrições cinematográficas isoladas ou em lote.',
+    emptyTitle: 'Biblioteca vazia.',
+    emptySubtitle: 'Nenhuma decupagem pronta para mostrar.',
+    linkPlaceholder: 'https://youtube.com/watch?v=...\nhttps://...',
+    linkHint: 'Copie e cole o link de até {N} vídeos pra transcrição cena a cena',
+    cardBadge: 'Decupagem',
+  },
+};
+
+const Analyzer = ({ category = 'short' }) => {
   const { collapsed } = useSidebar();
   const { activeWorkspaceId, activeWorkspace, currentUserId } = useWorkspace();
   const { toast, ToastContainer } = useToast();
+  const copy = CATEGORY_COPY[category] || CATEGORY_COPY.short;
   // === Estados de Upload & Análise ===
   const [activeTab, setActiveTab] = useState('upload');
   const [progressTab, setProgressTab] = useState('status');
@@ -134,7 +164,7 @@ const Analyzer = () => {
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWorkspaceId]);
+  }, [activeWorkspaceId, category]);
 
   // ESC priority:
   //   1. Close delete confirmation if open
@@ -160,12 +190,22 @@ const Analyzer = () => {
   }, [selectedAnalysis, deleteConfirmOpen, selectedExports.length]);
 
   // ── realtime sync (team workspaces) ────────────────────────
+  // Inserts from the other category (e.g. a 'cinema' row arriving while
+  // we're on the 'short' page) are dropped so each library only shows
+  // its own items — matching the /history filter on the backend.
   useRealtimeSync({
     table: 'analyses',
     workspaceId: activeWorkspaceId,
     currentUserId,
     isPersonal: activeWorkspace?.is_personal ?? true,
-    onInsert: (row) => setAnalyses((prev) => prev.some((a) => a.id === row.id) ? prev : [row, ...prev]),
+    onInsert: (row) => {
+      // Treat legacy rows without category as 'short' (the default) so
+      // they still appear in the original Analyzer library during the
+      // migration window.
+      const rowCategory = row.category || 'short';
+      if (rowCategory !== category) return;
+      setAnalyses((prev) => prev.some((a) => a.id === row.id) ? prev : [row, ...prev]);
+    },
     onDelete: (row) => setAnalyses((prev) => prev.filter((a) => a.id !== row.id)),
   });
 
@@ -320,7 +360,7 @@ const Analyzer = () => {
 
         const formData = new FormData();
         files.forEach(file => formData.append('files', file));
-        res = await axios.post(`${API_URL}/analyze/files`, formData, {
+        res = await axios.post(`${API_URL}/analyze/files?category=${encodeURIComponent(category)}`, formData, {
           ...config,
           headers: { ...config.headers, 'Content-Type': 'multipart/form-data' }
         });
@@ -330,7 +370,7 @@ const Analyzer = () => {
         if (linkList.length > MAX_LINKS_PER_ANALYSIS) {
           throw new Error(`Máximo de ${MAX_LINKS_PER_ANALYSIS} links por análise.`);
         }
-        res = await axios.post(`${API_URL}/analyze/links`, { links: linkList }, config);
+        res = await axios.post(`${API_URL}/analyze/links?category=${encodeURIComponent(category)}`, { links: linkList }, config);
       }
       if (res.data.taskId) setTaskId(res.data.taskId);
     } catch (err) {
@@ -366,7 +406,7 @@ const Analyzer = () => {
   const fetchHistory = async () => {
     try {
       const token = await getAccessToken();
-      const res = await axios.get(`${API_URL}/analyze/history`, {
+      const res = await axios.get(`${API_URL}/analyze/history?category=${encodeURIComponent(category)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setAnalyses(res.data);
@@ -525,9 +565,9 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
       {/* SEÇÃO 1: Upload e Análise */}
       <div className="max-w-4xl mx-auto pt-16 px-8 relative z-10">
         <div className="mb-12 stagger-children">
-          <h2 className="text-4xl font-extrabold text-white tracking-tight">Workspace Analítico</h2>
+          <h2 className="text-4xl font-extrabold text-white tracking-tight">{copy.pageTitle}</h2>
           <p className="text-gray-500 mt-3 text-[15px] leading-relaxed max-w-lg">
-            Hub centralizado de decodificação viral. Arraste arquivos para extrair relatórios automáticos.
+            {copy.pageSubtitle}
           </p>
         </div>
 
@@ -672,9 +712,9 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
                       onChange={(e) => setLinks(e.target.value)}
                       className="input-field rounded-2xl p-5 resize-none w-full"
                       rows="3"
-                      placeholder={"https://youtube.com/shorts/...\nhttps://..."}
+                      placeholder={copy.linkPlaceholder}
                     />
-                    <p className="text-sm text-gray-600 font-mono tracking-wide text-center">Copie e cole o link de até {MAX_LINKS_PER_ANALYSIS} vídeos do Instagram, Shorts ou TikTok</p>
+                    <p className="text-sm text-gray-600 font-mono tracking-wide text-center">{copy.linkHint.replace('{N}', MAX_LINKS_PER_ANALYSIS)}</p>
                   </div>
                 )}
               </div>
@@ -743,10 +783,10 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-1.5 h-1.5 rounded-full bg-accent animate-glow-pulse" />
-                <span className="data-label">Acervo Permanente</span>
+                <span className="data-label">{copy.libraryLabel}</span>
               </div>
-              <h2 className="text-2xl font-extrabold text-white tracking-tight">Relatórios em Acervo</h2>
-              <p className="text-gray-500 text-sm mt-2">Busque e baixe em MD isolado ou lotes compactados.</p>
+              <h2 className="text-2xl font-extrabold text-white tracking-tight">{copy.libraryTitle}</h2>
+              <p className="text-gray-500 text-sm mt-2">{copy.librarySubtitle}</p>
             </div>
 
             <div className="flex flex-wrap items-center gap-3 w-full md:w-auto">
@@ -791,8 +831,8 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
               <div className="inline-flex p-6 bg-white/[0.03] rounded-3xl mb-6">
                 <LibraryIcon size={40} strokeWidth={1.5} className="text-gray-700" />
               </div>
-              <p className="text-gray-400 font-semibold text-sm">Biblioteca vazia.</p>
-              <p className="text-sm text-gray-600 mt-1.5">Nenhum relatório pronto para mostrar.</p>
+              <p className="text-gray-400 font-semibold text-sm">{copy.emptyTitle}</p>
+              <p className="text-sm text-gray-600 mt-1.5">{copy.emptySubtitle}</p>
             </div>
           ) : (
             <div className="flex flex-col gap-14">
@@ -880,7 +920,7 @@ Total: ${picked.length} ${picked.length === 1 ? 'análise' : 'análises'}
                               <div className="p-1.5 bg-primary/10 rounded-xl">
                                 <FileText size={13} strokeWidth={1.5} className="text-primary" />
                               </div>
-                              <span className="data-label-primary">Relatório</span>
+                              <span className="data-label-primary">{copy.cardBadge}</span>
                             </div>
 
                             {/* Thumbnail */}

@@ -55,13 +55,32 @@ api_key = configure_genai()
 TMP_DIR = os.path.join(os.path.dirname(__file__), '..', '.tmp')
 os.makedirs(TMP_DIR, exist_ok=True)
 
-def _resolve_prompt_file() -> str:
-    """Resolve prompt-agente-viral-v2.md. Prefers execution/directives/
-    (co-located with the backend, always deployed)."""
+# Map each analyzer category to the directive filename the agent is driven by.
+# Add a new entry to support a new category — everything else in this module
+# is category-agnostic.
+_CATEGORY_PROMPT_FILES = {
+    "short": "prompt-agente-viral-v2.md",
+    "cinema": "agente-transcritor-cinematografico.md",
+}
+
+_CATEGORY_FALLBACK_INSTRUCTION = {
+    "short": "Você é o ViralAnalyst. Analise os vídeos enviados.",
+    "cinema": "Você é um transcritor cinematográfico. Transcreva o vídeo cena a cena.",
+}
+
+
+def _resolve_prompt_file(category: str = "short") -> str:
+    """Resolve the directive markdown file for a given category.
+
+    Prefers execution/directives/ (co-located with the backend — always
+    shipped by the Railway build) and falls back through the project root,
+    Docker /app layouts, and cwd, matching the resolution used by the
+    knowledge-base compiler and the content-generator directives.
+    """
+    filename = _CATEGORY_PROMPT_FILES.get(category, _CATEGORY_PROMPT_FILES["short"])
     this_file = os.path.abspath(__file__)
     execution_dir = os.path.dirname(this_file)
     project_root = os.path.dirname(execution_dir)
-    filename = 'prompt-agente-viral-v2.md'
     candidates = [
         os.path.join(execution_dir, 'directives', filename),
         os.path.join(project_root, 'directives', filename),
@@ -76,14 +95,19 @@ def _resolve_prompt_file() -> str:
             return abs_p
     return os.path.abspath(candidates[0])  # fallback for logging
 
-PROMPT_FILE = _resolve_prompt_file()
 
-def get_system_instruction():
-    if os.path.exists(PROMPT_FILE):
-        with open(PROMPT_FILE, 'r', encoding='utf-8') as f:
+# Kept for backwards compatibility — some legacy probes still import this.
+# Points at the original short-video prompt.
+PROMPT_FILE = _resolve_prompt_file("short")
+
+
+def get_system_instruction(category: str = "short"):
+    prompt_path = _resolve_prompt_file(category)
+    if os.path.exists(prompt_path):
+        with open(prompt_path, 'r', encoding='utf-8') as f:
             return f.read()
-    print(f"WARN: prompt file não encontrado em {PROMPT_FILE}")
-    return "Você é o ViralAnalyst. Analise os vídeos enviados."
+    print(f"WARN: prompt file não encontrado em {prompt_path}")
+    return _CATEGORY_FALLBACK_INSTRUCTION.get(category, _CATEGORY_FALLBACK_INSTRUCTION["short"])
 
 # ─── Download error classification ───────────────────────────────────
 # Markers that indicate Instagram / TikTok / YouTube is throttling us and
@@ -437,13 +461,21 @@ async def extract_zip(zip_path: str, progress_callback=None) -> list[str]:
         
     return extracted_files
 
-async def analyze_single_video(fp: str, progress_callback=None, idx=1, total=1) -> tuple[str, str]:
-    """Análise vídeos usando IA Multimodal (focado em apenas 1 vídeo)"""
+async def analyze_single_video(fp: str, progress_callback=None, idx=1, total=1, category: str = "short") -> tuple[str, str]:
+    """Análise vídeos usando IA Multimodal (focado em apenas 1 vídeo).
+
+    `category` picks which agent directive drives the analysis:
+      - "short"  → prompt-agente-viral-v2 (viral analysis, metrics, hooks)
+      - "cinema" → agente-transcritor-cinematografico (scene-by-scene decoupage)
+
+    Default is "short" so every legacy caller keeps the original behavior
+    without any change.
+    """
     current_key = configure_genai()
     if not current_key:
         return "Erro: GEMINI_API_KEY não configurada no arquivo .env", "Erro"
-        
-    system_instruction = get_system_instruction()
+
+    system_instruction = get_system_instruction(category)
     model = genai.GenerativeModel(
         model_name="gemini-2.5-flash",
         system_instruction=system_instruction
@@ -478,8 +510,28 @@ async def analyze_single_video(fp: str, progress_callback=None, idx=1, total=1) 
             
         if progress_callback:
             await progress_callback(f"Geração de inteligência do vídeo [{idx}/{total}]...", 85)
-            
-        prompt = "Analise rigorosamente ESTE vídeo seguindo as diretrizes técnicas. Use APENAS divisores padrão do Markdown (ex: ---). IMPORTANTE: Na primeira linha da sua resposta, ANTES do relatório, forneça APENAS um título incrível, direto e que remete exatamente ao contexto DESSE vídeo de no máximo 4 palavras, obrigatoriamente entre colchetes, assim: [TITULO: Seu Titulo]"
+
+        # Category-specific main instruction. The TITULO tag is identical
+        # in both so the library card extraction below stays unchanged.
+        if category == "cinema":
+            action_prompt = (
+                "Transcreva ESTE vídeo seguindo rigorosamente as diretrizes "
+                "do transcritor cinematográfico — visão geral + cena a cena "
+                "com timestamps, descrição visual objetiva, falas literais e áudio. "
+                "Use APENAS divisores padrão do Markdown (ex: ---)."
+            )
+        else:
+            action_prompt = (
+                "Analise rigorosamente ESTE vídeo seguindo as diretrizes técnicas. "
+                "Use APENAS divisores padrão do Markdown (ex: ---)."
+            )
+        prompt = (
+            action_prompt
+            + " IMPORTANTE: Na primeira linha da sua resposta, ANTES do relatório, "
+              "forneça APENAS um título incrível, direto e que remete exatamente ao "
+              "contexto DESSE vídeo de no máximo 4 palavras, obrigatoriamente entre "
+              "colchetes, assim: [TITULO: Seu Titulo]"
+        )
         
         contents = [uploaded_file, prompt]
         response = await asyncio.to_thread(model.generate_content, contents)

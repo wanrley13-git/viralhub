@@ -13,6 +13,7 @@ import {
   ChevronDown,
   Zap,
   Film,
+  Clapperboard,
   FolderKanban,
   Plus,
   BookOpen,
@@ -51,6 +52,7 @@ const MAX_SIDEBAR_PROJECTS = 3;
 const PERMISSION_LABELS = {
   analyses: 'Análises',
   transcriptions: 'Transcrições',
+  cinema: 'Cinema',
   content: 'Conteúdo',
   ideas: 'Ideias',
   kanban: 'Kanban',
@@ -412,6 +414,7 @@ const Sidebar = () => {
   const hubSubItems = [
     { icon: Zap, label: 'Vídeos curtos', path: '/', module: 'analyses' },
     { icon: Film, label: 'Vídeos longos', path: '/transcriber', module: 'transcriptions' },
+    { icon: Clapperboard, label: 'Cinema', path: '/cinema', module: 'cinema' },
   ];
 
   const generatorSubItems = [

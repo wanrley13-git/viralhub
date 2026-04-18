@@ -5,8 +5,8 @@ import json
 import asyncio
 import io
 import zipfile
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File
+from typing import List, Literal, Optional
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, UploadFile, File, Query
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,6 +32,25 @@ router = APIRouter(prefix="/analyze", tags=["analyze"])
 # frontend and backend can agree on the limits via the error messages.
 MAX_LINKS_PER_ANALYSIS = 20
 MAX_FILES_PER_ANALYSIS = 30
+
+
+# Category discriminator — drives which agent directive the analyzer
+# loads and which frontend library the result shows up in. "short" keeps
+# the legacy Analyzer behavior unchanged; "cinema" uses the
+# agente-transcritor-cinematografico directive.
+Category = Literal["short", "cinema"]
+
+# Map a category to the permission module guarded by PermissionGate on
+# the frontend — so a user without cinema access gets blocked at the API
+# layer even if they bypass the UI.
+_CATEGORY_PERMISSION = {
+    "short": "analyses",
+    "cinema": "cinema",
+}
+
+
+def _perm_for_category(category: str) -> str:
+    return _CATEGORY_PERMISSION.get(category, "analyses")
 
 # Terminal statuses — any task in one of these is considered done and
 # cannot be cancelled / resumed / replaced by "active task" logic.
@@ -108,7 +127,7 @@ async def get_progress(task_id: str):
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 
-async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: bool, user_id: int, workspace_id: int, db_factory):
+async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: bool, user_id: int, workspace_id: int, db_factory, category: str = "short"):
     try:
         tasks_progress[task_id]["logs"].append("Iniciando pipeline de análise...")
 
@@ -193,7 +212,7 @@ async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: b
                 cleanup_temp_files(local_files[idx:])
                 return
 
-            report_md, ai_title = await analyze_single_video(fp, on_progress, idx+1, total_files)
+            report_md, ai_title = await analyze_single_video(fp, on_progress, idx+1, total_files, category=category)
 
             thumb_url = extract_thumbnail(fp)
 
@@ -204,7 +223,8 @@ async def run_analysis_task(task_id: str, files_or_links: List[str], is_links: b
                     workspace_id=workspace_id,
                     title=ai_title,
                     report_md=report_md,
-                    thumbnail_url=thumb_url
+                    thumbnail_url=thumb_url,
+                    category=category,
                 )
                 db.add(new_analysis)
                 await db.commit()
@@ -259,10 +279,11 @@ async def get_active_task(current_user: User = Depends(get_current_user)):
 async def analyze_links(
     request: AnalyzeLinksRequest,
     background_tasks: BackgroundTasks,
+    category: Category = Query("short"),
     current_user: User = Depends(get_current_user),
     ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
-    check_permission(ws, "analyses")
+    check_permission(ws, _perm_for_category(category))
     # Hard cap on links per request — anything above this reliably
     # trips Instagram/TikTok rate-limits even with the backoff logic.
     if len(request.links) > MAX_LINKS_PER_ANALYSIS:
@@ -279,7 +300,7 @@ async def analyze_links(
     task_id = str(uuid.uuid4())
     tasks_progress[task_id] = {"progress": 0, "logs": [], "status": "queued", "report": None, "user_id": current_user.id}
 
-    background_tasks.add_task(run_analysis_task, task_id, request.links, True, current_user.id, ws.id, get_db)
+    background_tasks.add_task(run_analysis_task, task_id, request.links, True, current_user.id, ws.id, get_db, category)
     return {"taskId": task_id}
 
 
@@ -305,10 +326,11 @@ async def cancel_analysis(task_id: str, current_user: User = Depends(get_current
 async def analyze_files(
     background_tasks: BackgroundTasks,
     files: List[UploadFile] = File(...),
+    category: Category = Query("short"),
     current_user: User = Depends(get_current_user),
     ws: WorkspaceInfo = Depends(resolve_workspace),
 ):
-    check_permission(ws, "analyses")
+    check_permission(ws, _perm_for_category(category))
     if len(files) > MAX_FILES_PER_ANALYSIS:
         raise HTTPException(
             status_code=400,
@@ -340,7 +362,7 @@ async def analyze_files(
                 else:
                     final_files.append(p)
 
-            await run_analysis_task(task_id, final_files, False, current_user.id, ws_id, get_db)
+            await run_analysis_task(task_id, final_files, False, current_user.id, ws_id, get_db, category)
         finally:
             cleanup_temp_files(local_paths)
 
@@ -349,14 +371,21 @@ async def analyze_files(
 
 @router.get("/history")
 async def get_history(
+    category: Category = Query("short"),
     current_user: User = Depends(get_current_user),
     ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
 ):
-    check_permission(ws, "analyses")
+    # Default category is "short" — legacy clients without the param see
+    # exactly what they saw pre-migration, and cinema items stay hidden
+    # unless the caller opts in explicitly.
+    check_permission(ws, _perm_for_category(category))
     result = await db.execute(
         select(Analysis)
-        .filter(*workspace_filters(Analysis, ws, current_user.id))
+        .filter(
+            Analysis.category == category,
+            *workspace_filters(Analysis, ws, current_user.id),
+        )
         .order_by(Analysis.created_at.desc())
     )
     return [
@@ -367,6 +396,7 @@ async def get_history(
             "title": a.title,
             "report_preview": (a.report_md or "")[:500],
             "thumbnail_url": a.thumbnail_url,
+            "category": a.category,
             "created_at": a.created_at,
         }
         for a in result.scalars().all()
