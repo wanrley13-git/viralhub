@@ -773,7 +773,9 @@ const ContentGenerator = () => {
   const fetchAnalyses = async () => {
     try {
       const token = await getAccessToken();
-      const res = await axios.get(`${API_URL}/analyze/history`, { headers: { Authorization: `Bearer ${token}` } });
+      // @-mention autocomplete intentionally mixes short + cinema
+      // analyses — pass category=all to bypass the default 'short' filter.
+      const res = await axios.get(`${API_URL}/analyze/history?category=all`, { headers: { Authorization: `Bearer ${token}` } });
       setAnalyses(res.data);
     } catch (err) { console.error('Erro buscando análises:', err); }
   };

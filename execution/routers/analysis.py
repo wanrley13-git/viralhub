@@ -40,12 +40,19 @@ MAX_FILES_PER_ANALYSIS = 30
 # agente-transcritor-cinematografico directive.
 Category = Literal["short", "cinema"]
 
+# Filter variant for listing endpoints. "all" returns both categories
+# unfiltered — used by KB pickers and @-mention autocomplete, which are
+# intentionally mixed.
+CategoryFilter = Literal["short", "cinema", "all"]
+
 # Map a category to the permission module guarded by PermissionGate on
 # the frontend — so a user without cinema access gets blocked at the API
-# layer even if they bypass the UI.
+# layer even if they bypass the UI. "all" falls back to the legacy
+# "analyses" module check so KB/@-mention don't require a new grant.
 _CATEGORY_PERMISSION = {
     "short": "analyses",
     "cinema": "cinema",
+    "all": "analyses",
 }
 
 
@@ -371,7 +378,7 @@ async def analyze_files(
 
 @router.get("/history")
 async def get_history(
-    category: Category = Query("short"),
+    category: CategoryFilter = Query("short"),
     current_user: User = Depends(get_current_user),
     ws: WorkspaceInfo = Depends(resolve_workspace),
     db: AsyncSession = Depends(get_db),
@@ -379,14 +386,15 @@ async def get_history(
     # Default category is "short" — legacy clients without the param see
     # exactly what they saw pre-migration, and cinema items stay hidden
     # unless the caller opts in explicitly.
+    # "all" is the intentional escape hatch used by Knowledge Base pickers
+    # and the ContentGenerator @-mention autocomplete, which mix both
+    # categories on purpose.
     check_permission(ws, _perm_for_category(category))
+    filters = [*workspace_filters(Analysis, ws, current_user.id)]
+    if category != "all":
+        filters.insert(0, Analysis.category == category)
     result = await db.execute(
-        select(Analysis)
-        .filter(
-            Analysis.category == category,
-            *workspace_filters(Analysis, ws, current_user.id),
-        )
-        .order_by(Analysis.created_at.desc())
+        select(Analysis).filter(*filters).order_by(Analysis.created_at.desc())
     )
     return [
         {

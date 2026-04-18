@@ -799,7 +799,9 @@ const IdeaGenerator = () => {
   const fetchAnalyses = async () => {
     try {
       const token = await getAccessToken();
-      const res = await axios.get(`${API_URL}/analyze/history`, { headers: { Authorization: `Bearer ${token}` } });
+      // KB picker intentionally mixes short + cinema analyses — pass
+      // category=all so the backend skips the default 'short'-only filter.
+      const res = await axios.get(`${API_URL}/analyze/history?category=all`, { headers: { Authorization: `Bearer ${token}` } });
       setAnalyses(res.data);
     } catch (err) { console.error('Erro buscando análises:', err); }
   };
