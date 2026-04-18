@@ -4,7 +4,7 @@ import {
   BookOpen, Mic, Check, Trash2, Search, Upload,
   Link as LinkIcon, FileVideo, AlertCircle, Loader2, CheckCircle2,
   LayoutGrid, Grid3x3, Clock, Heart, Pencil, Eye, Download,
-  Send, Layout, StickyNote, FileText, Film, SlidersHorizontal,
+  Send, Layout, StickyNote, FileText, Film, Clapperboard, SlidersHorizontal,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
@@ -46,6 +46,47 @@ const TABS_ROTEIRIST = [
   { id: 'history',   label: 'Histórico',      icon: Clock,     pill: false },
   { id: 'saved',     label: 'Favoritos',      icon: Heart,     pill: false },
 ];
+
+// ideaMode discrimina qual diretiva Gemini gera/desenvolve as ideias.
+// Persiste em localStorage e viaja com a ideia via ContentIdea.generation_mode
+// (ver migration 018). Valores espelham o backend.
+const IDEA_MODES = [
+  {
+    id: 'ideias',
+    label: 'Ideias',
+    icon: Lightbulb,
+    tip: 'Ideias curtas — títulos provocativos com frase de gancho',
+  },
+  {
+    id: 'roteirista',
+    label: 'Roteirista',
+    icon: Film,
+    tip: 'Ideias com arco narrativo + roteiro completo com direção técnica',
+  },
+  {
+    id: 'cinema',
+    label: 'Cinema',
+    icon: Clapperboard,
+    tip: 'Ideias cinematográficas (curtas, cenas de filme, comerciais) + roteiro com enquadramento, câmera, luz e som',
+  },
+];
+
+// Placeholders do textarea do prompt bar — ajudam o usuário a entender
+// o que esperar do modo ativo. Cada modo tem tom e foco distintos.
+const MODE_PLACEHOLDERS = {
+  ideias: 'Descreva o briefing... O agente criativo vai disparar ideias não óbvias. Use @ para referenciar análises',
+  roteirista: 'Descreva o roteiro que você quer... Use [termo] pra buscar contexto na web ou @ pra referenciar análises',
+  cinema: 'Descreva o curta/cena cinematográfica... (ex: filme de um pão na padaria, 30 segundos em 6 cenas)',
+};
+
+// Ícone + label exibidos sutilmente no rodapé do card pra marcar qual
+// agente gerou a ideia. Ajuda o usuário quando ele seleciona uma ideia
+// antiga na biblioteca e clica Desenvolver — sabe qual diretiva vai rodar.
+const MODE_BADGE = {
+  ideias:     { icon: Lightbulb,    label: 'Ideias' },
+  roteirista: { icon: Film,         label: 'Roteirista' },
+  cinema:     { icon: Clapperboard, label: 'Cinema' },
+};
 
 const MIN_QTY = 1;
 const MAX_QTY = 40;
@@ -335,12 +376,28 @@ const IdeaCardBase = ({ idea, index, isSelected, isAdjusting, cs, onToggleSelect
         </p>
       )}
 
-      {showDate && idea.created_at && (
-        <span className="text-[10px] text-white/30 font-mono flex items-center gap-1 mt-3">
-          <Clock size={10} strokeWidth={1.5} />
-          {formatDateHeader(idea.created_at)}
-        </span>
-      )}
+      {(showDate && idea.created_at) || idea.generation_mode ? (
+        <div className="flex items-center gap-3 mt-3 text-[10px] text-white/30 font-mono">
+          {showDate && idea.created_at && (
+            <span className="flex items-center gap-1">
+              <Clock size={10} strokeWidth={1.5} />
+              {formatDateHeader(idea.created_at)}
+            </span>
+          )}
+          {idea.generation_mode && MODE_BADGE[idea.generation_mode] && (() => {
+            const { icon: ModeIcon, label } = MODE_BADGE[idea.generation_mode];
+            return (
+              <span
+                className="flex items-center gap-1"
+                title={`Esta ideia foi gerada no modo ${label}. Se desenvolver, usará a diretiva ${label}.`}
+              >
+                <ModeIcon size={10} strokeWidth={1.5} />
+                {label}
+              </span>
+            );
+          })()}
+        </div>
+      ) : null}
     </motion.div>
   );
 };
@@ -354,18 +411,29 @@ const IdeaGenerator = () => {
   const { confirm, ConfirmDialog } = useConfirm();
   const { toast, ToastContainer } = useToast();
 
-  // Roteirist mode toggle — persisted in localStorage
-  const [roteiristMode, setRoteiristMode] = useState(() => {
+  // Idea mode — 3-way: 'ideias' | 'roteirista' | 'cinema'. Persistido
+  // em localStorage. Migra do toggle binário antigo (ideaGenerator_roteiristMode)
+  // na primeira leitura pra não perder a preferência do usuário após deploy.
+  const [ideaMode, setIdeaMode] = useState(() => {
     try {
-      return localStorage.getItem('ideaGenerator_roteiristMode') === 'true';
+      const saved = localStorage.getItem('ideaGenerator_ideaMode');
+      if (['ideias', 'roteirista', 'cinema'].includes(saved)) return saved;
+      // Migração do toggle antigo (boolean string 'true'/'false').
+      const legacy = localStorage.getItem('ideaGenerator_roteiristMode');
+      if (legacy === 'true') return 'roteirista';
     } catch {}
-    return false;
+    return 'ideias';
   });
   useEffect(() => {
-    try { localStorage.setItem('ideaGenerator_roteiristMode', String(roteiristMode)); } catch {}
-  }, [roteiristMode]);
+    try { localStorage.setItem('ideaGenerator_ideaMode', ideaMode); } catch {}
+  }, [ideaMode]);
 
-  const TABS = roteiristMode ? TABS_ROTEIRIST : TABS_BASE;
+  // Modos que expõem o fluxo de /develop (botão Roteirizar/Desenvolver e
+  // aba "Desenvolvidos"). Ideias rápidas não tem develop.
+  const hasDevelopFlow = ideaMode !== 'ideias';
+  const developButtonLabel = ideaMode === 'cinema' ? 'Desenvolver' : 'Roteirizar';
+
+  const TABS = hasDevelopFlow ? TABS_ROTEIRIST : TABS_BASE;
   const validTabIds = TABS.map(t => t.id);
 
   // Page tabs — persisted under ideaGenerator_activeTab
@@ -377,10 +445,11 @@ const IdeaGenerator = () => {
     return 'ideas';
   });
 
-  // When roteirist mode is turned off, if user is on 'developed' tab, fall back
+  // Quando troca pra modo Ideias (sem develop flow), se estiver na aba
+  // "Desenvolvidos" (só existe em Roteirista/Cinema), volta pra Ideias.
   useEffect(() => {
-    if (!roteiristMode && activeTab === 'developed') setActiveTab('ideas');
-  }, [roteiristMode]);
+    if (!hasDevelopFlow && activeTab === 'developed') setActiveTab('ideas');
+  }, [hasDevelopFlow]);
 
   useEffect(() => {
     try { localStorage.setItem('ideaGenerator_activeTab', activeTab); } catch {}
@@ -1132,7 +1201,7 @@ const IdeaGenerator = () => {
       if (selectedBaseId != null) formData.append('base_id', String(selectedBaseId));
       formData.append('reference_ids', JSON.stringify(selectedRefs.map(r => r.id)));
       formData.append('quantity', String(quantity));
-      formData.append('mode', roteiristMode ? 'roteirista' : 'ideias');
+      formData.append('mode', ideaMode);
       if (searchTerms.length > 0) formData.append('search_terms', JSON.stringify(searchTerms));
       uploadedImages.forEach(img => formData.append('images', img.file));
 
@@ -2073,7 +2142,7 @@ const IdeaGenerator = () => {
                 </div>
                 <div>
                   <p className="text-[15px] font-semibold text-gray-400">Nenhum roteiro desenvolvido</p>
-                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Selecione ideias e clique em "Roteirizar" para desenvolver roteiros completos</p>
+                  <p className="text-[13px] text-gray-600 mt-1.5 max-w-sm">Selecione ideias e clique em "{developButtonLabel}" para desenvolver roteiros completos</p>
                 </div>
               </div>
             )}
@@ -2273,15 +2342,16 @@ const IdeaGenerator = () => {
             transition={{ duration: 0.2, ease: 'easeOut' }}
             className="absolute inset-x-0 bottom-[180px] z-30 flex justify-center items-center gap-3 px-6 pointer-events-none"
           >
-            {/* Roteirizar — only in roteirist mode on Ideas tab */}
-            {roteiristMode && activeTab === 'ideas' && (
+            {/* Develop — only in Roteirista/Cinema on Ideas tab. Label
+                muda pra "Desenvolver" no modo Cinema. */}
+            {hasDevelopFlow && activeTab === 'ideas' && (
               <button
                 onClick={handleDevelop}
                 className="relative z-10 flex items-center gap-2.5 px-10 py-4 rounded-full text-white text-[15px] font-bold shadow-[0_0_40px_rgba(0,0,0,0.4)] transition-colors duration-200 pointer-events-auto"
                 style={{ background: 'linear-gradient(135deg, #166534, #15803d)' }}
               >
                 <FileText size={15} strokeWidth={2.5} />
-                Roteirizar · {selectedIdeas.length}
+                {developButtonLabel} · {selectedIdeas.length}
               </button>
             )}
 
@@ -2434,7 +2504,7 @@ const IdeaGenerator = () => {
                 if (seg.type === 'ref') return <RefChip key={`ref-${seg.analysis.id}`} analysis={seg.analysis} onRemove={removeRef} />;
                 if (i === segments.length - 1) return (
                   <textarea key="active-input" ref={textareaRef} value={seg.value} onChange={handleTextChange} onKeyDown={handleKeyDown} onPaste={handlePaste}
-                    placeholder={segments.length === 1 && !seg.value ? 'Descreva o briefing... O agente criativo vai disparar ideias não óbvias. Use @ para referenciar análises' : ''} rows={1}
+                    placeholder={segments.length === 1 && !seg.value ? MODE_PLACEHOLDERS[ideaMode] : ''} rows={1}
                     className="flex-1 w-0 min-w-[120px] bg-transparent text-[14px] text-white placeholder-gray-600 resize-none outline-none custom-scrollbar leading-relaxed py-1" />
                 );
                 if (!seg.value) return null;
@@ -2533,29 +2603,32 @@ const IdeaGenerator = () => {
               ><Plus size={14} strokeWidth={2} /></button>
             </div>
 
-            {/* Roteirist mode toggle */}
-            <button
-              type="button"
-              onClick={() => setRoteiristMode(v => !v)}
-              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-[12px] font-bold transition-all duration-200 select-none shrink-0"
-              style={{
-                color: roteiristMode ? '#22C55E' : '#6b7280',
-                background: roteiristMode ? 'rgba(34,197,94,0.08)' : 'transparent',
-              }}
-              title={roteiristMode ? 'Modo Roteirista ativado — ideias com história + desenvolvimento de roteiro' : 'Ativar Modo Roteirista'}
-            >
-              <Film size={13} strokeWidth={2} />
-              <span className="tracking-wide">Roteirista</span>
-              <div
-                className="relative w-[34px] h-[18px] rounded-full transition-colors duration-200 shrink-0"
-                style={{ backgroundColor: roteiristMode ? '#22C55E' : '#3f3f46' }}
-              >
-                <div
-                  className="absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow-sm transition-transform duration-200"
-                  style={{ transform: roteiristMode ? 'translateX(18px)' : 'translateX(2px)' }}
-                />
-              </div>
-            </button>
+            {/* Idea mode — seletor 3-way (Ideias / Roteirista / Cinema).
+                Cada botão carrega ícone + tooltip explicando o que o modo
+                gera. O ativo fica verde (rgba(34,197,94,0.08) + #22C55E);
+                inativos cinza #6b7280. Zero paleta nova. */}
+            <div className="flex items-center gap-0.5 rounded-xl bg-white/[0.04] border border-white/[0.05] p-0.5 shrink-0">
+              {IDEA_MODES.map(opt => {
+                const Icon = opt.icon;
+                const active = ideaMode === opt.id;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setIdeaMode(opt.id)}
+                    title={opt.tip}
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[12px] font-bold transition-all duration-200 select-none"
+                    style={{
+                      color: active ? '#22C55E' : '#6b7280',
+                      background: active ? 'rgba(34,197,94,0.08)' : 'transparent',
+                    }}
+                  >
+                    <Icon size={13} strokeWidth={2} />
+                    <span className="tracking-wide">{opt.label}</span>
+                  </button>
+                );
+              })}
+            </div>
 
             <div className="flex-1" />
             <button onClick={handleGenerate} disabled={!hasContent || generating} className="btn-primary flex items-center gap-2.5 px-6 py-2.5 rounded-xl text-[13px] font-bold disabled:opacity-40 disabled:cursor-not-allowed disabled:transform-none disabled:shadow-none">

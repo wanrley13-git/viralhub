@@ -5,12 +5,20 @@ mirrors the shape of routers/content.py so the frontend stays simple, but
 it filters every query by ``idea_type == 'creative'`` so ContentGenerator
 and IdeaGenerator never see each other's rows.
 
-Supports two generation modes:
+Supports three generation modes (persisted per-idea in
+``ContentIdea.generation_mode``):
+
 - **ideias** (default): uses "Modo ideias (agente de ideias rápidas).md"
   to produce fast, provocative one-liners (title + summary).
 - **roteirista**: uses "Modo Roteirista (agente de roteiros).md" FASE 1
   to produce story-driven ideas, and FASE 2 (via ``/develop``) to expand
   a selected idea into a full cinematic screenplay in Markdown.
+- **cinema**: uses "agente-roteirista-cinematografico.md" — same two-phase
+  shape as Roteirista (ideas with narrative arc + full screenplay via
+  /develop) but with explicit cinematic direction per scene
+  (enquadramento / câmera / luz / som / transição). Always runs MODO
+  COMPLETO on /develop (the cinema agent's internal Modo Rápido is not
+  exposed at the UI level).
 """
 
 import os
@@ -99,6 +107,7 @@ class IdeaOut(BaseModel):
     is_saved: bool = False
     is_dismissed: bool = False
     batch_id: Optional[str] = None
+    generation_mode: Optional[str] = "ideias"
     created_at: Optional[str] = None
 
     class Config:
@@ -128,6 +137,7 @@ def _serialize(idea: ContentIdea, include_developed: bool = False) -> IdeaOut:
         is_saved=bool(idea.is_saved),
         is_dismissed=bool(idea.is_dismissed),
         batch_id=idea.batch_id,
+        generation_mode=getattr(idea, "generation_mode", None) or "ideias",
         created_at=idea.created_at.isoformat() if idea.created_at else None,
     )
 
@@ -240,6 +250,48 @@ def _build_roteirist_system_prompt(base_text: str, tone_text: str) -> str:
 ## ARQUIVO 2 — TOM DO USUÁRIO
 
 {tone_text if tone_text else "Nenhum tom fornecido. Use tom direto, provocador e com personalidade forte."}
+
+---
+"""
+    return directive + injection
+
+
+_CINEMA_DIRECTIVE_CACHE = None
+
+
+def _load_cinema_directive() -> str:
+    global _CINEMA_DIRECTIVE_CACHE
+    if _CINEMA_DIRECTIVE_CACHE is not None:
+        return _CINEMA_DIRECTIVE_CACHE
+    path = _find_directive_file("agente-roteirista-cinematografico.md")
+    if not path:
+        _CINEMA_DIRECTIVE_CACHE = ""
+        return _CINEMA_DIRECTIVE_CACHE
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            _CINEMA_DIRECTIVE_CACHE = f.read()
+    except Exception as e:
+        logger.error(f"Erro ao ler diretiva cinema {path}: {e}")
+        _CINEMA_DIRECTIVE_CACHE = ""
+    return _CINEMA_DIRECTIVE_CACHE
+
+
+def _build_cinema_system_prompt(base_text: str, tone_text: str) -> str:
+    """Inject base/tone into the cinema directive as ARQUIVO 1 / ARQUIVO 2."""
+    directive = _load_cinema_directive()
+    injection = f"""
+
+---
+
+## ARQUIVO 1 — DATABASE DE VIRAIS
+
+{base_text if base_text else "Nenhuma base de conhecimento selecionada."}
+
+---
+
+## ARQUIVO 2 — TOM DO USUÁRIO
+
+{tone_text if tone_text else "Nenhum tom fornecido. Use tom neutro cinematográfico."}
 
 ---
 """
@@ -435,6 +487,7 @@ async def generate_creative_ideas(
     The ``mode`` field selects the generation agent:
     - ``ideias`` (default): fast creative one-liners.
     - ``roteirista``: story-driven ideas via FASE 1 of the roteirist agent.
+    - ``cinema``: story-driven cinematic ideas via FASE 1 of the cinema agent.
     """
     check_permission(ws, "ideas")
     if not prompt.strip():
@@ -442,6 +495,14 @@ async def generate_creative_ideas(
 
     if quantity < 1 or quantity > 40:
         raise HTTPException(status_code=400, detail="Quantidade deve ser entre 1 e 40.")
+
+    # Whitelist mode at the API boundary so bad input fails fast instead
+    # of silently falling through to the 'ideias' default.
+    if mode not in ("ideias", "roteirista", "cinema"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"mode inválido: esperado 'ideias' | 'roteirista' | 'cinema', recebido '{mode}'.",
+        )
 
     # Parse reference_ids from the JSON-stringified form field.
     try:
@@ -512,10 +573,11 @@ async def generate_creative_ideas(
             references_text += f"\n\n### Transcrição: {t.title}\n{t.summary or ''}"
 
     # ── Build system prompt from the selected directive ──
-    is_roteirist = mode == "roteirista"
-    if is_roteirist:
+    if mode == "cinema":
+        system_prompt = _build_cinema_system_prompt(base_text, tone_text)
+    elif mode == "roteirista":
         system_prompt = _build_roteirist_system_prompt(base_text, tone_text)
-    else:
+    else:  # mode == "ideias"
         system_prompt = _build_creative_system_prompt(base_text, tone_text)
     if references_text:
         system_prompt += (
@@ -549,12 +611,24 @@ async def generate_creative_ideas(
         logger.info(f"Search context content:\n{search_context}")
 
     # ── Build user_message ──
-    if is_roteirist:
+    if mode in ("roteirista", "cinema"):
+        # Both story-driven agents run FASE 1 with arco narrativo.
+        # Cinema adds an explicit reminder that ideas must be cinematic
+        # (curtas / cenas de filme / comerciais) so the agent doesn't
+        # drift into talking-head or reel-style formats.
+        fase1_flavor = (
+            "Cada ideia deve ter título evocativo e resumo com arco narrativo (setup, virada, payoff). "
+            if mode == "roteirista"
+            else (
+                "Cada ideia deve ter título evocativo e resumo com arco narrativo (setup, virada, payoff) "
+                "no formato cinematográfico (curta, cena de filme, comercial, teaser). "
+            )
+        )
         user_message = (
             "Com base no briefing a seguir, execute a FASE 1 — GERAÇÃO DE IDEIAS COM HISTÓRIA. "
             f"Gere exatamente {quantity} ideias. "
-            "Cada ideia deve ter título evocativo e resumo com arco narrativo (setup, virada, payoff). "
-            "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
+            + fase1_flavor
+            + "Retorne APENAS um JSON array válido, sem markdown, sem texto extra. "
             'Formato: [{"title": "...", "summary": "..."}, ...]'
             f"\n\nPedido do usuário: {prompt}"
             + (f"\n\n{search_context}" if search_context else "")
@@ -628,6 +702,7 @@ async def generate_creative_ideas(
                 is_dismissed=0,
                 batch_id=batch_id,
                 idea_type=IDEA_TYPE,
+                generation_mode=mode,
                 created_at=now,
             )
             db.add(idea)
@@ -699,17 +774,43 @@ async def develop_creative_idea(
         if kb and kb.compiled_md:
             base_text = kb.compiled_md
 
-    # Build prompts — always use the roteirist directive for develop
-    system_prompt = _build_roteirist_system_prompt(base_text, tone_text)
+    # ── Diretiva para desenvolver o roteiro ──
+    #
+    # generation_mode='ideias' existe por compatibilidade retroativa:
+    # ideias criadas antes da migration 018 eram todas persistidas sem
+    # distinção de modo, e o /develop sempre usava a diretiva roteirista.
+    # Mantemos esse comportamento pra não quebrar ideias antigas.
+    # Apenas generation_mode='cinema' ativa a nova diretiva.
+    #
+    # Fonte da verdade é ``idea.generation_mode`` (não o cliente). O
+    # toggle do frontend reflete INTENÇÃO ATUAL do usuário, não a
+    # ORIGEM da ideia — uma ideia Cinema selecionada meses depois no
+    # modo Roteirista ainda deve ser desenvolvida com a diretiva Cinema.
+    gen_mode = getattr(idea, "generation_mode", None) or "ideias"
+    if gen_mode == "cinema":
+        system_prompt = _build_cinema_system_prompt(base_text, tone_text)
+    else:
+        # 'roteirista' OU 'ideias' legado (ver comentário acima)
+        system_prompt = _build_roteirist_system_prompt(base_text, tone_text)
 
     title = request.title or idea.title or ""
     summary = request.summary or idea.summary or ""
     orig_prompt = idea.original_prompt or ""
 
-    user_message = (
-        "Desenvolva o roteiro completo para a seguinte ideia, "
-        "executando a FASE 2 — DESENVOLVIMENTO DE ROTEIRO:\n\n"
-    )
+    # Cinema roda sempre em MODO COMPLETO (Modo Rápido do agente cinema
+    # não é exposto ao usuário — decisão do produto). Roteirista não tem
+    # submodos — é um único formato.
+    if gen_mode == "cinema":
+        user_message = (
+            "Desenvolva o roteiro completo para a seguinte ideia, "
+            "executando a FASE 2 — DESENVOLVIMENTO DE ROTEIRO no MODO COMPLETO "
+            "(roteiro cinematográfico detalhado com enquadramento, câmera, luz, som e transições):\n\n"
+        )
+    else:
+        user_message = (
+            "Desenvolva o roteiro completo para a seguinte ideia, "
+            "executando a FASE 2 — DESENVOLVIMENTO DE ROTEIRO:\n\n"
+        )
     if orig_prompt:
         user_message += (
             f"Prompt original do usuário: {orig_prompt}\n\n"

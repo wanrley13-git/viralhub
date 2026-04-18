@@ -201,7 +201,26 @@ class ContentIdea(Base):
     # Column exists in ORM with a server_default so SELECTs don't break even
     # if the DB column hasn't been migrated yet.
     idea_type = Column(String(20), nullable=False, server_default="content")
+    # generation_mode discrimina qual diretiva Gemini gerou a ideia
+    # dentro do IdeaGenerator (idea_type='creative'):
+    #   "ideias"     = agente de Ideias rápidas (título + frase)
+    #   "roteirista" = agente Roteirista (ideia com arco + roteiro)
+    #   "cinema"     = agente Roteirista Cinematográfico (ideia com
+    #                  arco + roteiro com enquadramento/câmera/luz/som)
+    # Campo ortogonal a idea_type:
+    #   - idea_type discrimina qual PÁGINA (Content vs IdeaGenerator)
+    #   - generation_mode discrimina qual DIRETIVA dentro do IdeaGenerator
+    # Default 'ideias' é neutro: /develop faz fallback p/ diretiva
+    # roteirista quando mode != 'cinema' (ver routers/ideas.py::develop).
+    generation_mode = Column(String(20), nullable=False, server_default="ideias")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    __table_args__ = (
+        CheckConstraint(
+            "generation_mode IN ('ideias', 'roteirista', 'cinema')",
+            name="ck_content_ideas_generation_mode",
+        ),
+    )
 
     owner = relationship("Profile")
     workspace = relationship("Workspace")
